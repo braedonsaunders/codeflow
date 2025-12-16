@@ -211,6 +211,19 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .fn-callers-title{font-size:9px;font-weight:600;color:var(--t3);text-transform:uppercase;margin-bottom:6px}
 .fn-caller{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;font-size:10px;color:var(--t2);cursor:pointer}
 .fn-caller:hover{background:var(--hover);color:var(--acc)}
+.graph-config{position:absolute;top:12px;left:180px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;padding:12px;z-index:50;width:220px}
+.graph-config-title{font-size:9px;font-weight:600;color:var(--t3);text-transform:uppercase;margin-bottom:10px}
+.config-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.config-label{font-size:10px;color:var(--t2);min-width:60px}
+.config-slider{flex:1;height:4px;-webkit-appearance:none;background:var(--bg3);border-radius:2px;outline:none}
+.config-slider::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;background:var(--acc);border-radius:50%;cursor:pointer}
+.config-value{font-size:9px;color:var(--t3);min-width:28px;text-align:right}
+.view-toggle{display:flex;gap:4px;margin-bottom:10px}
+.view-btn{flex:1;padding:6px 8px;background:var(--bg0);border:1px solid var(--border);border-radius:4px;font-size:9px;color:var(--t2);cursor:pointer;text-align:center}
+.view-btn:hover{border-color:var(--acc)}
+.view-btn.active{background:var(--accbg);border-color:var(--acc);color:var(--acc)}
+.config-check{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--t2);cursor:pointer}
+.config-check input{accent-color:var(--acc)}
     </style>
 </head>
 <body>
@@ -412,7 +425,6 @@ function calcBlast(fileId,conns,files){
             conns.forEach(function(c){
                 var src=typeof c.source==='object'?c.source.id:c.source;
                 var tgt=typeof c.target==='object'?c.target.id:c.target;
-                if(src===cur&&!visited.has(tgt)){affected.add(tgt);queue.push(tgt);maxDepth=depth+1;}
                 if(tgt===cur&&!visited.has(src)){affected.add(src);queue.push(src);maxDepth=depth+1;}
             });
         }
@@ -504,6 +516,8 @@ function App(){
     var _x=useState(null),folderFilter=_x[0],setFolderFilter=_x[1];
     var _y=useState(new Set()),expandedFns=_y[0],setExpandedFns=_y[1];
     var _z=useState(false),showUnused=_z[0],setShowUnused=_z[1];
+    var _aa=useState({spacing:200,linkDist:70,viewMode:'force',showLabels:true,curvedLinks:true}),graphConfig=_aa[0],setGraphConfig=_aa[1];
+    var _ab=useState(false),showGraphConfig=_ab[0],setShowGraphConfig=_ab[1];
     var svgRef=useRef(null);
     var zoomRef=useRef(null);
     var simRef=useRef(null);
@@ -707,13 +721,34 @@ function App(){
         var hullLayer=container.append('g');
         var linkLayer=container.append('g');
         var nodeLayer=container.append('g');
-        var sim=d3.forceSimulation(nodes)
-            .force('link',d3.forceLink(links).id(function(d){return d.id;}).distance(70).strength(0.3))
-            .force('charge',d3.forceManyBody().strength(-200).distanceMax(200))
-            .force('collision',d3.forceCollide().radius(function(d){return getR(d)+8;}))
-            .force('x',d3.forceX(function(d){return centers[d.folder]?centers[d.folder].x:w/2;}).strength(0.3))
-            .force('y',d3.forceY(function(d){return centers[d.folder]?centers[d.folder].y:h/2;}).strength(0.3))
-            .velocityDecay(0.6).alphaDecay(0.05);
+        var sim=d3.forceSimulation(nodes);
+        if(graphConfig.viewMode==='force'){
+            sim.force('link',d3.forceLink(links).id(function(d){return d.id;}).distance(graphConfig.linkDist).strength(0.3))
+               .force('charge',d3.forceManyBody().strength(-graphConfig.spacing).distanceMax(400))
+               .force('collision',d3.forceCollide().radius(function(d){return getR(d)+12;}))
+               .force('x',d3.forceX(function(d){return centers[d.folder]?centers[d.folder].x:w/2;}).strength(0.15))
+               .force('y',d3.forceY(function(d){return centers[d.folder]?centers[d.folder].y:h/2;}).strength(0.15));
+        }else if(graphConfig.viewMode==='radial'){
+            var r=Math.min(w,h)*0.35;
+            nodes.forEach(function(n,i){n.angle=i/nodes.length*2*Math.PI;n.targetX=w/2+Math.cos(n.angle)*r;n.targetY=h/2+Math.sin(n.angle)*r;});
+            sim.force('link',d3.forceLink(links).id(function(d){return d.id;}).distance(graphConfig.linkDist*0.5).strength(0.05))
+               .force('charge',d3.forceManyBody().strength(-graphConfig.spacing*0.3))
+               .force('collision',d3.forceCollide().radius(function(d){return getR(d)+8;}))
+               .force('x',d3.forceX(function(d){return d.targetX;}).strength(0.8))
+               .force('y',d3.forceY(function(d){return d.targetY;}).strength(0.8));
+        }else if(graphConfig.viewMode==='hierarchical'){
+            var layerOrder={util:0,model:1,service:2,controller:3,view:4,test:5,config:6};
+            var layerGroups={};
+            nodes.forEach(function(n){var l=n.layer||'util';if(!layerGroups[l])layerGroups[l]=[];layerGroups[l].push(n);});
+            var sortedLayers=Object.keys(layerGroups).sort(function(a,b){return(layerOrder[a]||99)-(layerOrder[b]||99);});
+            sortedLayers.forEach(function(l,li){var g=layerGroups[l];var colW=w/(sortedLayers.length+1);g.forEach(function(n,ni){n.targetX=(li+1)*colW;n.targetY=(ni+1)*h/(g.length+1);});});
+            sim.force('link',d3.forceLink(links).id(function(d){return d.id;}).distance(graphConfig.linkDist).strength(0.1))
+               .force('charge',d3.forceManyBody().strength(-graphConfig.spacing*0.5).distanceMax(200))
+               .force('collision',d3.forceCollide().radius(function(d){return getR(d)+10;}))
+               .force('x',d3.forceX(function(d){return d.targetX||w/2;}).strength(0.9))
+               .force('y',d3.forceY(function(d){return d.targetY||h/2;}).strength(0.3));
+        }
+        sim.velocityDecay(0.6).alphaDecay(0.05);
         simRef.current=sim;
         var link=linkLayer.selectAll('path').data(links).join('path').attr('fill','none').attr('stroke',theme==='light'?'#ccc':'#333').attr('stroke-width',function(d){return Math.max(1,Math.min(2,Math.sqrt(d.count)*0.3));}).attr('stroke-opacity',0.4).attr('marker-end','url(#arr)');
         linksRef.current=link;
@@ -742,9 +777,18 @@ function App(){
                 }
             });
         }
-        sim.on('tick',function(){link.attr('d',function(d){var dx=d.target.x-d.source.x,dy=d.target.y-d.source.y,dr=Math.sqrt(dx*dx+dy*dy);return'M'+d.source.x+','+d.source.y+'A'+dr+','+dr+' 0 0,1 '+d.target.x+','+d.target.y;});node.attr('transform',function(d){return'translate('+d.x+','+d.y+')';});updateHulls();});
+        sim.on('tick',function(){
+            if(graphConfig.curvedLinks){
+                link.attr('d',function(d){var dx=d.target.x-d.source.x,dy=d.target.y-d.source.y,dr=Math.sqrt(dx*dx+dy*dy);return'M'+d.source.x+','+d.source.y+'A'+dr+','+dr+' 0 0,1 '+d.target.x+','+d.target.y;});
+            }else{
+                link.attr('d',function(d){return'M'+d.source.x+','+d.source.y+'L'+d.target.x+','+d.target.y;});
+            }
+            node.attr('transform',function(d){return'translate('+d.x+','+d.y+')';});
+            updateHulls();
+        });
+        node.selectAll('text').attr('opacity',graphConfig.showLabels?1:0);
         return function(){sim.stop();};
-    },[data,colorMap,colorMode,theme,folderFilter]);
+    },[data,colorMap,colorMode,theme,folderFilter,graphConfig]);
 
     function zoomIn(){if(zoomRef.current&&svgRef.current)d3.select(svgRef.current).transition().duration(200).call(zoomRef.current.scaleBy,1.4);}
     function zoomOut(){if(zoomRef.current&&svgRef.current)d3.select(svgRef.current).transition().duration(200).call(zoomRef.current.scaleBy,0.7);}
@@ -831,7 +875,36 @@ function App(){
                         React.createElement('button',{className:'tool-btn',onClick:zoomIn,'aria-label':'Zoom in'},'+'),
                         React.createElement('button',{className:'tool-btn',onClick:zoomOut,'aria-label':'Zoom out'},'−'),
                         React.createElement('button',{className:'tool-btn',onClick:resetZoom,'aria-label':'Reset zoom'},'⟲'),
-                        React.createElement('button',{className:'tool-btn',onClick:fitView,'aria-label':'Fit view'},'⊡')
+                        React.createElement('button',{className:'tool-btn',onClick:fitView,'aria-label':'Fit view'},'⊡'),
+                        React.createElement('button',{className:'tool-btn'+(showGraphConfig?' active':''),onClick:function(){setShowGraphConfig(!showGraphConfig);},'aria-label':'Graph settings',style:showGraphConfig?{background:'var(--accbg)',borderColor:'var(--acc)'}:{}},'⚙')
+                    ),
+                    showGraphConfig&&React.createElement('div',{className:'graph-config'},
+                        React.createElement('div',{className:'graph-config-title'},'Layout'),
+                        React.createElement('div',{className:'view-toggle'},
+                            React.createElement('button',{className:'view-btn'+(graphConfig.viewMode==='force'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{viewMode:'force'}));}},'Force'),
+                            React.createElement('button',{className:'view-btn'+(graphConfig.viewMode==='radial'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{viewMode:'radial'}));}},'Radial'),
+                            React.createElement('button',{className:'view-btn'+(graphConfig.viewMode==='hierarchical'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{viewMode:'hierarchical'}));}},'Layers')
+                        ),
+                        React.createElement('div',{className:'graph-config-title',style:{marginTop:8}},'Spacing'),
+                        React.createElement('div',{className:'config-row'},
+                            React.createElement('span',{className:'config-label'},'Spread'),
+                            React.createElement('input',{type:'range',className:'config-slider',min:'50',max:'500',value:graphConfig.spacing,onChange:function(e){setGraphConfig(Object.assign({},graphConfig,{spacing:parseInt(e.target.value)}));}}),
+                            React.createElement('span',{className:'config-value'},graphConfig.spacing)
+                        ),
+                        React.createElement('div',{className:'config-row'},
+                            React.createElement('span',{className:'config-label'},'Links'),
+                            React.createElement('input',{type:'range',className:'config-slider',min:'30',max:'200',value:graphConfig.linkDist,onChange:function(e){setGraphConfig(Object.assign({},graphConfig,{linkDist:parseInt(e.target.value)}));}}),
+                            React.createElement('span',{className:'config-value'},graphConfig.linkDist)
+                        ),
+                        React.createElement('div',{className:'graph-config-title',style:{marginTop:8}},'Display'),
+                        React.createElement('label',{className:'config-check'},
+                            React.createElement('input',{type:'checkbox',checked:graphConfig.showLabels,onChange:function(e){setGraphConfig(Object.assign({},graphConfig,{showLabels:e.target.checked}));}}),
+                            'Show labels'
+                        ),
+                        React.createElement('label',{className:'config-check',style:{marginTop:6}},
+                            React.createElement('input',{type:'checkbox',checked:graphConfig.curvedLinks,onChange:function(e){setGraphConfig(Object.assign({},graphConfig,{curvedLinks:e.target.checked}));}}),
+                            'Curved links'
+                        )
                     ),
                     React.createElement('div',{className:'canvas-info'},
                         React.createElement('div',{className:'info-chip'},React.createElement('strong',null,folderFilter?data.files.filter(function(f){return f.folder===folderFilter||f.folder.startsWith(folderFilter+'/');}).length:data.files.length),' files'),
