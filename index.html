@@ -243,7 +243,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .lang-legend{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .lang-item{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--t2)}
 .lang-dot{width:8px;height:8px;border-radius:2px}
-.loc-stat{text-align:center;padding:8px;background:var(--bg0);border-radius:6px;margin-bottom:8px}
+.loc-stat{text-align:center;padding:8px;background:var(--bg0);border:1px solid var(--border2);border-radius:6px;margin-top:8px}
 .loc-value{font-size:20px;font-weight:700;color:var(--acc)}
 .loc-label{font-size:9px;color:var(--t3);text-transform:uppercase}
 .unused-fn{background:var(--bg0);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden}
@@ -2966,7 +2966,7 @@ function App(){
                             React.createElement('span',{className:'legend-toggle'},'▼')
                         ),
                         React.createElement('div',{className:'legend-content'},
-                            colorMode==='folder'&&data.folders.slice(0,12).map(function(f,i){return React.createElement('div',{key:f,className:'legend-item'+(folderFilter===f?' active':''),onClick:function(){filterByFolder(f);}},React.createElement('div',{className:'legend-color',style:{background:colorMap[f]||COLORS[i%COLORS.length]}}),f||'root');}),
+                            colorMode==='folder'&&data.folders.slice(0,12).map(function(f,i){return React.createElement('div',{key:f,className:'legend-item'+(folderFilter===f?' active':''),onClick:function(e){e.stopPropagation();filterByFolder(f);}},React.createElement('div',{className:'legend-color',style:{background:colorMap[f]||COLORS[i%COLORS.length]}}),f||'root');}),
                             colorMode==='folder'&&data.folders.length>12&&React.createElement('div',{style:{fontSize:9,color:'var(--t3)',marginTop:4}},'+',data.folders.length-12,' more'),
                             colorMode==='layer'&&Object.entries(LAYER_COLORS).map(function(e){return React.createElement('div',{key:e[0],className:'legend-item'},React.createElement('div',{className:'legend-color',style:{background:e[1]}}),e[0]);}),
                             colorMode==='churn'&&React.createElement(React.Fragment,null,React.createElement('div',{className:'legend-item'},React.createElement('div',{className:'legend-color',style:{background:'#ff5f5f'}}),'High (7+ commits)'),React.createElement('div',{className:'legend-item'},React.createElement('div',{className:'legend-color',style:{background:'#ff9f43'}}),'Medium (4-6)'),React.createElement('div',{className:'legend-item'},React.createElement('div',{className:'legend-color',style:{background:'#22c55e'}}),'Low (0-3)'))
