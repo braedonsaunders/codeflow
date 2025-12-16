@@ -11,7 +11,7 @@
 
 [**Try it Now**](https://codeflow-five.vercel.app/) · [Report Bug](https://github.com/braedonsaunders/codeflow/issues) · [Request Feature](https://github.com/braedonsaunders/codeflow/issues)
 
-<img src="https://via.placeholder.com/800x450?text=CodeFlow+Screenshot" alt="CodeFlow Screenshot" width="100%"/>
+<img src="./screenshot.png" alt="CodeFlow Screenshot" width="100%"/>
 
 </div>
 
