@@ -242,6 +242,22 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .loc-stat{text-align:center;padding:8px;background:var(--bg0);border-radius:6px;margin-bottom:8px}
 .loc-value{font-size:20px;font-weight:700;color:var(--acc)}
 .loc-label{font-size:9px;color:var(--t3);text-transform:uppercase}
+.unused-fn{background:var(--bg0);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden}
+.unused-fn-header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;cursor:pointer}
+.unused-fn-header:hover{background:var(--hover)}
+.unused-fn-name{font-weight:600;color:var(--t0);font-size:12px}
+.unused-fn-meta{display:flex;align-items:center;gap:8px}
+.unused-fn-lines{font-size:9px;color:var(--orange);background:rgba(255,159,67,0.15);padding:2px 6px;border-radius:4px}
+.unused-fn-loc{font-size:9px;color:var(--t3)}
+.unused-fn-file{font-size:9px;color:var(--blue);cursor:pointer;padding:2px 6px;background:var(--bg2);border-radius:4px}
+.unused-fn-file:hover{background:var(--bg3)}
+.unused-fn-preview{padding:0 12px 12px;border-top:1px solid var(--border);margin-top:8px}
+.unused-fn-code{background:var(--bg1);border-radius:6px;padding:10px;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--t1);overflow-x:auto;white-space:pre;max-height:200px;overflow-y:auto;line-height:1.5}
+.unused-fn-path{font-size:9px;color:var(--t3);margin-bottom:8px;display:flex;align-items:center;gap:4px}
+.unused-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px;padding:12px;background:var(--bg0);border-radius:8px}
+.unused-summary-item{text-align:center}
+.unused-summary-value{font-size:16px;font-weight:700;color:var(--orange)}
+.unused-summary-label{font-size:9px;color:var(--t3);text-transform:uppercase}
     </style>
 </head>
 <body>
@@ -647,7 +663,7 @@ function App(){
                 var langStats={};
                 analyzed.forEach(function(f){var ext=f.name.split('.').pop().toLowerCase();langStats[ext]=(langStats[ext]||0)+f.lines;});
                 var langArray=Object.entries(langStats).sort(function(a,b){return b[1]-a[1];}).map(function(e){return{ext:e[0],lines:e[1],pct:Math.round(e[1]/totalLoc*100)};});
-                setData({files:analyzed,functions:allFns,connections:conns,fnStats:fnStats,folders:folders,tree:tree,issues:issues,patterns:patterns,securityIssues:securityIssues,deadFunctions:deadFns.map(function(x){return{name:x[0],file:x[1].file,folder:x[1].folder,line:x[1].line,code:x[1].code};}),stats:{files:analyzed.length,functions:allFns.length,connections:conns.length,dead:deadFns.length,patterns:patterns.length,security:securityIssues.filter(function(i){return i.severity==='high';}).length,loc:totalLoc,languages:langArray}});
+                setData({files:analyzed,functions:allFns,connections:conns,fnStats:fnStats,folders:folders,tree:tree,issues:issues,patterns:patterns,securityIssues:securityIssues,deadFunctions:deadFns.map(function(x){var codeLines=x[1].code?x[1].code.split('\n').length:0;return{name:x[0],file:x[1].file,folder:x[1].folder,line:x[1].line,code:x[1].code,codeLines:codeLines,ext:x[1].file.split('.').pop()};}),stats:{files:analyzed.length,functions:allFns.length,connections:conns.length,dead:deadFns.length,patterns:patterns.length,security:securityIssues.filter(function(i){return i.severity==='high';}).length,loc:totalLoc,languages:langArray}});
                 setExpandedPaths(new Set(['']));
                 var newUrl=window.location.pathname+'?repo='+encodeURIComponent(p.owner+'/'+p.repo);
                 window.history.replaceState({},'',newUrl);
@@ -1197,25 +1213,51 @@ function App(){
             )
         ),
         showUnused&&data&&data.deadFunctions&&React.createElement('div',{className:'modal-overlay',onClick:function(){setShowUnused(false);}},
-            React.createElement('div',{className:'modal',style:{maxWidth:550,maxHeight:'80vh'},onClick:function(e){e.stopPropagation();}},
-                React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},'⚠️ Unused Functions (',data.deadFunctions.length,')'),React.createElement('button',{className:'modal-close',onClick:function(){setShowUnused(false);}},'×')),
-                React.createElement('div',{className:'modal-body',style:{maxHeight:'60vh',overflowY:'auto'}},
-                    React.createElement('div',{style:{fontSize:10,color:'var(--t3)',marginBottom:12}},'These functions are not called from other files. They may be dead code, or called internally within the same file.'),
+            React.createElement('div',{className:'modal',style:{maxWidth:650,maxHeight:'85vh'},onClick:function(e){e.stopPropagation();}},
+                React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},'⚠️ Unused Functions'),React.createElement('button',{className:'modal-close',onClick:function(){setShowUnused(false);}},'×')),
+                React.createElement('div',{className:'modal-body',style:{maxHeight:'70vh',overflowY:'auto'}},
+                    React.createElement('div',{className:'unused-summary'},
+                        React.createElement('div',{className:'unused-summary-item'},
+                            React.createElement('div',{className:'unused-summary-value'},data.deadFunctions.length),
+                            React.createElement('div',{className:'unused-summary-label'},'Dead Functions')
+                        ),
+                        React.createElement('div',{className:'unused-summary-item'},
+                            React.createElement('div',{className:'unused-summary-value'},data.deadFunctions.reduce(function(s,f){return s+f.codeLines;},0)),
+                            React.createElement('div',{className:'unused-summary-label'},'Dead Lines')
+                        ),
+                        React.createElement('div',{className:'unused-summary-item'},
+                            React.createElement('div',{className:'unused-summary-value'},[...new Set(data.deadFunctions.map(function(f){return f.file;}))].length),
+                            React.createElement('div',{className:'unused-summary-label'},'Files Affected')
+                        )
+                    ),
+                    React.createElement('div',{style:{fontSize:10,color:'var(--t3)',marginBottom:12,padding:'8px 12px',background:'var(--bg0)',borderRadius:6,borderLeft:'3px solid var(--orange)'}},'These functions have zero calls — neither from other files nor internally within their own file. They are likely dead code that can be safely removed.'),
                     data.deadFunctions.map(function(fn,i){
                         var isExpanded=expandedFns.has('dead-'+fn.name);
-                        return React.createElement('div',{key:i,className:'fn-item'},
-                            React.createElement('div',{className:'fn-header',onClick:function(){toggleFn('dead-'+fn.name);}},
-                                React.createElement('span',{className:'fn-name'},fn.name,'()'),
-                                React.createElement('span',{style:{display:'flex',alignItems:'center',gap:6}},
-                                    fn.line&&React.createElement('span',{className:'fn-line'},'L',fn.line),
-                                    React.createElement('span',{className:'badge badge-default',style:{cursor:'pointer'},onClick:function(e){e.stopPropagation();selectFile(fn.file);setShowUnused(false);}},fn.file.split('/').pop())
+                        return React.createElement('div',{key:i,className:'unused-fn'},
+                            React.createElement('div',{className:'unused-fn-header',onClick:function(){toggleFn('dead-'+fn.name);}},
+                                React.createElement('div',null,
+                                    React.createElement('span',{className:'unused-fn-name'},fn.name,'()'),
+                                    React.createElement('div',{className:'unused-fn-path'},
+                                        React.createElement('span',null,'📁 ',fn.folder||'root'),
+                                        React.createElement('span',null,'→'),
+                                        React.createElement('span',{className:'unused-fn-file',onClick:function(e){e.stopPropagation();selectFile(fn.file);setShowUnused(false);}},fn.file.split('/').pop())
+                                    )
+                                ),
+                                React.createElement('div',{className:'unused-fn-meta'},
+                                    React.createElement('span',{className:'unused-fn-lines'},fn.codeLines,' lines'),
+                                    fn.line&&React.createElement('span',{className:'unused-fn-loc'},'L',fn.line),
+                                    React.createElement('span',{style:{fontSize:10,color:'var(--t3)'}},isExpanded?'▼':'▶')
                                 )
                             ),
-                            isExpanded&&fn.code&&React.createElement('div',{className:'fn-code'},fn.code)
+                            isExpanded&&fn.code&&React.createElement('div',{className:'unused-fn-preview'},
+                                React.createElement('div',{className:'unused-fn-code'},fn.code)
+                            )
                         );
                     })
                 ),
-                React.createElement('div',{className:'modal-footer'},
+                React.createElement('div',{className:'modal-footer',style:{display:'flex',gap:8}},
+                    React.createElement('button',{className:'top-btn',onClick:function(){data.deadFunctions.forEach(function(fn){expandedFns.add('dead-'+fn.name);});setExpandedFns(new Set(expandedFns));}},'Expand All'),
+                    React.createElement('button',{className:'top-btn',onClick:function(){setExpandedFns(new Set());}},'Collapse All'),
                     React.createElement('button',{className:'top-btn primary',onClick:function(){setShowUnused(false);}},'Close')
                 )
             )
