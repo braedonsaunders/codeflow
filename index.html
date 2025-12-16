@@ -258,6 +258,92 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .unused-summary-item{text-align:center}
 .unused-summary-value{font-size:16px;font-weight:700;color:var(--orange)}
 .unused-summary-label{font-size:9px;color:var(--t3);text-transform:uppercase}
+.pr-modal{max-width:900px;width:95vw}
+.pr-risk{display:flex;align-items:center;gap:16px;padding:16px;background:var(--bg0);border-radius:12px;margin-bottom:16px}
+.pr-risk-score{width:80px;height:80px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:700}
+.pr-risk-value{font-size:28px}
+.pr-risk-label{font-size:9px;text-transform:uppercase;opacity:0.8}
+.pr-risk-details{flex:1}
+.pr-risk-title{font-size:14px;font-weight:600;color:var(--t0);margin-bottom:4px}
+.pr-risk-desc{font-size:11px;color:var(--t2);line-height:1.5}
+.pr-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px}
+.pr-card{background:var(--bg0);border:1px solid var(--border);border-radius:8px;padding:12px}
+.pr-card-title{font-size:10px;font-weight:600;color:var(--t3);text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.pr-reviewer{display:flex;align-items:center;gap:8px;padding:6px;border-radius:6px;margin-bottom:4px}
+.pr-reviewer:hover{background:var(--hover)}
+.pr-reviewer-avatar{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:white}
+.pr-reviewer-name{font-size:11px;color:var(--t1);flex:1}
+.pr-reviewer-pct{font-size:10px;color:var(--t3)}
+.pr-chain{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.pr-chain-file{font-size:9px;padding:3px 8px;background:var(--bg2);border-radius:4px;color:var(--t2)}
+.pr-chain-arrow{color:var(--t3);font-size:10px}
+.pr-files-list{max-height:250px;overflow-y:auto}
+.pr-file-row{display:flex;align-items:center;gap:8px;padding:8px;border-radius:6px;margin-bottom:4px;background:var(--bg0)}
+.pr-file-row:hover{background:var(--hover)}
+.pr-file-status{width:8px;height:8px;border-radius:50%}
+.pr-file-info{flex:1;min-width:0}
+.pr-file-path{font-size:11px;color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pr-file-folder{font-size:9px;color:var(--t3)}
+.pr-file-badges{display:flex;gap:4px}
+.pr-mini-badge{font-size:8px;padding:2px 5px;border-radius:3px}
+.treemap-container{width:100%;height:100%;position:relative}
+.treemap-cell{position:absolute;overflow:hidden;border:1px solid var(--bg0);transition:all 0.2s;cursor:pointer}
+.treemap-cell:hover{z-index:10;transform:scale(1.02);box-shadow:0 4px 12px rgba(0,0,0,0.3)}
+.treemap-label{position:absolute;bottom:4px;left:4px;right:4px;font-size:9px;font-weight:500;color:white;text-shadow:0 1px 2px rgba(0,0,0,0.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.matrix-container{overflow:auto}
+.matrix-cell{width:14px;height:14px;border:1px solid var(--bg0);transition:all 0.15s}
+.matrix-cell:hover{transform:scale(1.5);z-index:10}
+.matrix-label{font-size:8px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arc-container{width:100%;height:100%}
+.arc-node{cursor:pointer;transition:all 0.2s}
+.arc-node:hover{transform:scale(1.3)}
+.arc-link{fill:none;stroke-opacity:0.3;transition:stroke-opacity 0.2s}
+.arc-link:hover{stroke-opacity:0.8}
+.bundle-container{width:100%;height:100%}
+.bundle-node{cursor:pointer}
+.bundle-link{fill:none;stroke-opacity:0.2}
+.viz-tabs{display:flex;gap:4px;margin-bottom:12px;padding:4px;background:var(--bg2);border-radius:8px}
+.viz-tab{padding:8px 12px;border:none;background:transparent;color:var(--t2);font-size:10px;font-weight:600;border-radius:6px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.viz-tab:hover{background:var(--bg3);color:var(--t1)}
+.viz-tab.active{background:var(--acc);color:var(--bg0)}
+.viz-selector{position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:4px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;padding:4px;z-index:50}
+.viz-selector-btn{padding:6px 12px;border:none;background:transparent;color:var(--t2);font-size:9px;font-weight:600;border-radius:4px;cursor:pointer;display:flex;align-items:center;gap:4px}
+.viz-selector-btn:hover{background:var(--bg3);color:var(--t0)}
+.viz-selector-btn.active{background:var(--accbg);color:var(--acc)}
+.treemap-tooltip{position:absolute;padding:8px 12px;background:var(--bg1);border:1px solid var(--border);border-radius:6px;font-size:10px;pointer-events:none;z-index:100;max-width:200px}
+.treemap-tooltip-title{font-weight:600;color:var(--t0);margin-bottom:4px}
+.treemap-tooltip-stat{color:var(--t2);display:flex;justify-content:space-between;gap:12px}
+.matrix-row{display:flex;align-items:center}
+.matrix-label-row{writing-mode:vertical-lr;transform:rotate(180deg);font-size:8px;color:var(--t2);padding:2px 4px;max-width:80px;overflow:hidden;text-overflow:ellipsis}
+.matrix-label-col{font-size:8px;color:var(--t2);padding:4px 4px;width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.heatmap-legend{position:absolute;bottom:60px;right:20px;background:var(--bg1);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:9px}
+.heatmap-gradient{width:100px;height:8px;border-radius:4px;margin:6px 0;background:linear-gradient(90deg,var(--bg3),var(--acc))}
+.pr-impact-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.pr-impact-card{background:var(--bg0);border:1px solid var(--border);border-radius:10px;padding:14px;overflow:hidden}
+.pr-impact-card-title{font-size:10px;font-weight:600;color:var(--t3);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.pr-risk-meter{display:flex;flex-direction:column;align-items:center;padding:20px}
+.pr-risk-circle{width:100px;height:100px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;border:4px solid}
+.pr-risk-value{font-size:32px;font-weight:700}
+.pr-risk-text{font-size:10px;font-weight:600;text-transform:uppercase}
+.pr-metric-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border2)}
+.pr-metric-row:last-child{border-bottom:none}
+.pr-metric-label{font-size:10px;color:var(--t2)}
+.pr-metric-value{font-size:10px;font-weight:600;color:var(--t0)}
+.pr-dependency-chain{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.pr-chain-node{padding:4px 8px;background:var(--bg2);border-radius:4px;font-size:9px;color:var(--t1)}
+.pr-chain-node.changed{background:var(--accbg);color:var(--acc);border:1px solid var(--acc)}
+.pr-chain-arrow{color:var(--t3);font-size:10px}
+.pr-reviewer-card{display:flex;align-items:center;gap:10px;padding:8px;border-radius:6px;margin-bottom:6px;background:var(--bg2)}
+.pr-reviewer-avatar{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;color:white}
+.pr-reviewer-info{flex:1}
+.pr-reviewer-name{font-size:11px;font-weight:600;color:var(--t0)}
+.pr-reviewer-reason{font-size:9px;color:var(--t3)}
+.pr-test-impact{display:flex;flex-direction:column;gap:6px}
+.pr-test-file{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg2);border-radius:4px;font-size:10px}
+.pr-test-icon{font-size:12px}
+.pr-hotspot{display:flex;align-items:center;gap:8px;padding:8px;background:var(--bg2);border-radius:6px;margin-bottom:6px}
+.pr-hotspot-bar{flex:1;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.pr-hotspot-fill{height:100%;border-radius:3px}
     </style>
 </head>
 <body>
@@ -490,6 +576,101 @@ function calcHealth(data){
     return{score:score,grade:grade};
 }
 
+function calcPRRisk(prData, repoData) {
+    if (!prData || !repoData) return { score: 0, level: 'low', factors: [] };
+    var score = 0;
+    var factors = [];
+    var changedFiles = prData.files || [];
+    var totalBlast = 0;
+    var hotspots = [];
+    changedFiles.forEach(function(f) {
+        var existing = repoData.files.find(function(df) { return df.path === f.filename; });
+        if (existing) {
+            var blast = calcBlast(f.filename, repoData.connections, repoData.files);
+            totalBlast += blast.count;
+            if (blast.count > 5) hotspots.push({ file: f.filename, blast: blast.count });
+        }
+    });
+    if (totalBlast > 50) { score += 30; factors.push('High blast radius (' + totalBlast + ' files)'); }
+    else if (totalBlast > 20) { score += 15; factors.push('Moderate blast radius'); }
+    if (changedFiles.length > 10) { score += 20; factors.push('Many files changed (' + changedFiles.length + ')'); }
+    else if (changedFiles.length > 5) { score += 10; factors.push('Several files changed'); }
+    var totalChanges = (prData.additions || 0) + (prData.deletions || 0);
+    if (totalChanges > 500) { score += 25; factors.push('Large changeset (' + totalChanges + ' lines)'); }
+    else if (totalChanges > 200) { score += 12; factors.push('Moderate changeset'); }
+    var coreFiles = changedFiles.filter(function(f) { return f.filename.includes('/core/') || f.filename.includes('/utils/') || f.filename.includes('/lib/'); });
+    if (coreFiles.length > 0) { score += 15; factors.push('Core files modified (' + coreFiles.length + ')'); }
+    var configFiles = changedFiles.filter(function(f) { return f.filename.match(/\.(json|yaml|yml|toml|env)$/); });
+    if (configFiles.length > 0) { score += 10; factors.push('Config files changed'); }
+    score = Math.min(100, score);
+    var level = score >= 70 ? 'critical' : score >= 40 ? 'high' : score >= 20 ? 'medium' : 'low';
+    return { score: score, level: level, factors: factors, totalBlast: totalBlast, hotspots: hotspots.sort(function(a,b){ return b.blast - a.blast; }).slice(0, 5) };
+}
+
+function findSuggestedReviewers(prData, repoData) {
+    if (!prData || !repoData) return [];
+    var changedPaths = (prData.files || []).map(function(f) { return f.filename; });
+    var authorCounts = {};
+    repoData.files.forEach(function(f) {
+        if (changedPaths.some(function(p) { return f.folder && p.startsWith(f.folder); })) {
+            var layer = f.layer || 'other';
+            if (!authorCounts[layer]) authorCounts[layer] = { count: 0, files: [] };
+            authorCounts[layer].count++;
+            authorCounts[layer].files.push(f.name);
+        }
+    });
+    var reviewers = [];
+    Object.entries(authorCounts).sort(function(a,b) { return b[1].count - a[1].count; }).slice(0, 3).forEach(function(entry, i) {
+        reviewers.push({ name: entry[0].charAt(0).toUpperCase() + entry[0].slice(1) + ' Expert', reason: 'Knows ' + entry[1].count + ' files in ' + entry[0], avatar: COLORS[i % COLORS.length] });
+    });
+    return reviewers;
+}
+
+function findTestImpact(prData, repoData) {
+    if (!prData || !repoData) return [];
+    var changedFiles = (prData.files || []).map(function(f) { return f.filename; });
+    var testFiles = repoData.files.filter(function(f) { return f.name.match(/\.test\.|\.spec\.|_test\.|test_/i); });
+    var impacted = [];
+    testFiles.forEach(function(tf) {
+        var shouldRun = changedFiles.some(function(cf) {
+            var cfBase = cf.replace(/\.[^.]+$/, '').split('/').pop();
+            return tf.name.toLowerCase().includes(cfBase.toLowerCase());
+        });
+        if (shouldRun) impacted.push({ file: tf.name, path: tf.path });
+    });
+    if (impacted.length === 0 && testFiles.length > 0) {
+        impacted = testFiles.slice(0, 3).map(function(tf) { return { file: tf.name, path: tf.path, suggested: true }; });
+    }
+    return impacted;
+}
+
+function findDependencyChains(prData, repoData) {
+    if (!prData || !repoData) return [];
+    var changedFiles = (prData.files || []).map(function(f) { return f.filename; });
+    var chains = [];
+    changedFiles.slice(0, 3).forEach(function(file) {
+        var chain = [file.split('/').pop()];
+        var visited = new Set([file]);
+        var queue = [file];
+        var depth = 0;
+        while (queue.length > 0 && depth < 3) {
+            var current = queue.shift();
+            repoData.connections.forEach(function(c) {
+                var src = typeof c.source === 'object' ? c.source.id : c.source;
+                var tgt = typeof c.target === 'object' ? c.target.id : c.target;
+                if (tgt === current && !visited.has(src)) {
+                    visited.add(src);
+                    chain.push(src.split('/').pop());
+                    queue.push(src);
+                }
+            });
+            depth++;
+        }
+        if (chain.length > 1) chains.push(chain.slice(0, 5));
+    });
+    return chains;
+}
+
 function TreeNode(props){
     var node=props.node,selected=props.selected,onSelect=props.onSelect,expanded=props.expanded,toggle=props.toggle,filterFolder=props.filterFolder,activeFilter=props.activeFilter;
     var isOpen=expanded.has(node.path);
@@ -550,12 +731,16 @@ function App(){
     var _x=useState(null),folderFilter=_x[0],setFolderFilter=_x[1];
     var _y=useState(new Set()),expandedFns=_y[0],setExpandedFns=_y[1];
     var _z=useState(false),showUnused=_z[0],setShowUnused=_z[1];
-    var _aa=useState({spacing:200,linkDist:70,viewMode:'force',showLabels:true,curvedLinks:true}),graphConfig=_aa[0],setGraphConfig=_aa[1];
+    var _aa=useState({spacing:200,linkDist:70,viewMode:'force',vizType:'graph',showLabels:true,curvedLinks:true}),graphConfig=_aa[0],setGraphConfig=_aa[1];
     var _ab=useState(false),showGraphConfig=_ab[0],setShowGraphConfig=_ab[1];
     var _ac=useState(260),sidebarWidth=_ac[0],setSidebarWidth=_ac[1];
     var _ad=useState(360),rightPanelWidth=_ad[0],setRightPanelWidth=_ad[1];
     var _ae=useState(false),legendCollapsed=_ae[0],setLegendCollapsed=_ae[1];
     var svgRef=useRef(null);
+    var treemapRef=useRef(null);
+    var matrixRef=useRef(null);
+    var arcRef=useRef(null);
+    var bundleRef=useRef(null);
     var zoomRef=useRef(null);
     var simRef=useRef(null);
     var nodesRef=useRef(null);
@@ -864,6 +1049,199 @@ function App(){
         return function(){sim.stop();};
     },[data,colorMap,colorMode,theme,folderFilter,graphConfig]);
 
+    // Treemap visualization
+    useEffect(function(){
+        if(!data||!treemapRef.current||graphConfig.vizType!=='treemap')return;
+        var container=treemapRef.current;
+        container.innerHTML='';
+        var w=container.clientWidth||800,h=container.clientHeight||600;
+        var hier={name:'root',children:[]};
+        var folderMap={};
+        data.files.forEach(function(f){
+            var folder=f.folder||'root';
+            if(!folderMap[folder])folderMap[folder]={name:folder,children:[]};
+            folderMap[folder].children.push({name:f.name,value:f.lines||1,path:f.path,layer:f.layer,fns:f.functions.length});
+        });
+        hier.children=Object.values(folderMap);
+        var root=d3.hierarchy(hier).sum(function(d){return d.value||0;}).sort(function(a,b){return b.value-a.value;});
+        d3.treemap().size([w,h]).padding(2).round(true)(root);
+        var tooltip=document.createElement('div');
+        tooltip.className='treemap-tooltip';
+        tooltip.style.display='none';
+        container.appendChild(tooltip);
+        root.leaves().forEach(function(leaf){
+            var cell=document.createElement('div');
+            cell.className='treemap-cell';
+            cell.style.left=leaf.x0+'px';
+            cell.style.top=leaf.y0+'px';
+            cell.style.width=Math.max(0,leaf.x1-leaf.x0)+'px';
+            cell.style.height=Math.max(0,leaf.y1-leaf.y0)+'px';
+            var color=colorMap[leaf.parent.data.name]||COLORS[hier.children.indexOf(leaf.parent.data)%COLORS.length];
+            cell.style.background=color;
+            cell.style.opacity='0.85';
+            if(leaf.x1-leaf.x0>40&&leaf.y1-leaf.y0>20){
+                var label=document.createElement('div');
+                label.className='treemap-label';
+                label.textContent=leaf.data.name.replace(/\.[^.]+$/,'');
+                cell.appendChild(label);
+            }
+            cell.onmouseenter=function(e){
+                tooltip.innerHTML='<div class="treemap-tooltip-title">'+leaf.data.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+leaf.data.value+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(leaf.data.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Layer:</span><span>'+(leaf.data.layer||'—')+'</span></div>';
+                tooltip.style.display='block';
+                tooltip.style.left=(e.clientX-container.getBoundingClientRect().left+10)+'px';
+                tooltip.style.top=(e.clientY-container.getBoundingClientRect().top+10)+'px';
+            };
+            cell.onmousemove=function(e){
+                tooltip.style.left=(e.clientX-container.getBoundingClientRect().left+10)+'px';
+                tooltip.style.top=(e.clientY-container.getBoundingClientRect().top+10)+'px';
+            };
+            cell.onmouseleave=function(){tooltip.style.display='none';};
+            cell.onclick=function(){if(leaf.data.path&&selectFileRef.current)selectFileRef.current(leaf.data.path);};
+            container.appendChild(cell);
+        });
+    },[data,graphConfig.vizType,colorMap]);
+
+    // Dependency Matrix visualization
+    useEffect(function(){
+        if(!data||!matrixRef.current||graphConfig.vizType!=='matrix')return;
+        var container=matrixRef.current;
+        container.innerHTML='';
+        var files=data.files.slice(0,30);
+        var matrix=[];
+        var fileIdx={};
+        files.forEach(function(f,i){fileIdx[f.path]=i;matrix[i]=[];for(var j=0;j<files.length;j++)matrix[i][j]=0;});
+        data.connections.forEach(function(c){
+            var src=typeof c.source==='object'?c.source.id:c.source;
+            var tgt=typeof c.target==='object'?c.target.id:c.target;
+            if(fileIdx[src]!==undefined&&fileIdx[tgt]!==undefined)matrix[fileIdx[src]][fileIdx[tgt]]+=c.count||1;
+        });
+        var maxVal=1;matrix.forEach(function(row){row.forEach(function(v){if(v>maxVal)maxVal=v;});});
+        var table=document.createElement('div');
+        table.style.display='inline-block';table.style.padding='20px';
+        var headerRow=document.createElement('div');
+        headerRow.className='matrix-row';
+        headerRow.appendChild(document.createElement('div'));
+        files.forEach(function(f){
+            var h=document.createElement('div');h.className='matrix-label-row';h.textContent=f.name.replace(/\.[^.]+$/,'');h.title=f.path;
+            headerRow.appendChild(h);
+        });
+        table.appendChild(headerRow);
+        files.forEach(function(f,i){
+            var row=document.createElement('div');row.className='matrix-row';
+            var label=document.createElement('div');label.className='matrix-label-col';label.textContent=f.name.replace(/\.[^.]+$/,'');label.title=f.path;
+            row.appendChild(label);
+            files.forEach(function(g,j){
+                var cell=document.createElement('div');
+                cell.className='matrix-cell';
+                var v=matrix[i][j];
+                var intensity=v/maxVal;
+                cell.style.background=v>0?'rgba(0,255,157,'+Math.max(0.1,intensity)+')':'var(--bg2)';
+                cell.title=f.name+' → '+g.name+': '+(v||0)+' connections';
+                cell.onclick=function(){if(selectFileRef.current)selectFileRef.current(f.path);};
+                row.appendChild(cell);
+            });
+            table.appendChild(row);
+        });
+        container.appendChild(table);
+        var legend=document.createElement('div');legend.className='heatmap-legend';
+        legend.innerHTML='<div>Connection Strength</div><div class="heatmap-gradient"></div><div style="display:flex;justify-content:space-between"><span>0</span><span>'+maxVal+'</span></div>';
+        container.appendChild(legend);
+    },[data,graphConfig.vizType]);
+
+    // Arc Diagram visualization
+    useEffect(function(){
+        if(!data||!arcRef.current||graphConfig.vizType!=='arc')return;
+        var container=d3.select(arcRef.current);
+        container.selectAll('*').remove();
+        var w=arcRef.current.clientWidth||800,h=arcRef.current.clientHeight||600;
+        var svg=container.append('svg').attr('width',w).attr('height',h);
+        var files=data.files.slice(0,50);
+        var fileIdx={};files.forEach(function(f,i){fileIdx[f.path]=i;});
+        var y=h*0.7;
+        var nodes=files.map(function(f,i){return{id:f.path,name:f.name,x:60+i*(w-120)/Math.max(1,files.length-1),y:y,folder:f.folder,layer:f.layer};});
+        var links=[];
+        data.connections.forEach(function(c){
+            var src=typeof c.source==='object'?c.source.id:c.source;
+            var tgt=typeof c.target==='object'?c.target.id:c.target;
+            if(fileIdx[src]!==undefined&&fileIdx[tgt]!==undefined)links.push({source:nodes[fileIdx[src]],target:nodes[fileIdx[tgt]],count:c.count||1});
+        });
+        var maxCount=Math.max.apply(null,links.map(function(l){return l.count;}))||1;
+        svg.selectAll('path.arc-link').data(links).join('path').attr('class','arc-link')
+            .attr('d',function(d){
+                var sx=d.source.x,sy=d.source.y,tx=d.target.x,ty=d.target.y;
+                var r=Math.abs(tx-sx)/2;
+                return'M'+sx+','+sy+'A'+r+','+r+' 0 0,'+(sx<tx?1:0)+' '+tx+','+ty;
+            })
+            .attr('stroke',function(d){return colorMap[d.source.folder]||'var(--acc)';})
+            .attr('stroke-width',function(d){return Math.max(1,Math.min(4,d.count/maxCount*4));})
+            .attr('stroke-opacity',0.4);
+        var node=svg.selectAll('g.arc-node').data(nodes).join('g').attr('class','arc-node')
+            .attr('transform',function(d){return'translate('+d.x+','+d.y+')';});
+        node.append('circle').attr('r',8).attr('fill',function(d){return colorMap[d.folder]||COLORS[0];}).attr('stroke','var(--bg0)').attr('stroke-width',2);
+        node.append('text').attr('y',24).attr('text-anchor','middle').attr('fill','var(--t2)').attr('font-size','8px').attr('transform','rotate(45)')
+            .text(function(d){var n=d.name.replace(/\.[^.]+$/,'');return n.length>12?n.slice(0,10)+'…':n;});
+        node.on('click',function(e,d){if(selectFileRef.current)selectFileRef.current(d.id);});
+        node.on('mouseenter',function(e,d){
+            svg.selectAll('path.arc-link').attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.9:0.1;});
+        }).on('mouseleave',function(){svg.selectAll('path.arc-link').attr('stroke-opacity',0.4);});
+    },[data,graphConfig.vizType,colorMap]);
+
+    // Circular Bundle visualization
+    useEffect(function(){
+        if(!data||!bundleRef.current||graphConfig.vizType!=='bundle')return;
+        var container=d3.select(bundleRef.current);
+        container.selectAll('*').remove();
+        var w=bundleRef.current.clientWidth||800,h=bundleRef.current.clientHeight||600;
+        var svg=container.append('svg').attr('width',w).attr('height',h);
+        var g=svg.append('g').attr('transform','translate('+w/2+','+h/2+')');
+        var radius=Math.min(w,h)/2-80;
+        var files=data.files.slice(0,60);
+        var fileIdx={};files.forEach(function(f,i){fileIdx[f.path]=i;});
+        var folderGroups={};files.forEach(function(f){var folder=f.folder||'root';if(!folderGroups[folder])folderGroups[folder]=[];folderGroups[folder].push(f);});
+        var nodes=[],angle=0;
+        Object.entries(folderGroups).sort(function(a,b){return b[1].length-a[1].length;}).forEach(function(entry){
+            var folder=entry[0],fls=entry[1];
+            var step=2*Math.PI*fls.length/files.length;
+            fls.forEach(function(f,i){
+                nodes.push({id:f.path,name:f.name,folder:folder,angle:angle,x:Math.cos(angle-Math.PI/2)*radius,y:Math.sin(angle-Math.PI/2)*radius,layer:f.layer});
+                angle+=step/fls.length;
+            });
+        });
+        var nodeMap={};nodes.forEach(function(n){nodeMap[n.id]=n;});
+        var links=[];
+        data.connections.forEach(function(c){
+            var src=typeof c.source==='object'?c.source.id:c.source;
+            var tgt=typeof c.target==='object'?c.target.id:c.target;
+            if(nodeMap[src]&&nodeMap[tgt])links.push({source:nodeMap[src],target:nodeMap[tgt],count:c.count||1});
+        });
+        var line=d3.lineRadial().curve(d3.curveBundle.beta(0.85)).radius(radius-10).angle(function(d){return d;});
+        g.selectAll('path.bundle-link').data(links).join('path').attr('class','bundle-link')
+            .attr('d',function(d){return line([d.source.angle,d.target.angle]);})
+            .attr('stroke',function(d){return colorMap[d.source.folder]||'var(--acc)';})
+            .attr('stroke-width',1.5)
+            .attr('stroke-opacity',0.3);
+        var node=g.selectAll('g.bundle-node').data(nodes).join('g').attr('class','bundle-node')
+            .attr('transform',function(d){return'rotate('+(d.angle*180/Math.PI-90)+') translate('+radius+',0)'+(d.angle>Math.PI?' rotate(180)':'');});
+        node.append('circle').attr('r',5).attr('fill',function(d){return colorMap[d.folder]||COLORS[0];}).attr('transform',function(d){return d.angle>Math.PI?'translate(-5,0)':'translate(5,0)';});
+        node.append('text').attr('dy','0.31em').attr('x',function(d){return d.angle>Math.PI?-10:10;}).attr('text-anchor',function(d){return d.angle>Math.PI?'end':'start';})
+            .attr('fill','var(--t2)').attr('font-size','8px').text(function(d){var n=d.name.replace(/\.[^.]+$/,'');return n.length>15?n.slice(0,12)+'…':n;});
+        node.on('click',function(e,d){if(selectFileRef.current)selectFileRef.current(d.id);});
+        node.on('mouseenter',function(e,d){
+            g.selectAll('path.bundle-link').attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.9:0.05;})
+                .attr('stroke-width',function(l){return l.source.id===d.id||l.target.id===d.id?2.5:1;});
+        }).on('mouseleave',function(){g.selectAll('path.bundle-link').attr('stroke-opacity',0.3).attr('stroke-width',1.5);});
+        var arcGen=d3.arc().innerRadius(radius+15).outerRadius(radius+22);
+        var folders=Object.keys(folderGroups);
+        var folderAngleStart=0;
+        folders.forEach(function(folder,i){
+            var count=folderGroups[folder].length;
+            var span=2*Math.PI*count/files.length;
+            g.append('path').attr('d',arcGen({startAngle:folderAngleStart,endAngle:folderAngleStart+span}))
+                .attr('fill',colorMap[folder]||COLORS[i%COLORS.length]).attr('opacity',0.6);
+            folderAngleStart+=span;
+        });
+    },[data,graphConfig.vizType,colorMap]);
+
     function zoomIn(){if(zoomRef.current&&svgRef.current)d3.select(svgRef.current).transition().duration(200).call(zoomRef.current.scaleBy,1.4);}
     function zoomOut(){if(zoomRef.current&&svgRef.current)d3.select(svgRef.current).transition().duration(200).call(zoomRef.current.scaleBy,0.7);}
     function resetZoom(){if(zoomRef.current&&svgRef.current)d3.select(svgRef.current).transition().duration(300).call(zoomRef.current.transform,d3.zoomIdentity);}
@@ -966,15 +1344,26 @@ function App(){
                 loading?React.createElement('div',{className:'loading'},React.createElement('div',{className:'spinner'}),React.createElement('div',{className:'loading-text'},'Analyzing...'),React.createElement('div',{className:'loading-progress'},progress)):
                 !data?React.createElement('div',{className:'empty-state'},React.createElement('div',{className:'empty-icon'},'⚡'),React.createElement('div',{className:'empty-title'},'CodeFlow'),React.createElement('div',{className:'empty-desc'},'Visualize architecture, blast radius, ownership, patterns & security')):
                 React.createElement(React.Fragment,null,
-                    React.createElement('svg',{ref:svgRef}),
-                    React.createElement('div',{className:'canvas-toolbar'},
+                    React.createElement('div',{className:'viz-selector'},
+                        React.createElement('button',{className:'viz-selector-btn'+(graphConfig.vizType==='graph'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{vizType:'graph'}));}},'🕸️ Graph'),
+                        React.createElement('button',{className:'viz-selector-btn'+(graphConfig.vizType==='treemap'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{vizType:'treemap'}));}},'📦 Treemap'),
+                        React.createElement('button',{className:'viz-selector-btn'+(graphConfig.vizType==='matrix'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{vizType:'matrix'}));}},'📊 Matrix'),
+                        React.createElement('button',{className:'viz-selector-btn'+(graphConfig.vizType==='arc'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{vizType:'arc'}));}},'🌈 Arc'),
+                        React.createElement('button',{className:'viz-selector-btn'+(graphConfig.vizType==='bundle'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{vizType:'bundle'}));}},'🎯 Bundle')
+                    ),
+                    graphConfig.vizType==='graph'&&React.createElement('svg',{ref:svgRef}),
+                    graphConfig.vizType==='treemap'&&React.createElement('div',{ref:treemapRef,className:'treemap-container'}),
+                    graphConfig.vizType==='matrix'&&React.createElement('div',{ref:matrixRef,className:'matrix-container',style:{width:'100%',height:'100%',overflow:'auto',display:'flex',alignItems:'center',justifyContent:'center'}}),
+                    graphConfig.vizType==='arc'&&React.createElement('div',{ref:arcRef,className:'arc-container'}),
+                    graphConfig.vizType==='bundle'&&React.createElement('div',{ref:bundleRef,className:'bundle-container'}),
+                    graphConfig.vizType==='graph'&&React.createElement('div',{className:'canvas-toolbar'},
                         React.createElement('button',{className:'tool-btn',onClick:zoomIn,'aria-label':'Zoom in'},'+'),
                         React.createElement('button',{className:'tool-btn',onClick:zoomOut,'aria-label':'Zoom out'},'−'),
                         React.createElement('button',{className:'tool-btn',onClick:resetZoom,'aria-label':'Reset zoom'},'⟲'),
                         React.createElement('button',{className:'tool-btn',onClick:fitView,'aria-label':'Fit view'},'⊡'),
                         React.createElement('button',{className:'tool-btn'+(showGraphConfig?' active':''),onClick:function(){setShowGraphConfig(!showGraphConfig);},'aria-label':'Graph settings',style:showGraphConfig?{background:'var(--accbg)',borderColor:'var(--acc)'}:{}},'⚙')
                     ),
-                    showGraphConfig&&React.createElement('div',{className:'graph-config'},
+                    graphConfig.vizType==='graph'&&showGraphConfig&&React.createElement('div',{className:'graph-config'},
                         React.createElement('div',{className:'graph-config-title'},'Layout'),
                         React.createElement('div',{className:'view-toggle',style:{flexWrap:'wrap'}},
                             React.createElement('button',{className:'view-btn'+(graphConfig.viewMode==='force'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{viewMode:'force'}));}},'Force'),
@@ -1166,20 +1555,116 @@ function App(){
             )
         ),
         showPR&&React.createElement('div',{className:'modal-overlay',onClick:function(){setShowPR(false);}},
-            React.createElement('div',{className:'modal',onClick:function(e){e.stopPropagation();}},
+            React.createElement('div',{className:'modal pr-modal',onClick:function(e){e.stopPropagation();}},
                 React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},'📊 PR Impact Analyzer'),React.createElement('button',{className:'modal-close',onClick:function(){setShowPR(false);}},'×')),
-                React.createElement('div',{className:'modal-body'},
+                React.createElement('div',{className:'modal-body',style:{maxHeight:'75vh',overflowY:'auto'}},
                     React.createElement('div',{className:'form-group'},React.createElement('label',{className:'form-label'},'Pull Request URL'),React.createElement('input',{className:'form-input','aria-label':'Pull Request URL',placeholder:'https://github.com/owner/repo/pull/123',value:prUrl,onChange:function(e){setPrUrl(e.target.value);},onKeyDown:function(e){if(e.key==='Enter')analyzePR();}})),
-                    React.createElement('button',{className:'top-btn primary','aria-label':'Analyze Pull Request',onClick:analyzePR,style:{marginBottom:16}},'🔍 Analyze Impact'),
-                    prData&&React.createElement(React.Fragment,null,
-                        React.createElement('div',{className:'pr-header'},React.createElement('div',{className:'pr-title'},prData.title),React.createElement('div',{className:'pr-stats'},React.createElement('span',{className:'pr-add'},'+',prData.additions||0,' additions'),React.createElement('span',{className:'pr-del'},'-',prData.deletions||0,' deletions'))),
-                        React.createElement('div',{style:{fontSize:11,fontWeight:600,marginBottom:8}},'Impacted Files (',prData.files?prData.files.length:0,')'),
-                        prData.files&&prData.files.slice(0,15).map(function(f,i){
-                            var existing=data&&data.files.find(function(df){return df.path===f.filename;});
-                            var blast=existing?calcBlast(f.filename,data.connections,data.files):null;
-                            return React.createElement('div',{key:i,className:'pr-file'},React.createElement('span',{className:'pr-file-name',title:f.filename},f.filename),React.createElement('span',{className:'pr-file-impact',style:{background:blast?blast.level==='low'?'rgba(34,197,94,0.2)':blast.level==='medium'?'rgba(255,159,67,0.2)':'rgba(255,95,95,0.2)':'var(--bg3)',color:blast?blast.level==='low'?'var(--green)':blast.level==='medium'?'var(--orange)':'var(--red)':'var(--t3)'}},blast?blast.count+' affected':'new file'));
-                        })
-                    )
+                    React.createElement('button',{className:'top-btn primary','aria-label':'Analyze Pull Request',onClick:analyzePR,style:{marginBottom:16,width:'100%'}},'🔍 Analyze PR Impact'),
+                    prData&&(function(){
+                        var risk = calcPRRisk(prData, data);
+                        var reviewers = findSuggestedReviewers(prData, data);
+                        var testImpact = findTestImpact(prData, data);
+                        var chains = findDependencyChains(prData, data);
+                        var riskColor = risk.level === 'critical' ? 'var(--red)' : risk.level === 'high' ? 'var(--orange)' : risk.level === 'medium' ? 'var(--blue)' : 'var(--green)';
+                        return React.createElement(React.Fragment, null,
+                            React.createElement('div',{className:'pr-header',style:{marginBottom:16}},
+                                React.createElement('div',{className:'pr-title',style:{fontSize:14}},prData.title),
+                                React.createElement('div',{className:'pr-stats',style:{marginTop:8}},
+                                    React.createElement('span',{className:'pr-add'},'+',prData.additions||0),
+                                    React.createElement('span',{className:'pr-del'},'-',prData.deletions||0),
+                                    React.createElement('span',{style:{color:'var(--t3)',marginLeft:8}},prData.files?prData.files.length:0,' files')
+                                )
+                            ),
+                            React.createElement('div',{className:'pr-impact-grid'},
+                                React.createElement('div',{className:'pr-impact-card'},
+                                    React.createElement('div',{className:'pr-risk-meter'},
+                                        React.createElement('div',{className:'pr-risk-circle',style:{borderColor:riskColor,background:'rgba('+[risk.level==='critical'?'255,95,95':risk.level==='high'?'255,159,67':risk.level==='medium'?'77,159,255':'34,197,94'].join(',')+',0.1)'}},
+                                            React.createElement('div',{className:'pr-risk-value',style:{color:riskColor}},risk.score),
+                                            React.createElement('div',{className:'pr-risk-text',style:{color:riskColor}},risk.level)
+                                        ),
+                                        React.createElement('div',{style:{marginTop:12,fontSize:10,color:'var(--t2)',textAlign:'center'}},'Risk Score')
+                                    ),
+                                    risk.factors.length > 0 && React.createElement('div',{style:{marginTop:12}},
+                                        risk.factors.map(function(f,i) { return React.createElement('div',{key:i,style:{fontSize:9,color:'var(--t2)',padding:'4px 0',borderTop:i>0?'1px solid var(--border2)':'none'}},'• ',f); })
+                                    )
+                                ),
+                                React.createElement('div',{className:'pr-impact-card'},
+                                    React.createElement('div',{className:'pr-impact-card-title'},'📈 Impact Metrics'),
+                                    React.createElement('div',{className:'pr-metric-row'},React.createElement('span',{className:'pr-metric-label'},'Total Blast Radius'),React.createElement('span',{className:'pr-metric-value'},risk.totalBlast,' files')),
+                                    React.createElement('div',{className:'pr-metric-row'},React.createElement('span',{className:'pr-metric-label'},'Files Changed'),React.createElement('span',{className:'pr-metric-value'},prData.files?prData.files.length:0)),
+                                    React.createElement('div',{className:'pr-metric-row'},React.createElement('span',{className:'pr-metric-label'},'Lines Modified'),React.createElement('span',{className:'pr-metric-value'},(prData.additions||0)+(prData.deletions||0))),
+                                    React.createElement('div',{className:'pr-metric-row'},React.createElement('span',{className:'pr-metric-label'},'Net Change'),React.createElement('span',{className:'pr-metric-value',style:{color:(prData.additions||0)-(prData.deletions||0)>=0?'var(--green)':'var(--red)'}},(prData.additions||0)-(prData.deletions||0)>0?'+':'',(prData.additions||0)-(prData.deletions||0)))
+                                ),
+                                reviewers.length > 0 && React.createElement('div',{className:'pr-impact-card'},
+                                    React.createElement('div',{className:'pr-impact-card-title'},'👥 Suggested Reviewers'),
+                                    reviewers.map(function(r,i) { return React.createElement('div',{key:i,className:'pr-reviewer-card'},
+                                        React.createElement('div',{className:'pr-reviewer-avatar',style:{background:r.avatar}},r.name[0]),
+                                        React.createElement('div',{className:'pr-reviewer-info'},
+                                            React.createElement('div',{className:'pr-reviewer-name'},r.name),
+                                            React.createElement('div',{className:'pr-reviewer-reason'},r.reason)
+                                        )
+                                    ); })
+                                ),
+                                testImpact.length > 0 && React.createElement('div',{className:'pr-impact-card'},
+                                    React.createElement('div',{className:'pr-impact-card-title'},'🧪 Test Impact'),
+                                    React.createElement('div',{className:'pr-test-impact'},
+                                        testImpact.slice(0,5).map(function(t,i) { return React.createElement('div',{key:i,className:'pr-test-file'},
+                                            React.createElement('span',{className:'pr-test-icon'},t.suggested?'💡':'✅'),
+                                            React.createElement('span',{style:{flex:1}},t.file),
+                                            t.suggested && React.createElement('span',{className:'badge badge-info'},'suggested')
+                                        ); })
+                                    )
+                                )
+                            ),
+                            chains.length > 0 && React.createElement('div',{className:'pr-impact-card',style:{marginTop:16}},
+                                React.createElement('div',{className:'pr-impact-card-title'},'🔗 Dependency Chains'),
+                                React.createElement('div',{style:{fontSize:10,color:'var(--t3)',marginBottom:12}},'Files that import modified files (downstream impact)'),
+                                chains.map(function(chain,i) { return React.createElement('div',{key:i,className:'pr-dependency-chain',style:{marginBottom:8}},
+                                    chain.map(function(node,j) { return React.createElement(React.Fragment,{key:j},
+                                        React.createElement('span',{className:'pr-chain-node'+(j===0?' changed':'')},node),
+                                        j < chain.length - 1 && React.createElement('span',{className:'pr-chain-arrow'},'→')
+                                    ); })
+                                ); })
+                            ),
+                            risk.hotspots.length > 0 && React.createElement('div',{className:'pr-impact-card',style:{marginTop:16}},
+                                React.createElement('div',{className:'pr-impact-card-title'},'🔥 Hotspots'),
+                                React.createElement('div',{style:{fontSize:10,color:'var(--t3)',marginBottom:12}},'Files with highest blast radius'),
+                                risk.hotspots.map(function(h,i) {
+                                    var maxBlast = Math.max.apply(null, risk.hotspots.map(function(x){return x.blast;})) || 1;
+                                    return React.createElement('div',{key:i,className:'pr-hotspot'},
+                                        React.createElement('span',{style:{fontSize:10,color:'var(--t1)',minWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},h.file.split('/').pop()),
+                                        React.createElement('div',{className:'pr-hotspot-bar'},
+                                            React.createElement('div',{className:'pr-hotspot-fill',style:{width:(h.blast/maxBlast*100)+'%',background:'linear-gradient(90deg, var(--orange), var(--red))'}})
+                                        ),
+                                        React.createElement('span',{style:{fontSize:9,color:'var(--t3)',minWidth:50,textAlign:'right'}},h.blast,' files')
+                                    );
+                                })
+                            ),
+                            React.createElement('div',{className:'pr-impact-card',style:{marginTop:16}},
+                                React.createElement('div',{className:'pr-impact-card-title'},'📁 Changed Files'),
+                                React.createElement('div',{className:'pr-files-list'},
+                                    prData.files&&prData.files.slice(0,20).map(function(f,i){
+                                        var existing=data&&data.files.find(function(df){return df.path===f.filename;});
+                                        var blast=existing?calcBlast(f.filename,data.connections,data.files):null;
+                                        var statusColor = f.status === 'added' ? 'var(--green)' : f.status === 'removed' ? 'var(--red)' : 'var(--blue)';
+                                        return React.createElement('div',{key:i,className:'pr-file-row'},
+                                            React.createElement('div',{className:'pr-file-status',style:{background:statusColor}}),
+                                            React.createElement('div',{className:'pr-file-info'},
+                                                React.createElement('div',{className:'pr-file-path'},f.filename.split('/').pop()),
+                                                React.createElement('div',{className:'pr-file-folder'},f.filename.includes('/')?f.filename.substring(0,f.filename.lastIndexOf('/')):'root')
+                                            ),
+                                            React.createElement('div',{className:'pr-file-badges'},
+                                                f.additions>0&&React.createElement('span',{className:'pr-mini-badge',style:{background:'rgba(34,197,94,0.2)',color:'var(--green)'}},'+',f.additions),
+                                                f.deletions>0&&React.createElement('span',{className:'pr-mini-badge',style:{background:'rgba(255,95,95,0.2)',color:'var(--red)'}},'-',f.deletions),
+                                                blast&&React.createElement('span',{className:'pr-mini-badge',style:{background:blast.level==='low'?'rgba(34,197,94,0.2)':blast.level==='medium'?'rgba(255,159,67,0.2)':'rgba(255,95,95,0.2)',color:blast.level==='low'?'var(--green)':blast.level==='medium'?'var(--orange)':'var(--red)'}},blast.count,' ⚡')
+                                            )
+                                        );
+                                    }),
+                                    prData.files&&prData.files.length>20&&React.createElement('div',{style:{textAlign:'center',padding:8,fontSize:10,color:'var(--t3)'}},'+',prData.files.length-20,' more files')
+                                )
+                            )
+                        );
+                    })()
                 )
             )
         ),
