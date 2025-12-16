@@ -20,6 +20,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-sankey/0.12.3/d3-sankey.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <style>
 :root{--bg0:#0a0a0c;--bg1:#0f0f12;--bg2:#161619;--bg3:#1c1c21;--bg4:#252529;--hover:#2a2a30;--border:#2d2d35;--border2:#222228;--t0:#f0f0f2;--t1:#c8c8cd;--t2:#8b8b95;--t3:#5c5c66;--acc:#00ff9d;--acc2:#00cc7d;--accbg:rgba(0,255,157,0.08);--blue:#4d9fff;--purple:#a78bfa;--orange:#ff9f43;--red:#ff5f5f;--cyan:#22d3ee;--pink:#ec4899;--green:#22c55e}
@@ -756,7 +757,9 @@ function App(){
     var svgRef=useRef(null);
     var treemapRef=useRef(null);
     var matrixRef=useRef(null);
-    var arcRef=useRef(null);
+    var dendroRef=useRef(null);
+    var sankeyRef=useRef(null);
+    var disjointRef=useRef(null);
     var bundleRef=useRef(null);
     var zoomRef=useRef(null);
     var simRef=useRef(null);
@@ -1209,87 +1212,183 @@ function App(){
         legend.html('<div style="font-size:9px;color:var(--t2)">Connection Strength</div><div class="heatmap-gradient"></div><div style="display:flex;justify-content:space-between;font-size:8px;color:var(--t3)"><span>0</span><span>'+maxVal+'</span></div>');
     },[data,graphConfig.vizType,folderFilter]);
 
-    // Arc Diagram visualization - Interactive with zoom, pan, drag, selection, blast radius
+    // Cluster Dendrogram - Hierarchical tree visualization
     useEffect(function(){
-        if(!data||!arcRef.current||graphConfig.vizType!=='arc')return;
-        var container=d3.select(arcRef.current);
+        if(!data||!dendroRef.current||graphConfig.vizType!=='dendro')return;
+        var container=d3.select(dendroRef.current);
         container.selectAll('*').remove();
-        var w=arcRef.current.clientWidth||800,h=arcRef.current.clientHeight||600;
+        var w=dendroRef.current.clientWidth||800,h=dendroRef.current.clientHeight||600;
         var svg=container.append('svg').attr('width',w).attr('height',h);
-        var g=svg.append('g');
-        var zoom=d3.zoom().scaleExtent([0.3,4]).on('zoom',function(e){g.attr('transform',e.transform);});
+        var g=svg.append('g').attr('transform','translate(80,20)');
+        var zoom=d3.zoom().scaleExtent([0.3,3]).on('zoom',function(e){g.attr('transform','translate('+(80+e.transform.x)+','+(20+e.transform.y)+') scale('+e.transform.k+')');});
         svg.call(zoom);
         var filteredFiles=folderFilter?data.files.filter(function(f){return f.folder===folderFilter||f.folder.startsWith(folderFilter+'/');}):data.files;
-        var files=filteredFiles.slice(0,60);
+        var hier={name:'root',children:[]};
+        var folderMap={};
+        filteredFiles.slice(0,80).forEach(function(f){
+            var folder=f.folder||'root';
+            if(!folderMap[folder])folderMap[folder]={name:folder.split('/').pop()||'root',fullPath:folder,children:[]};
+            folderMap[folder].children.push({name:f.name,path:f.path,fns:f.functions.length,lines:f.lines,folder:folder,layer:f.layer});
+        });
+        hier.children=Object.values(folderMap);
+        var root=d3.hierarchy(hier);
+        var treeLayout=d3.cluster().size([h-60,w-200]);
+        treeLayout(root);
+        var tooltip=container.append('div').attr('class','treemap-tooltip').style('display','none').style('position','absolute');
+        g.selectAll('path.dendro-link').data(root.links()).join('path').attr('class','dendro-link')
+            .attr('d',function(d){return'M'+d.source.y+','+d.source.x+'C'+(d.source.y+d.target.y)/2+','+d.source.x+' '+(d.source.y+d.target.y)/2+','+d.target.x+' '+d.target.y+','+d.target.x;})
+            .attr('fill','none').attr('stroke','var(--border)').attr('stroke-width',1.5).attr('stroke-opacity',0.6);
+        var node=g.selectAll('g.dendro-node').data(root.descendants()).join('g').attr('class','dendro-node')
+            .attr('transform',function(d){return'translate('+d.y+','+d.x+')';}).style('cursor','pointer');
+        node.append('circle').attr('r',function(d){return d.children?6:8;})
+            .attr('fill',function(d){return d.children?'var(--bg3)':colorMap[d.data.folder]||COLORS[0];})
+            .attr('stroke',function(d){return d.children?'var(--t3)':'var(--bg0)';}).attr('stroke-width',2);
+        node.filter(function(d){return!d.children;}).append('text').attr('x',12).attr('dy','0.35em')
+            .attr('fill','var(--t1)').attr('font-size','9px').text(function(d){var n=d.data.name.replace(/\.[^.]+$/,'');return n.length>20?n.slice(0,18)+'…':n;});
+        node.filter(function(d){return d.children&&d.depth>0;}).append('text').attr('x',-10).attr('dy','0.35em').attr('text-anchor','end')
+            .attr('fill','var(--t2)').attr('font-size','10px').attr('font-weight','600').text(function(d){return d.data.name;});
+        node.on('mouseenter',function(e,d){
+            if(!d.data.path)return;
+            tooltip.html('<div class="treemap-tooltip-title">'+d.data.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+(d.data.lines||0)+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(d.data.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Layer:</span><span>'+(d.data.layer||'—')+'</span></div>')
+                .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
+            d3.select(this).select('circle').transition().duration(150).attr('r',12).attr('stroke','var(--acc)').attr('stroke-width',3);
+        }).on('mousemove',function(e){tooltip.style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');})
+        .on('mouseleave',function(e,d){
+            tooltip.style('display','none');
+            d3.select(this).select('circle').transition().duration(150).attr('r',d.children?6:8).attr('stroke',d.children?'var(--t3)':'var(--bg0)').attr('stroke-width',2);
+        }).on('click',function(e,d){
+            e.stopPropagation();
+            if(d.data.path&&selectFileRef.current)selectFileRef.current(d.data.path);
+            else if(d.data.fullPath)filterByFolder(d.data.fullPath);
+        });
+    },[data,graphConfig.vizType,colorMap,folderFilter]);
+
+    // Sankey Diagram - Flow visualization showing dependencies between folders
+    useEffect(function(){
+        if(!data||!sankeyRef.current||graphConfig.vizType!=='sankey')return;
+        var container=d3.select(sankeyRef.current);
+        container.selectAll('*').remove();
+        var w=sankeyRef.current.clientWidth||800,h=sankeyRef.current.clientHeight||600;
+        var svg=container.append('svg').attr('width',w).attr('height',h);
+        var g=svg.append('g').attr('transform','translate(20,20)');
+        var zoom=d3.zoom().scaleExtent([0.5,2]).on('zoom',function(e){g.attr('transform','translate('+(20+e.transform.x)+','+(20+e.transform.y)+') scale('+e.transform.k+')');});
+        svg.call(zoom);
+        var folders=[...new Set(data.files.map(function(f){return f.folder||'root';}))].slice(0,15);
+        var folderIdx={};folders.forEach(function(f,i){folderIdx[f]=i;});
+        var flowMap={};
+        data.connections.forEach(function(c){
+            var src=typeof c.source==='object'?c.source.id:c.source;
+            var tgt=typeof c.target==='object'?c.target.id:c.target;
+            var srcFile=data.files.find(function(f){return f.path===src;});
+            var tgtFile=data.files.find(function(f){return f.path===tgt;});
+            if(srcFile&&tgtFile&&srcFile.folder!==tgtFile.folder){
+                var key=srcFile.folder+'|'+tgtFile.folder;
+                flowMap[key]=(flowMap[key]||0)+(c.count||1);
+            }
+        });
+        var nodes=folders.map(function(f,i){return{id:i,name:f.split('/').pop()||'root',fullPath:f,fileCount:data.files.filter(function(x){return x.folder===f;}).length};});
+        var links=[];
+        Object.entries(flowMap).forEach(function(e){
+            var parts=e[0].split('|'),val=e[1];
+            var si=folderIdx[parts[0]],ti=folderIdx[parts[1]];
+            if(si!==undefined&&ti!==undefined&&si!==ti)links.push({source:si,target:ti,value:val});
+        });
+        if(links.length===0){
+            g.append('text').attr('x',w/2-20).attr('y',h/2).attr('fill','var(--t3)').attr('font-size','12px').text('No cross-folder dependencies to visualize');
+            return;
+        }
+        var sankey=d3.sankey().nodeId(function(d){return d.id;}).nodeWidth(20).nodePadding(15).extent([[0,0],[w-60,h-60]]);
+        var graph=sankey({nodes:nodes.map(function(d){return Object.assign({},d);}),links:links.map(function(d){return Object.assign({},d);})});
+        var tooltip=container.append('div').attr('class','treemap-tooltip').style('display','none').style('position','absolute');
+        g.selectAll('path.sankey-link').data(graph.links).join('path').attr('class','sankey-link')
+            .attr('d',d3.sankeyLinkHorizontal()).attr('fill','none')
+            .attr('stroke',function(d){return colorMap[d.source.fullPath]||COLORS[d.source.id%COLORS.length];})
+            .attr('stroke-width',function(d){return Math.max(2,d.width);}).attr('stroke-opacity',0.4)
+            .on('mouseenter',function(e,d){
+                d3.select(this).attr('stroke-opacity',0.8);
+                tooltip.html('<div class="treemap-tooltip-title">'+d.source.name+' → '+d.target.name+'</div><div class="treemap-tooltip-stat"><span>Connections:</span><span>'+d.value+'</span></div>')
+                    .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
+            }).on('mouseleave',function(){d3.select(this).attr('stroke-opacity',0.4);tooltip.style('display','none');});
+        var node=g.selectAll('g.sankey-node').data(graph.nodes).join('g').attr('class','sankey-node').style('cursor','pointer');
+        node.append('rect').attr('x',function(d){return d.x0;}).attr('y',function(d){return d.y0;})
+            .attr('width',function(d){return d.x1-d.x0;}).attr('height',function(d){return Math.max(4,d.y1-d.y0);})
+            .attr('fill',function(d){return colorMap[d.fullPath]||COLORS[d.id%COLORS.length];}).attr('rx',3);
+        node.append('text').attr('x',function(d){return d.x0<w/2?d.x1+8:d.x0-8;}).attr('y',function(d){return(d.y0+d.y1)/2;})
+            .attr('dy','0.35em').attr('text-anchor',function(d){return d.x0<w/2?'start':'end';})
+            .attr('fill','var(--t1)').attr('font-size','10px').attr('font-weight','500').text(function(d){return d.name+' ('+d.fileCount+')';});
+        node.on('mouseenter',function(e,d){
+            tooltip.html('<div class="treemap-tooltip-title">'+d.fullPath+'</div><div class="treemap-tooltip-stat"><span>Files:</span><span>'+d.fileCount+'</span></div>')
+                .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
+            g.selectAll('path.sankey-link').attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.8:0.1;});
+        }).on('mouseleave',function(){tooltip.style('display','none');g.selectAll('path.sankey-link').attr('stroke-opacity',0.4);})
+        .on('click',function(e,d){e.stopPropagation();filterByFolder(d.fullPath);});
+    },[data,graphConfig.vizType,colorMap]);
+
+    // Disjoint Force-Directed - Separate clusters per folder
+    useEffect(function(){
+        if(!data||!disjointRef.current||graphConfig.vizType!=='disjoint')return;
+        var container=d3.select(disjointRef.current);
+        container.selectAll('*').remove();
+        var w=disjointRef.current.clientWidth||800,h=disjointRef.current.clientHeight||600;
+        var svg=container.append('svg').attr('width',w).attr('height',h);
+        var g=svg.append('g');
+        var zoom=d3.zoom().scaleExtent([0.2,4]).on('zoom',function(e){g.attr('transform',e.transform);});
+        svg.call(zoom);
+        var filteredFiles=folderFilter?data.files.filter(function(f){return f.folder===folderFilter||f.folder.startsWith(folderFilter+'/');}):data.files;
+        var files=filteredFiles.slice(0,100);
         var fileIdx={};files.forEach(function(f,i){fileIdx[f.path]=i;});
-        var y=h*0.65;
-        var spacing=Math.min(25,(w-120)/Math.max(1,files.length));
-        var startX=(w-(files.length-1)*spacing)/2;
-        var nodes=files.map(function(f,i){return{id:f.path,name:f.name,x:startX+i*spacing,y:y,folder:f.folder,layer:f.layer,fns:f.functions.length,lines:f.lines};});
+        var folders=[...new Set(files.map(function(f){return f.folder||'root';}))];
+        var cols=Math.ceil(Math.sqrt(folders.length));
+        var cellW=w/cols,cellH=h/Math.ceil(folders.length/cols);
+        var centers={};
+        folders.forEach(function(f,i){centers[f]={x:(i%cols+0.5)*cellW,y:(Math.floor(i/cols)+0.5)*cellH};});
+        var nodes=files.map(function(f){return{id:f.path,name:f.name,folder:f.folder||'root',fns:f.functions.length,lines:f.lines,layer:f.layer,cx:centers[f.folder||'root'].x,cy:centers[f.folder||'root'].y};});
         var links=[];
         data.connections.forEach(function(c){
             var src=typeof c.source==='object'?c.source.id:c.source;
             var tgt=typeof c.target==='object'?c.target.id:c.target;
-            if(fileIdx[src]!==undefined&&fileIdx[tgt]!==undefined){
-                var srcNode=nodes[fileIdx[src]],tgtNode=nodes[fileIdx[tgt]];
-                links.push({source:srcNode,target:tgtNode,count:c.count||1});
-            }
+            if(fileIdx[src]!==undefined&&fileIdx[tgt]!==undefined)links.push({source:src,target:tgt,count:c.count||1});
         });
-        var maxCount=Math.max.apply(null,links.map(function(l){return l.count;}))||1;
-        var link=g.selectAll('path.arc-link').data(links).join('path').attr('class','arc-link')
-            .attr('d',function(d){
-                var sx=d.source.x,sy=d.source.y,tx=d.target.x,ty=d.target.y;
-                var r=Math.abs(tx-sx)/2;
-                var sweep=sx<tx?1:0;
-                return'M'+sx+','+sy+'A'+r+','+r+' 0 0,'+sweep+' '+tx+','+ty;
-            })
-            .attr('fill','none')
-            .attr('stroke',function(d){return colorMap[d.source.folder]||'var(--acc)';})
-            .attr('stroke-width',function(d){return Math.max(1.5,Math.min(5,d.count/maxCount*5));})
-            .attr('stroke-opacity',0.35);
+        var sim=d3.forceSimulation(nodes)
+            .force('link',d3.forceLink(links).id(function(d){return d.id;}).distance(40).strength(0.3))
+            .force('charge',d3.forceManyBody().strength(-80))
+            .force('x',d3.forceX(function(d){return d.cx;}).strength(0.15))
+            .force('y',d3.forceY(function(d){return d.cy;}).strength(0.15))
+            .force('collide',d3.forceCollide(15));
+        g.selectAll('rect.cluster-bg').data(folders).join('rect').attr('class','cluster-bg')
+            .attr('x',function(d,i){return(i%cols)*cellW+10;}).attr('y',function(d,i){return Math.floor(i/cols)*cellH+10;})
+            .attr('width',cellW-20).attr('height',cellH-20).attr('rx',12)
+            .attr('fill',function(d){return colorMap[d]||COLORS[folders.indexOf(d)%COLORS.length];}).attr('opacity',0.08)
+            .attr('stroke',function(d){return colorMap[d]||COLORS[folders.indexOf(d)%COLORS.length];}).attr('stroke-width',1).attr('stroke-opacity',0.3);
+        g.selectAll('text.cluster-label').data(folders).join('text').attr('class','cluster-label')
+            .attr('x',function(d,i){return(i%cols)*cellW+20;}).attr('y',function(d,i){return Math.floor(i/cols)*cellH+28;})
+            .attr('fill','var(--t2)').attr('font-size','11px').attr('font-weight','600').text(function(d){return d.split('/').pop()||'root';});
+        var link=g.selectAll('line.disjoint-link').data(links).join('line').attr('class','disjoint-link')
+            .attr('stroke','var(--border)').attr('stroke-width',1).attr('stroke-opacity',0.3);
         var tooltip=container.append('div').attr('class','treemap-tooltip').style('display','none').style('position','absolute');
-        var node=g.selectAll('g.arc-node').data(nodes).join('g').attr('class','arc-node').style('cursor','pointer')
-            .attr('transform',function(d){return'translate('+d.x+','+d.y+')';})
-            .call(d3.drag().on('start',function(e,d){d3.select(this).raise();}).on('drag',function(e,d){
-                d.x=e.x;d.y=e.y;
-                d3.select(this).attr('transform','translate('+d.x+','+d.y+')');
-                link.attr('d',function(l){var sx=l.source.x,sy=l.source.y,tx=l.target.x,ty=l.target.y;var r=Math.abs(tx-sx)/2;return'M'+sx+','+sy+'A'+r+','+r+' 0 0,'+(sx<tx?1:0)+' '+tx+','+ty;});
-            }));
-        node.append('circle').attr('class','arc-circle').attr('r',10).attr('fill',function(d){return colorMap[d.folder]||COLORS[0];}).attr('stroke','var(--bg0)').attr('stroke-width',2);
-        node.append('text').attr('y',28).attr('text-anchor','middle').attr('fill','var(--t2)').attr('font-size','9px').attr('transform','rotate(35)')
-            .text(function(d){var n=d.name.replace(/\.[^.]+$/,'');return n.length>12?n.slice(0,10)+'…':n;});
+        var node=g.selectAll('g.disjoint-node').data(nodes).join('g').attr('class','disjoint-node').style('cursor','pointer')
+            .call(d3.drag().on('start',function(e,d){if(!e.active)sim.alphaTarget(0.3).restart();d.fx=d.x;d.fy=d.y;})
+                .on('drag',function(e,d){d.fx=e.x;d.fy=e.y;}).on('end',function(e,d){if(!e.active)sim.alphaTarget(0);d.fx=null;d.fy=null;}));
+        node.append('circle').attr('class','disjoint-circle').attr('r',function(d){return Math.max(6,Math.min(14,4+d.fns));})
+            .attr('fill',function(d){return colorMap[d.folder]||COLORS[0];}).attr('stroke','var(--bg0)').attr('stroke-width',1.5);
         node.on('mouseenter',function(e,d){
-            tooltip.html('<div class="treemap-tooltip-title">'+d.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+(d.lines||0)+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(d.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Folder:</span><span>'+(d.folder||'root')+'</span></div>')
-                .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY-60)+'px');
-            link.transition().duration(200).attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.9:0.08;})
-                .attr('stroke',function(l){return l.source.id===d.id||l.target.id===d.id?'var(--acc)':colorMap[l.source.folder]||'#333';});
-            node.selectAll('.arc-circle').transition().duration(200).attr('opacity',function(n){return n.id===d.id||links.some(function(l){return(l.source.id===d.id&&l.target.id===n.id)||(l.target.id===d.id&&l.source.id===n.id);})?1:0.3;});
-            d3.select(this).select('.arc-circle').transition().duration(150).attr('r',14).attr('stroke','var(--acc)').attr('stroke-width',3);
-        }).on('mousemove',function(e){tooltip.style('left',(e.offsetX+15)+'px').style('top',(e.offsetY-60)+'px');})
-        .on('mouseleave',function(){
+            tooltip.html('<div class="treemap-tooltip-title">'+d.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+(d.lines||0)+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(d.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Folder:</span><span>'+d.folder+'</span></div>')
+                .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
+            link.attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.8:0.05;}).attr('stroke',function(l){return l.source.id===d.id||l.target.id===d.id?'var(--acc)':'var(--border)';});
+            d3.select(this).select('circle').transition().duration(150).attr('r',14).attr('stroke','var(--acc)').attr('stroke-width',2);
+        }).on('mousemove',function(e){tooltip.style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');})
+        .on('mouseleave',function(e,d){
             tooltip.style('display','none');
-            link.transition().duration(200).attr('stroke-opacity',0.35).attr('stroke',function(d){return colorMap[d.source.folder]||'var(--acc)';});
-            node.selectAll('.arc-circle').transition().duration(200).attr('opacity',1);
-            d3.select(this).select('.arc-circle').transition().duration(150).attr('r',10).attr('stroke','var(--bg0)').attr('stroke-width',2);
-        }).on('click',function(e,d){
-            e.stopPropagation();
-            if(selectFileRef.current){
-                selectFileRef.current(d.id);
-                setTimeout(function(){
-                    var blast=blastRadius;
-                    node.selectAll('.arc-circle').transition().duration(300)
-                        .attr('fill',function(n){return n.id===d.id?'#ff5f5f':(blast&&blast.affected.includes(n.id))?'#ff9f43':colorMap[n.folder]||COLORS[0];})
-                        .attr('opacity',function(n){return n.id===d.id||(blast&&blast.affected.includes(n.id))?1:0.3;});
-                    link.transition().duration(300).attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.8:0.1;});
-                },100);
-            }
+            link.attr('stroke-opacity',0.3).attr('stroke','var(--border)');
+            d3.select(this).select('circle').transition().duration(150).attr('r',Math.max(6,Math.min(14,4+d.fns))).attr('stroke','var(--bg0)').attr('stroke-width',1.5);
+        }).on('click',function(e,d){e.stopPropagation();if(selectFileRef.current)selectFileRef.current(d.id);});
+        sim.on('tick',function(){
+            link.attr('x1',function(d){return d.source.x;}).attr('y1',function(d){return d.source.y;}).attr('x2',function(d){return d.target.x;}).attr('y2',function(d){return d.target.y;});
+            node.attr('transform',function(d){return'translate('+d.x+','+d.y+')';});
         });
-        svg.on('click',function(){
-            setSelected(null);setBlastRadius(null);
-            node.selectAll('.arc-circle').transition().duration(300).attr('fill',function(d){return colorMap[d.folder]||COLORS[0];}).attr('opacity',1);
-            link.transition().duration(300).attr('stroke-opacity',0.35);
-        });
-    },[data,graphConfig.vizType,colorMap,folderFilter,blastRadius]);
+        svg.on('click',function(){setSelected(null);setBlastRadius(null);});
+        return function(){sim.stop();};
+    },[data,graphConfig.vizType,colorMap,folderFilter]);
 
     // Circular Bundle visualization - Interactive with zoom, selection, blast radius
     useEffect(function(){
@@ -1677,13 +1776,17 @@ function App(){
                         React.createElement('button',{className:'viz-selector-btn'+(graphConfig.vizType==='graph'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{vizType:'graph'}));}},'🕸️ Graph'),
                         React.createElement('button',{className:'viz-selector-btn'+(graphConfig.vizType==='treemap'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{vizType:'treemap'}));}},'📦 Treemap'),
                         React.createElement('button',{className:'viz-selector-btn'+(graphConfig.vizType==='matrix'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{vizType:'matrix'}));}},'📊 Matrix'),
-                        React.createElement('button',{className:'viz-selector-btn'+(graphConfig.vizType==='arc'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{vizType:'arc'}));}},'🌈 Arc'),
+                        React.createElement('button',{className:'viz-selector-btn'+(graphConfig.vizType==='dendro'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{vizType:'dendro'}));}},'🌳 Tree'),
+                        React.createElement('button',{className:'viz-selector-btn'+(graphConfig.vizType==='sankey'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{vizType:'sankey'}));}},'🌊 Flow'),
+                        React.createElement('button',{className:'viz-selector-btn'+(graphConfig.vizType==='disjoint'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{vizType:'disjoint'}));}},'🔮 Cluster'),
                         React.createElement('button',{className:'viz-selector-btn'+(graphConfig.vizType==='bundle'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{vizType:'bundle'}));}},'🎯 Bundle')
                     ),
                     graphConfig.vizType==='graph'&&React.createElement('svg',{ref:svgRef}),
                     graphConfig.vizType==='treemap'&&React.createElement('div',{ref:treemapRef,className:'treemap-container'}),
                     graphConfig.vizType==='matrix'&&React.createElement('div',{ref:matrixRef,className:'matrix-container',style:{width:'100%',height:'100%',overflow:'auto',display:'flex',alignItems:'center',justifyContent:'center'}}),
-                    graphConfig.vizType==='arc'&&React.createElement('div',{ref:arcRef,className:'arc-container'}),
+                    graphConfig.vizType==='dendro'&&React.createElement('div',{ref:dendroRef,className:'dendro-container',style:{width:'100%',height:'100%',position:'relative'}}),
+                    graphConfig.vizType==='sankey'&&React.createElement('div',{ref:sankeyRef,className:'sankey-container',style:{width:'100%',height:'100%',position:'relative'}}),
+                    graphConfig.vizType==='disjoint'&&React.createElement('div',{ref:disjointRef,className:'disjoint-container',style:{width:'100%',height:'100%',position:'relative'}}),
                     graphConfig.vizType==='bundle'&&React.createElement('div',{ref:bundleRef,className:'bundle-container'}),
                     graphConfig.vizType==='graph'&&React.createElement('div',{className:'canvas-toolbar'},
                         React.createElement('button',{className:'tool-btn',onClick:zoomIn,'aria-label':'Zoom in'},'+'),
