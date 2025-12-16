@@ -3,7 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeFlow Ultimate — Architecture Intelligence Platform</title>
+    <title>CodeFlow — Open Source Architecture Intelligence</title>
+    <meta name="description" content="Visualize any GitHub repository's architecture in seconds. See dependencies, blast radius, code ownership, security issues, and design patterns. No installation required.">
+    <meta name="keywords" content="code visualization, architecture, github, dependency graph, blast radius, code analysis, open source">
+    <meta name="author" content="CodeFlow">
+    <meta name="robots" content="index, follow">
+    <meta property="og:title" content="CodeFlow — Visualize Your Codebase Architecture">
+    <meta property="og:description" content="Turn any GitHub repo into an interactive architecture map in seconds. Zero setup, privacy-first, runs in your browser.">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="https://via.placeholder.com/1200x630?text=CodeFlow">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="CodeFlow — Visualize Your Codebase Architecture">
+    <meta name="twitter:description" content="Turn any GitHub repo into an interactive architecture map in seconds. Zero setup, privacy-first.">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
@@ -19,7 +31,6 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .logo{display:flex;align-items:center;gap:10px}
 .logo-mark{width:28px;height:28px;background:linear-gradient(135deg,var(--acc),var(--cyan));border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px}
 .logo-text{font-size:14px;font-weight:700;color:var(--acc)}
-.logo-tag{font-size:8px;color:var(--bg0);background:var(--acc);padding:2px 6px;border-radius:4px;font-weight:600}
 .repo-input-group{display:flex;gap:8px;flex:1;max-width:500px}
 .repo-input{flex:1;padding:6px 12px;background:var(--bg0);border:1px solid var(--border);border-radius:6px;color:var(--t0);font-family:inherit;font-size:11px}
 .repo-input:focus{outline:none;border-color:var(--acc)}
@@ -165,6 +176,15 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .panel-header{padding:12px;border-bottom:1px solid var(--border);background:var(--bg2)}
 .panel-title{font-size:12px;font-weight:600;color:var(--acc)}
 .panel-subtitle{font-size:10px;color:var(--t3);margin-top:4px}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:8px;font-size:12px;z-index:1001;animation:slideUp 0.3s ease}
+.toast.success{background:var(--green);color:white}
+.toast.error{background:var(--red);color:white}
+.toast.warning{background:var(--orange);color:var(--bg0)}
+@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(20px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.reset-btn{background:transparent;border:1px solid var(--border);color:var(--t2);padding:4px 8px;border-radius:4px;font-size:9px;cursor:pointer;margin-left:8px}
+.reset-btn:hover{border-color:var(--red);color:var(--red)}
+.loading-owner{display:flex;align-items:center;gap:8px;padding:12px;color:var(--t2);font-size:10px}
+.loading-owner::before{content:'';width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--acc);border-radius:50%;animation:spin 0.6s linear infinite}
     </style>
 </head>
 <body>
@@ -345,13 +365,13 @@ function calcBlast(fileId,conns,files){
 function calcHealth(data){
     if(!data)return{score:0,grade:'F'};
     var score=100;
-    var deadPct=data.stats.dead/data.stats.functions*100;
+    var deadPct=data.stats.functions>0?(data.stats.dead/data.stats.functions*100):0;
     score-=Math.min(20,deadPct);
     var circular=data.issues.filter(function(i){return i.title.includes('Circular');}).length;
     score-=Math.min(20,circular*5);
     var god=data.issues.filter(function(i){return i.title.includes('Large');}).length;
     score-=Math.min(15,god*3);
-    var avgCoup=data.stats.connections/data.stats.files;
+    var avgCoup=data.stats.files>0?(data.stats.connections/data.stats.files):0;
     score-=Math.min(15,Math.max(0,avgCoup-3)*2);
     var sec=data.securityIssues?data.securityIssues.filter(function(i){return i.severity==='high';}).length:0;
     score-=Math.min(20,sec*5);
@@ -416,6 +436,8 @@ function App(){
     var _t=useState(false),showPR=_t[0],setShowPR=_t[1];
     var _u=useState(false),showTour=_u[0],setShowTour=_u[1];
     var _v=useState(null),tooltip=_v[0],setTooltip=_v[1];
+    var _w=useState(null),toast=_w[0],setToast=_w[1];
+    var _x=useState(false),ownerLoading=_x[0],setOwnerLoading=_x[1];
     var svgRef=useRef(null);
     var zoomRef=useRef(null);
     var simRef=useRef(null);
@@ -439,8 +461,9 @@ function App(){
         setRepoInfo(p);
         
         GitHub.scan(p.owner,p.repo,setProgress).then(function(files){
-            if(!files.length)throw new Error('No code files');
+            if(!files.length)throw new Error('No code files found');
             var max=Math.min(files.length,100);
+            if(files.length>100)setError('Found '+files.length+' files. Analyzing first 100 for performance.');
             var analyzed=[];
             var allFns=[];
             
@@ -451,11 +474,16 @@ function App(){
                 }
                 var f=files[i];
                 setProgress((i+1)+'/'+max+': '+f.name);
-                GitHub.getFile(p.owner,p.repo,f.path).then(function(content){
+                Promise.all([
+                    GitHub.getFile(p.owner,p.repo,f.path),
+                    GitHub.getCommits(p.owner,p.repo,f.path,10).catch(function(){return[];})
+                ]).then(function(results){
+                    var content=results[0];
+                    var commits=results[1];
                     if(content){
                         var fns=Parser.extract(content,f.path);
                         var layer=Parser.detectLayer(f.path);
-                        analyzed.push({path:f.path,name:f.name,folder:f.folder,content:content,functions:fns,lines:content.split('\n').length,layer:layer,churn:Math.floor(Math.random()*10)});
+                        analyzed.push({path:f.path,name:f.name,folder:f.folder,content:content,functions:fns,lines:content.split('\n').length,layer:layer,churn:Array.isArray(commits)?commits.length:0});
                         fns.forEach(function(fn){allFns.push(Object.assign({},fn,{folder:f.folder,layer:layer}));});
                     }
                     processFile(i+1);
@@ -518,7 +546,11 @@ function App(){
             setRightTab('details');
             var blast=calcBlast(path,data.connections,data.files);
             setBlastRadius(blast);
-            if(repoInfo)GitHub.getBlame(repoInfo.owner,repoInfo.repo,path).then(setOwnership);
+            setOwnership(null);
+            if(repoInfo){
+                setOwnerLoading(true);
+                GitHub.getBlame(repoInfo.owner,repoInfo.repo,path).then(function(owners){setOwnership(owners);setOwnerLoading(false);}).catch(function(){setOwnerLoading(false);});
+            }
         }
     },[data,repoInfo]);
 
@@ -626,31 +658,33 @@ function App(){
         var scale=0.8/Math.max((maxX-minX+100)/w,(maxY-minY+100)/h);
         d3.select(svgRef.current).transition().duration(400).call(zoomRef.current.transform,d3.zoomIdentity.translate(w/2-scale*(minX+maxX)/2,h/2-scale*(minY+maxY)/2).scale(Math.min(scale,2)));
     }
-    function exportSVG(){if(!svgRef.current)return;var blob=new Blob([new XMLSerializer().serializeToString(svgRef.current)],{type:'image/svg+xml'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow.svg';a.click();}
+    function exportSVG(){if(!svgRef.current)return;var svgClone=svgRef.current.cloneNode(true);svgClone.setAttribute('xmlns','http://www.w3.org/2000/svg');svgClone.setAttribute('width',svgRef.current.clientWidth);svgClone.setAttribute('height',svgRef.current.clientHeight);var style=document.createElementNS('http://www.w3.org/2000/svg','style');style.textContent='text{font-family:JetBrains Mono,monospace;pointer-events:none}';svgClone.insertBefore(style,svgClone.firstChild);var blob=new Blob([new XMLSerializer().serializeToString(svgClone)],{type:'image/svg+xml'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow-'+Date.now()+'.svg';a.click();URL.revokeObjectURL(url);}
     function exportJSON(){if(!data)return;var blob=new Blob([JSON.stringify({stats:data.stats,files:data.files.map(function(f){return{path:f.path,fns:f.functions.length,layer:f.layer};}),connections:data.connections,issues:data.issues},null,2)],{type:'application/json'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow.json';a.click();}
-    function copyLink(){navigator.clipboard.writeText(window.location.href);alert('Link copied!');}
+    function showNotification(msg,type){setToast({msg:msg,type:type||'success'});setTimeout(function(){setToast(null);},3000);}
+    function copyLink(){navigator.clipboard.writeText(window.location.href).then(function(){showNotification('Link copied to clipboard!');}).catch(function(){showNotification('Failed to copy link','error');});}
     function analyzePR(){if(!prUrl||!repoInfo)return;var m=prUrl.match(/\/pull\/(\d+)/);if(!m){alert('Invalid PR URL');return;}GitHub.getPR(repoInfo.owner,repoInfo.repo,m[1]).then(setPrData);}
     function addToTour(f){setTour(function(prev){return prev.concat([{file:f.path,name:f.name,note:''}]);});}
+    function resetAnalysis(){setData(null);setSelected(null);setBlastRadius(null);setOwnership(null);setRepoInfo(null);setRepoUrl('');setPrData(null);setTour([]);window.history.replaceState({},'',window.location.pathname);}
     var health=useMemo(function(){return calcHealth(data);},[data]);
 
     return React.createElement('div',{className:'app'},
         React.createElement('div',{className:'topbar'},
             React.createElement('div',{className:'logo'},
                 React.createElement('div',{className:'logo-mark'},'⚡'),
-                React.createElement('span',{className:'logo-text'},'CODEFLOW'),
-                React.createElement('span',{className:'logo-tag'},'ULTIMATE')
+                React.createElement('span',{className:'logo-text'},'CODEFLOW')
             ),
             React.createElement('div',{className:'repo-input-group'},
-                React.createElement('input',{className:'repo-input',placeholder:'owner/repo or GitHub URL',value:repoUrl,onChange:function(e){setRepoUrl(e.target.value);},onKeyDown:function(e){if(e.key==='Enter')analyze();}}),
-                React.createElement('input',{className:'repo-input',type:'password',placeholder:'Token',value:token,onChange:function(e){setToken(e.target.value);},style:{maxWidth:100}}),
-                React.createElement('button',{id:'analyze-btn',className:'top-btn primary',onClick:analyze,disabled:loading||!repoUrl},loading?'⏳':'🔍',' Analyze')
+                React.createElement('input',{className:'repo-input','aria-label':'Repository URL',placeholder:'owner/repo or GitHub URL',value:repoUrl,onChange:function(e){setRepoUrl(e.target.value);},onKeyDown:function(e){if(e.key==='Enter'&&!loading)analyze();}}),
+                React.createElement('input',{className:'repo-input',type:'password','aria-label':'GitHub Token',placeholder:'Token (optional)',value:token,onChange:function(e){setToken(e.target.value);},onKeyDown:function(e){if(e.key==='Enter'&&!loading)analyze();},style:{maxWidth:120}}),
+                React.createElement('button',{id:'analyze-btn',className:'top-btn primary','aria-label':'Analyze repository',onClick:analyze,disabled:loading||!repoUrl},loading?'⏳':'🔍',' Analyze'),
+                data&&React.createElement('button',{className:'reset-btn','aria-label':'Reset analysis',onClick:resetAnalysis,title:'Clear & Reset'},'✕ Reset')
             ),
             React.createElement('div',{className:'topbar-actions'},
-                React.createElement('button',{className:'top-btn',onClick:function(){setShowPR(true);},disabled:!data},'📊 PR'),
-                React.createElement('button',{className:'top-btn',onClick:function(){setShowTour(true);},disabled:!data},'🎓 Tour'),
-                React.createElement('button',{className:'top-btn',onClick:function(){setShowExport(true);},disabled:!data},'📤'),
-                React.createElement('button',{className:'top-btn',onClick:copyLink,disabled:!data},'🔗'),
-                React.createElement('button',{className:'top-btn',onClick:function(){setTheme(function(t){return t==='dark'?'light':'dark';});}},theme==='dark'?'☀️':'🌙')
+                React.createElement('button',{className:'top-btn','aria-label':'Analyze Pull Request',onClick:function(){setShowPR(true);},disabled:!data},'📊 PR'),
+                React.createElement('button',{className:'top-btn','aria-label':'Create guided tour',onClick:function(){setShowTour(true);},disabled:!data},'🎓 Tour'),
+                React.createElement('button',{className:'top-btn','aria-label':'Export analysis',onClick:function(){setShowExport(true);},disabled:!data},'📤'),
+                React.createElement('button',{className:'top-btn','aria-label':'Copy share link',onClick:copyLink,disabled:!data},'🔗'),
+                React.createElement('button',{className:'top-btn','aria-label':'Toggle theme',onClick:function(){setTheme(function(t){return t==='dark'?'light':'dark';});}},theme==='dark'?'☀️':'🌙')
             )
         ),
         React.createElement('div',{className:'main'},
@@ -688,7 +722,7 @@ function App(){
             ),
             React.createElement('div',{className:'canvas-area'},
                 loading?React.createElement('div',{className:'loading'},React.createElement('div',{className:'spinner'}),React.createElement('div',{className:'loading-text'},'Analyzing...'),React.createElement('div',{className:'loading-progress'},progress)):
-                !data?React.createElement('div',{className:'empty-state'},React.createElement('div',{className:'empty-icon'},'⚡'),React.createElement('div',{className:'empty-title'},'CodeFlow Ultimate'),React.createElement('div',{className:'empty-desc'},'Blast radius, ownership, patterns, security & more')):
+                !data?React.createElement('div',{className:'empty-state'},React.createElement('div',{className:'empty-icon'},'⚡'),React.createElement('div',{className:'empty-title'},'CodeFlow'),React.createElement('div',{className:'empty-desc'},'Visualize architecture, blast radius, ownership, patterns & security')):
                 React.createElement(React.Fragment,null,
                     React.createElement('svg',{ref:svgRef}),
                     React.createElement('div',{className:'canvas-toolbar'},
@@ -728,11 +762,14 @@ function App(){
                                     React.createElement('div',{style:{fontSize:9,color:'var(--t3)'}},'Changes affect ',blastRadius.count,' files up to ',blastRadius.depth,' levels')
                                 )
                             ),
-                            ownership&&ownership.length>0&&React.createElement('div',{className:'card',style:{marginBottom:12}},
+                            React.createElement('div',{className:'card',style:{marginBottom:12}},
                                 React.createElement('div',{className:'card-header',onClick:function(){toggleCard('own');}},React.createElement('div',{className:'card-title'},React.createElement('span',{className:'card-toggle'+(expandedCards.has('own')?' open':'')},'▶'),'👥 Ownership')),
                                 expandedCards.has('own')&&React.createElement('div',{className:'card-body'},
-                                    React.createElement('div',{className:'owner-bar'},ownership.slice(0,5).map(function(o,i){return React.createElement('div',{key:i,className:'owner-segment',style:{width:o.percent+'%',background:COLORS[i%COLORS.length]}});})),
-                                    React.createElement('div',{className:'owner-list'},ownership.slice(0,5).map(function(o,i){return React.createElement('div',{key:i,className:'owner-item'},React.createElement('div',{className:'owner-avatar',style:{background:COLORS[i%COLORS.length]}},o.name[0]),React.createElement('span',{className:'owner-name'},o.name),React.createElement('span',{className:'owner-percent'},o.percent,'%'));}))
+                                    ownerLoading?React.createElement('div',{className:'loading-owner'},'Loading ownership data...'):
+                                    ownership&&ownership.length>0?React.createElement(React.Fragment,null,
+                                        React.createElement('div',{className:'owner-bar'},ownership.slice(0,5).map(function(o,i){return React.createElement('div',{key:i,className:'owner-segment',style:{width:o.percent+'%',background:COLORS[i%COLORS.length]}});})),
+                                        React.createElement('div',{className:'owner-list'},ownership.slice(0,5).map(function(o,i){return React.createElement('div',{key:i,className:'owner-item'},React.createElement('div',{className:'owner-avatar',style:{background:COLORS[i%COLORS.length]}},o.name[0]),React.createElement('span',{className:'owner-name'},o.name),React.createElement('span',{className:'owner-percent'},o.percent,'%'));}))
+                                    ):React.createElement('div',{style:{fontSize:10,color:'var(--t3)',padding:8}},'No ownership data available')
                                 )
                             ),
                             React.createElement('div',{className:'card'},
@@ -775,8 +812,8 @@ function App(){
             React.createElement('div',{className:'modal',onClick:function(e){e.stopPropagation();}},
                 React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},'📊 PR Analyzer'),React.createElement('button',{className:'modal-close',onClick:function(){setShowPR(false);}},'×')),
                 React.createElement('div',{className:'modal-body'},
-                    React.createElement('div',{className:'form-group'},React.createElement('label',{className:'form-label'},'PR URL'),React.createElement('input',{className:'form-input',placeholder:'https://github.com/owner/repo/pull/123',value:prUrl,onChange:function(e){setPrUrl(e.target.value);}})),
-                    React.createElement('button',{className:'top-btn primary',onClick:analyzePR,style:{marginBottom:16}},'Analyze'),
+                    React.createElement('div',{className:'form-group'},React.createElement('label',{className:'form-label'},'PR URL'),React.createElement('input',{className:'form-input','aria-label':'Pull Request URL',placeholder:'https://github.com/owner/repo/pull/123',value:prUrl,onChange:function(e){setPrUrl(e.target.value);},onKeyDown:function(e){if(e.key==='Enter')analyzePR();}})),
+                    React.createElement('button',{className:'top-btn primary','aria-label':'Analyze Pull Request',onClick:analyzePR,style:{marginBottom:16}},'Analyze'),
                     prData&&React.createElement(React.Fragment,null,
                         React.createElement('div',{className:'pr-header'},React.createElement('div',{className:'pr-title'},prData.title),React.createElement('div',{className:'pr-stats'},React.createElement('span',{className:'pr-add'},'+',prData.additions||0),React.createElement('span',{className:'pr-del'},'-',prData.deletions||0))),
                         React.createElement('div',{style:{fontSize:11,fontWeight:600,marginBottom:8}},'Files (',prData.files?prData.files.length:0,')'),
@@ -798,7 +835,8 @@ function App(){
                 tour.length>0&&React.createElement('div',{className:'modal-footer'},React.createElement('button',{className:'top-btn',onClick:function(){var b=new Blob([JSON.stringify(tour,null,2)],{type:'application/json'});var u=URL.createObjectURL(b);var a=document.createElement('a');a.href=u;a.download='tour.json';a.click();}},'Export'))
             )
         ),
-        error&&React.createElement('div',{style:{position:'fixed',bottom:20,right:20,background:'var(--red)',color:'white',padding:'12px 20px',borderRadius:8,zIndex:1000}},error,React.createElement('button',{onClick:function(){setError(null);},style:{marginLeft:12,background:'none',border:'none',color:'white',cursor:'pointer'}},'×'))
+        toast&&React.createElement('div',{className:'toast '+(toast.type||'success'),'role':'alert'},toast.msg),
+        error&&React.createElement('div',{style:{position:'fixed',bottom:20,right:20,background:'var(--red)',color:'white',padding:'12px 20px',borderRadius:8,zIndex:1000},'role':'alert'},error,React.createElement('button',{'aria-label':'Dismiss error',onClick:function(){setError(null);},style:{marginLeft:12,background:'none',border:'none',color:'white',cursor:'pointer'}},'×'))
     );
 }
 
