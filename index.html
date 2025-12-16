@@ -1049,161 +1049,234 @@ function App(){
         return function(){sim.stop();};
     },[data,colorMap,colorMode,theme,folderFilter,graphConfig]);
 
-    // Treemap visualization
+    // Treemap visualization - Interactive with zoom, pan, selection, blast radius
     useEffect(function(){
         if(!data||!treemapRef.current||graphConfig.vizType!=='treemap')return;
-        var container=treemapRef.current;
-        container.innerHTML='';
-        var w=container.clientWidth||800,h=container.clientHeight||600;
+        var container=d3.select(treemapRef.current);
+        container.selectAll('*').remove();
+        var w=treemapRef.current.clientWidth||800,h=treemapRef.current.clientHeight||600;
+        var svg=container.append('svg').attr('width',w).attr('height',h).style('cursor','grab');
+        var g=svg.append('g');
+        var zoom=d3.zoom().scaleExtent([0.3,4]).on('zoom',function(e){g.attr('transform',e.transform);svg.style('cursor',e.transform.k>1?'grab':'default');});
+        svg.call(zoom);
         var hier={name:'root',children:[]};
         var folderMap={};
-        data.files.forEach(function(f){
+        var filteredFiles=folderFilter?data.files.filter(function(f){return f.folder===folderFilter||f.folder.startsWith(folderFilter+'/');}):data.files;
+        filteredFiles.forEach(function(f){
             var folder=f.folder||'root';
             if(!folderMap[folder])folderMap[folder]={name:folder,children:[]};
-            folderMap[folder].children.push({name:f.name,value:f.lines||1,path:f.path,layer:f.layer,fns:f.functions.length});
+            folderMap[folder].children.push({name:f.name,value:f.lines||1,path:f.path,layer:f.layer,fns:f.functions.length,folder:folder});
         });
         hier.children=Object.values(folderMap);
         var root=d3.hierarchy(hier).sum(function(d){return d.value||0;}).sort(function(a,b){return b.value-a.value;});
-        d3.treemap().size([w,h]).padding(2).round(true)(root);
-        var tooltip=document.createElement('div');
-        tooltip.className='treemap-tooltip';
-        tooltip.style.display='none';
-        container.appendChild(tooltip);
-        root.leaves().forEach(function(leaf){
-            var cell=document.createElement('div');
-            cell.className='treemap-cell';
-            cell.style.left=leaf.x0+'px';
-            cell.style.top=leaf.y0+'px';
-            cell.style.width=Math.max(0,leaf.x1-leaf.x0)+'px';
-            cell.style.height=Math.max(0,leaf.y1-leaf.y0)+'px';
-            var color=colorMap[leaf.parent.data.name]||COLORS[hier.children.indexOf(leaf.parent.data)%COLORS.length];
-            cell.style.background=color;
-            cell.style.opacity='0.85';
-            if(leaf.x1-leaf.x0>40&&leaf.y1-leaf.y0>20){
-                var label=document.createElement('div');
-                label.className='treemap-label';
-                label.textContent=leaf.data.name.replace(/\.[^.]+$/,'');
-                cell.appendChild(label);
+        d3.treemap().size([w-20,h-20]).padding(3).round(true)(root);
+        var pathToLeaf={};
+        root.leaves().forEach(function(leaf){if(leaf.data.path)pathToLeaf[leaf.data.path]=leaf;});
+        var cells=g.selectAll('g.treemap-cell-g').data(root.leaves()).join('g').attr('class','treemap-cell-g')
+            .attr('transform',function(d){return'translate('+d.x0+','+d.y0+')';});
+        cells.append('rect').attr('class','treemap-rect').attr('width',function(d){return Math.max(0,d.x1-d.x0);}).attr('height',function(d){return Math.max(0,d.y1-d.y0);})
+            .attr('fill',function(d){return colorMap[d.parent.data.name]||COLORS[hier.children.indexOf(d.parent.data)%COLORS.length];})
+            .attr('opacity',0.85).attr('rx',3).attr('stroke','var(--bg0)').attr('stroke-width',1).style('cursor','pointer');
+        cells.filter(function(d){return d.x1-d.x0>45&&d.y1-d.y0>22;}).append('text').attr('class','treemap-text')
+            .attr('x',4).attr('y',14).attr('fill','white').attr('font-size','10px').attr('font-weight','500').style('text-shadow','0 1px 2px rgba(0,0,0,0.5)').style('pointer-events','none')
+            .text(function(d){var n=d.data.name.replace(/\.[^.]+$/,'');var maxLen=Math.floor((d.x1-d.x0-8)/6);return n.length>maxLen?n.slice(0,maxLen-1)+'…':n;});
+        cells.filter(function(d){return d.x1-d.x0>60&&d.y1-d.y0>35;}).append('text').attr('class','treemap-subtext')
+            .attr('x',4).attr('y',26).attr('fill','rgba(255,255,255,0.7)').attr('font-size','8px').style('pointer-events','none')
+            .text(function(d){return d.data.value+' lines';});
+        var tooltip=container.append('div').attr('class','treemap-tooltip').style('display','none').style('position','absolute');
+        cells.on('mouseenter',function(e,d){
+            tooltip.html('<div class="treemap-tooltip-title">'+d.data.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+d.data.value+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(d.data.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Layer:</span><span>'+(d.data.layer||'—')+'</span></div><div class="treemap-tooltip-stat"><span>Folder:</span><span>'+(d.data.folder||'root')+'</span></div>')
+                .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
+            d3.select(this).select('rect').transition().duration(150).attr('opacity',1).attr('stroke','var(--acc)').attr('stroke-width',2);
+        }).on('mousemove',function(e){tooltip.style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');})
+        .on('mouseleave',function(e,d){
+            tooltip.style('display','none');
+            var sel=selected?selected.path:null;
+            var isSelected=d.data.path===sel;
+            var isAffected=blastRadius&&blastRadius.affected.includes(d.data.path);
+            d3.select(this).select('rect').transition().duration(150).attr('opacity',isSelected?1:isAffected?0.95:0.85).attr('stroke',isSelected?'#ff5f5f':isAffected?'var(--orange)':'var(--bg0)').attr('stroke-width',isSelected||isAffected?2:1);
+        }).on('click',function(e,d){
+            e.stopPropagation();
+            if(d.data.path&&selectFileRef.current){
+                selectFileRef.current(d.data.path);
+                setTimeout(function(){
+                    var blast=blastRadius;
+                    cells.select('rect').transition().duration(300)
+                        .attr('opacity',function(n){return n.data.path===d.data.path?1:(blast&&blast.affected.includes(n.data.path))?0.95:0.4;})
+                        .attr('fill',function(n){return n.data.path===d.data.path?'#ff5f5f':(blast&&blast.affected.includes(n.data.path))?'#ff9f43':colorMap[n.parent.data.name]||COLORS[0];})
+                        .attr('stroke',function(n){return n.data.path===d.data.path?'#ff5f5f':(blast&&blast.affected.includes(n.data.path))?'var(--orange)':'var(--bg0)';})
+                        .attr('stroke-width',function(n){return n.data.path===d.data.path||blast&&blast.affected.includes(n.data.path)?2:1;});
+                },100);
             }
-            cell.onmouseenter=function(e){
-                tooltip.innerHTML='<div class="treemap-tooltip-title">'+leaf.data.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+leaf.data.value+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(leaf.data.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Layer:</span><span>'+(leaf.data.layer||'—')+'</span></div>';
-                tooltip.style.display='block';
-                tooltip.style.left=(e.clientX-container.getBoundingClientRect().left+10)+'px';
-                tooltip.style.top=(e.clientY-container.getBoundingClientRect().top+10)+'px';
-            };
-            cell.onmousemove=function(e){
-                tooltip.style.left=(e.clientX-container.getBoundingClientRect().left+10)+'px';
-                tooltip.style.top=(e.clientY-container.getBoundingClientRect().top+10)+'px';
-            };
-            cell.onmouseleave=function(){tooltip.style.display='none';};
-            cell.onclick=function(){if(leaf.data.path&&selectFileRef.current)selectFileRef.current(leaf.data.path);};
-            container.appendChild(cell);
         });
-    },[data,graphConfig.vizType,colorMap]);
+        svg.on('click',function(){
+            setSelected(null);setBlastRadius(null);
+            cells.select('rect').transition().duration(300).attr('opacity',0.85).attr('fill',function(d){return colorMap[d.parent.data.name]||COLORS[0];}).attr('stroke','var(--bg0)').attr('stroke-width',1);
+        });
+        svg.on('dblclick.zoom',function(e){e.preventDefault();svg.transition().duration(300).call(zoom.scaleTo,1);});
+    },[data,graphConfig.vizType,colorMap,folderFilter,selected,blastRadius]);
 
-    // Dependency Matrix visualization
+    // Dependency Matrix visualization - Interactive with zoom, highlighting, selection
     useEffect(function(){
         if(!data||!matrixRef.current||graphConfig.vizType!=='matrix')return;
-        var container=matrixRef.current;
-        container.innerHTML='';
-        var files=data.files.slice(0,30);
-        var matrix=[];
-        var fileIdx={};
-        files.forEach(function(f,i){fileIdx[f.path]=i;matrix[i]=[];for(var j=0;j<files.length;j++)matrix[i][j]=0;});
+        var container=d3.select(matrixRef.current);
+        container.selectAll('*').remove();
+        var w=matrixRef.current.clientWidth||800,h=matrixRef.current.clientHeight||600;
+        var svg=container.append('svg').attr('width',w).attr('height',h);
+        var g=svg.append('g').attr('transform','translate(100,80)');
+        var zoom=d3.zoom().scaleExtent([0.5,3]).on('zoom',function(e){g.attr('transform','translate('+(100+e.transform.x)+','+(80+e.transform.y)+') scale('+e.transform.k+')');});
+        svg.call(zoom);
+        var filteredFiles=folderFilter?data.files.filter(function(f){return f.folder===folderFilter||f.folder.startsWith(folderFilter+'/');}):data.files;
+        var files=filteredFiles.slice(0,40);
+        var n=files.length;
+        var cellSize=Math.min(18,Math.max(10,(Math.min(w-120,h-100))/n));
+        var matrix=[];var fileIdx={};
+        files.forEach(function(f,i){fileIdx[f.path]=i;matrix[i]=[];for(var j=0;j<n;j++)matrix[i][j]=0;});
         data.connections.forEach(function(c){
             var src=typeof c.source==='object'?c.source.id:c.source;
             var tgt=typeof c.target==='object'?c.target.id:c.target;
             if(fileIdx[src]!==undefined&&fileIdx[tgt]!==undefined)matrix[fileIdx[src]][fileIdx[tgt]]+=c.count||1;
         });
         var maxVal=1;matrix.forEach(function(row){row.forEach(function(v){if(v>maxVal)maxVal=v;});});
-        var table=document.createElement('div');
-        table.style.display='inline-block';table.style.padding='20px';
-        var headerRow=document.createElement('div');
-        headerRow.className='matrix-row';
-        headerRow.appendChild(document.createElement('div'));
-        files.forEach(function(f){
-            var h=document.createElement('div');h.className='matrix-label-row';h.textContent=f.name.replace(/\.[^.]+$/,'');h.title=f.path;
-            headerRow.appendChild(h);
-        });
-        table.appendChild(headerRow);
-        files.forEach(function(f,i){
-            var row=document.createElement('div');row.className='matrix-row';
-            var label=document.createElement('div');label.className='matrix-label-col';label.textContent=f.name.replace(/\.[^.]+$/,'');label.title=f.path;
-            row.appendChild(label);
-            files.forEach(function(g,j){
-                var cell=document.createElement('div');
-                cell.className='matrix-cell';
-                var v=matrix[i][j];
-                var intensity=v/maxVal;
-                cell.style.background=v>0?'rgba(0,255,157,'+Math.max(0.1,intensity)+')':'var(--bg2)';
-                cell.title=f.name+' → '+g.name+': '+(v||0)+' connections';
-                cell.onclick=function(){if(selectFileRef.current)selectFileRef.current(f.path);};
-                row.appendChild(cell);
-            });
-            table.appendChild(row);
-        });
-        container.appendChild(table);
-        var legend=document.createElement('div');legend.className='heatmap-legend';
-        legend.innerHTML='<div>Connection Strength</div><div class="heatmap-gradient"></div><div style="display:flex;justify-content:space-between"><span>0</span><span>'+maxVal+'</span></div>';
-        container.appendChild(legend);
-    },[data,graphConfig.vizType]);
+        var colLabels=g.selectAll('text.col-label').data(files).join('text').attr('class','col-label')
+            .attr('x',function(d,i){return i*cellSize+cellSize/2;}).attr('y',-8).attr('text-anchor','start').attr('transform',function(d,i){return'rotate(-45,'+(i*cellSize+cellSize/2)+','+-8+')';})
+            .attr('fill','var(--t2)').attr('font-size','9px').text(function(d){var n=d.name.replace(/\.[^.]+$/,'');return n.length>10?n.slice(0,8)+'…':n;}).style('cursor','pointer')
+            .on('click',function(e,d){if(selectFileRef.current)selectFileRef.current(d.path);});
+        var rowLabels=g.selectAll('text.row-label').data(files).join('text').attr('class','row-label')
+            .attr('x',-8).attr('y',function(d,i){return i*cellSize+cellSize/2+3;}).attr('text-anchor','end')
+            .attr('fill','var(--t2)').attr('font-size','9px').text(function(d){var n=d.name.replace(/\.[^.]+$/,'');return n.length>10?n.slice(0,8)+'…':n;}).style('cursor','pointer')
+            .on('click',function(e,d){if(selectFileRef.current)selectFileRef.current(d.path);});
+        var cellData=[];
+        files.forEach(function(f,i){files.forEach(function(g,j){cellData.push({row:i,col:j,value:matrix[i][j],source:f,target:g});});});
+        var tooltip=container.append('div').attr('class','treemap-tooltip').style('display','none').style('position','absolute');
+        var cells=g.selectAll('rect.matrix-cell-rect').data(cellData).join('rect').attr('class','matrix-cell-rect')
+            .attr('x',function(d){return d.col*cellSize;}).attr('y',function(d){return d.row*cellSize;})
+            .attr('width',cellSize-1).attr('height',cellSize-1).attr('rx',2)
+            .attr('fill',function(d){return d.value>0?'rgba(0,255,157,'+Math.max(0.15,d.value/maxVal)+')':'var(--bg2)';})
+            .attr('stroke','var(--bg0)').attr('stroke-width',0.5).style('cursor','pointer');
+        cells.on('mouseenter',function(e,d){
+            tooltip.html('<div class="treemap-tooltip-title">'+d.source.name+' → '+d.target.name+'</div><div class="treemap-tooltip-stat"><span>Connections:</span><span>'+d.value+'</span></div>')
+                .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
+            g.selectAll('rect.matrix-cell-rect').attr('opacity',function(c){return c.row===d.row||c.col===d.col?1:0.3;});
+            colLabels.attr('fill',function(f,i){return i===d.col?'var(--acc)':'var(--t2)';}).attr('font-weight',function(f,i){return i===d.col?'600':'400';});
+            rowLabels.attr('fill',function(f,i){return i===d.row?'var(--acc)':'var(--t2)';}).attr('font-weight',function(f,i){return i===d.row?'600':'400';});
+            d3.select(this).attr('stroke','var(--acc)').attr('stroke-width',2);
+        }).on('mousemove',function(e){tooltip.style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');})
+        .on('mouseleave',function(){
+            tooltip.style('display','none');
+            cells.attr('opacity',1);
+            colLabels.attr('fill','var(--t2)').attr('font-weight','400');
+            rowLabels.attr('fill','var(--t2)').attr('font-weight','400');
+            d3.select(this).attr('stroke','var(--bg0)').attr('stroke-width',0.5);
+        }).on('click',function(e,d){e.stopPropagation();if(selectFileRef.current)selectFileRef.current(d.source.path);});
+        var legend=container.append('div').attr('class','heatmap-legend').style('position','absolute').style('bottom','60px').style('right','20px');
+        legend.html('<div style="font-size:9px;color:var(--t2)">Connection Strength</div><div class="heatmap-gradient"></div><div style="display:flex;justify-content:space-between;font-size:8px;color:var(--t3)"><span>0</span><span>'+maxVal+'</span></div>');
+    },[data,graphConfig.vizType,folderFilter]);
 
-    // Arc Diagram visualization
+    // Arc Diagram visualization - Interactive with zoom, pan, drag, selection, blast radius
     useEffect(function(){
         if(!data||!arcRef.current||graphConfig.vizType!=='arc')return;
         var container=d3.select(arcRef.current);
         container.selectAll('*').remove();
         var w=arcRef.current.clientWidth||800,h=arcRef.current.clientHeight||600;
         var svg=container.append('svg').attr('width',w).attr('height',h);
-        var files=data.files.slice(0,50);
+        var g=svg.append('g');
+        var zoom=d3.zoom().scaleExtent([0.3,4]).on('zoom',function(e){g.attr('transform',e.transform);});
+        svg.call(zoom);
+        var filteredFiles=folderFilter?data.files.filter(function(f){return f.folder===folderFilter||f.folder.startsWith(folderFilter+'/');}):data.files;
+        var files=filteredFiles.slice(0,60);
         var fileIdx={};files.forEach(function(f,i){fileIdx[f.path]=i;});
-        var y=h*0.7;
-        var nodes=files.map(function(f,i){return{id:f.path,name:f.name,x:60+i*(w-120)/Math.max(1,files.length-1),y:y,folder:f.folder,layer:f.layer};});
+        var y=h*0.65;
+        var spacing=Math.min(25,(w-120)/Math.max(1,files.length));
+        var startX=(w-(files.length-1)*spacing)/2;
+        var nodes=files.map(function(f,i){return{id:f.path,name:f.name,x:startX+i*spacing,y:y,folder:f.folder,layer:f.layer,fns:f.functions.length,lines:f.lines};});
         var links=[];
         data.connections.forEach(function(c){
             var src=typeof c.source==='object'?c.source.id:c.source;
             var tgt=typeof c.target==='object'?c.target.id:c.target;
-            if(fileIdx[src]!==undefined&&fileIdx[tgt]!==undefined)links.push({source:nodes[fileIdx[src]],target:nodes[fileIdx[tgt]],count:c.count||1});
+            if(fileIdx[src]!==undefined&&fileIdx[tgt]!==undefined){
+                var srcNode=nodes[fileIdx[src]],tgtNode=nodes[fileIdx[tgt]];
+                links.push({source:srcNode,target:tgtNode,count:c.count||1});
+            }
         });
         var maxCount=Math.max.apply(null,links.map(function(l){return l.count;}))||1;
-        svg.selectAll('path.arc-link').data(links).join('path').attr('class','arc-link')
+        var link=g.selectAll('path.arc-link').data(links).join('path').attr('class','arc-link')
             .attr('d',function(d){
                 var sx=d.source.x,sy=d.source.y,tx=d.target.x,ty=d.target.y;
                 var r=Math.abs(tx-sx)/2;
-                return'M'+sx+','+sy+'A'+r+','+r+' 0 0,'+(sx<tx?1:0)+' '+tx+','+ty;
+                var sweep=sx<tx?1:0;
+                return'M'+sx+','+sy+'A'+r+','+r+' 0 0,'+sweep+' '+tx+','+ty;
             })
+            .attr('fill','none')
             .attr('stroke',function(d){return colorMap[d.source.folder]||'var(--acc)';})
-            .attr('stroke-width',function(d){return Math.max(1,Math.min(4,d.count/maxCount*4));})
-            .attr('stroke-opacity',0.4);
-        var node=svg.selectAll('g.arc-node').data(nodes).join('g').attr('class','arc-node')
-            .attr('transform',function(d){return'translate('+d.x+','+d.y+')';});
-        node.append('circle').attr('r',8).attr('fill',function(d){return colorMap[d.folder]||COLORS[0];}).attr('stroke','var(--bg0)').attr('stroke-width',2);
-        node.append('text').attr('y',24).attr('text-anchor','middle').attr('fill','var(--t2)').attr('font-size','8px').attr('transform','rotate(45)')
+            .attr('stroke-width',function(d){return Math.max(1.5,Math.min(5,d.count/maxCount*5));})
+            .attr('stroke-opacity',0.35);
+        var tooltip=container.append('div').attr('class','treemap-tooltip').style('display','none').style('position','absolute');
+        var node=g.selectAll('g.arc-node').data(nodes).join('g').attr('class','arc-node').style('cursor','pointer')
+            .attr('transform',function(d){return'translate('+d.x+','+d.y+')';})
+            .call(d3.drag().on('start',function(e,d){d3.select(this).raise();}).on('drag',function(e,d){
+                d.x=e.x;d.y=e.y;
+                d3.select(this).attr('transform','translate('+d.x+','+d.y+')');
+                link.attr('d',function(l){var sx=l.source.x,sy=l.source.y,tx=l.target.x,ty=l.target.y;var r=Math.abs(tx-sx)/2;return'M'+sx+','+sy+'A'+r+','+r+' 0 0,'+(sx<tx?1:0)+' '+tx+','+ty;});
+            }));
+        node.append('circle').attr('class','arc-circle').attr('r',10).attr('fill',function(d){return colorMap[d.folder]||COLORS[0];}).attr('stroke','var(--bg0)').attr('stroke-width',2);
+        node.append('text').attr('y',28).attr('text-anchor','middle').attr('fill','var(--t2)').attr('font-size','9px').attr('transform','rotate(35)')
             .text(function(d){var n=d.name.replace(/\.[^.]+$/,'');return n.length>12?n.slice(0,10)+'…':n;});
-        node.on('click',function(e,d){if(selectFileRef.current)selectFileRef.current(d.id);});
         node.on('mouseenter',function(e,d){
-            svg.selectAll('path.arc-link').attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.9:0.1;});
-        }).on('mouseleave',function(){svg.selectAll('path.arc-link').attr('stroke-opacity',0.4);});
-    },[data,graphConfig.vizType,colorMap]);
+            tooltip.html('<div class="treemap-tooltip-title">'+d.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+(d.lines||0)+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(d.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Folder:</span><span>'+(d.folder||'root')+'</span></div>')
+                .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY-60)+'px');
+            link.transition().duration(200).attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.9:0.08;})
+                .attr('stroke',function(l){return l.source.id===d.id||l.target.id===d.id?'var(--acc)':colorMap[l.source.folder]||'#333';});
+            node.selectAll('.arc-circle').transition().duration(200).attr('opacity',function(n){return n.id===d.id||links.some(function(l){return(l.source.id===d.id&&l.target.id===n.id)||(l.target.id===d.id&&l.source.id===n.id);})?1:0.3;});
+            d3.select(this).select('.arc-circle').transition().duration(150).attr('r',14).attr('stroke','var(--acc)').attr('stroke-width',3);
+        }).on('mousemove',function(e){tooltip.style('left',(e.offsetX+15)+'px').style('top',(e.offsetY-60)+'px');})
+        .on('mouseleave',function(){
+            tooltip.style('display','none');
+            link.transition().duration(200).attr('stroke-opacity',0.35).attr('stroke',function(d){return colorMap[d.source.folder]||'var(--acc)';});
+            node.selectAll('.arc-circle').transition().duration(200).attr('opacity',1);
+            d3.select(this).select('.arc-circle').transition().duration(150).attr('r',10).attr('stroke','var(--bg0)').attr('stroke-width',2);
+        }).on('click',function(e,d){
+            e.stopPropagation();
+            if(selectFileRef.current){
+                selectFileRef.current(d.id);
+                setTimeout(function(){
+                    var blast=blastRadius;
+                    node.selectAll('.arc-circle').transition().duration(300)
+                        .attr('fill',function(n){return n.id===d.id?'#ff5f5f':(blast&&blast.affected.includes(n.id))?'#ff9f43':colorMap[n.folder]||COLORS[0];})
+                        .attr('opacity',function(n){return n.id===d.id||(blast&&blast.affected.includes(n.id))?1:0.3;});
+                    link.transition().duration(300).attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.8:0.1;});
+                },100);
+            }
+        });
+        svg.on('click',function(){
+            setSelected(null);setBlastRadius(null);
+            node.selectAll('.arc-circle').transition().duration(300).attr('fill',function(d){return colorMap[d.folder]||COLORS[0];}).attr('opacity',1);
+            link.transition().duration(300).attr('stroke-opacity',0.35);
+        });
+    },[data,graphConfig.vizType,colorMap,folderFilter,blastRadius]);
 
-    // Circular Bundle visualization
+    // Circular Bundle visualization - Interactive with zoom, selection, blast radius
     useEffect(function(){
         if(!data||!bundleRef.current||graphConfig.vizType!=='bundle')return;
         var container=d3.select(bundleRef.current);
         container.selectAll('*').remove();
         var w=bundleRef.current.clientWidth||800,h=bundleRef.current.clientHeight||600;
         var svg=container.append('svg').attr('width',w).attr('height',h);
-        var g=svg.append('g').attr('transform','translate('+w/2+','+h/2+')');
-        var radius=Math.min(w,h)/2-80;
-        var files=data.files.slice(0,60);
+        var mainG=svg.append('g').attr('transform','translate('+w/2+','+h/2+')');
+        var zoom=d3.zoom().scaleExtent([0.4,3]).on('zoom',function(e){mainG.attr('transform','translate('+(w/2+e.transform.x)+','+(h/2+e.transform.y)+') scale('+e.transform.k+')');});
+        svg.call(zoom);
+        var radius=Math.min(w,h)/2-100;
+        var filteredFiles=folderFilter?data.files.filter(function(f){return f.folder===folderFilter||f.folder.startsWith(folderFilter+'/');}):data.files;
+        var files=filteredFiles.slice(0,70);
         var fileIdx={};files.forEach(function(f,i){fileIdx[f.path]=i;});
         var folderGroups={};files.forEach(function(f){var folder=f.folder||'root';if(!folderGroups[folder])folderGroups[folder]=[];folderGroups[folder].push(f);});
         var nodes=[],angle=0;
-        Object.entries(folderGroups).sort(function(a,b){return b[1].length-a[1].length;}).forEach(function(entry){
+        var sortedFolders=Object.entries(folderGroups).sort(function(a,b){return b[1].length-a[1].length;});
+        sortedFolders.forEach(function(entry){
             var folder=entry[0],fls=entry[1];
             var step=2*Math.PI*fls.length/files.length;
-            fls.forEach(function(f,i){
-                nodes.push({id:f.path,name:f.name,folder:folder,angle:angle,x:Math.cos(angle-Math.PI/2)*radius,y:Math.sin(angle-Math.PI/2)*radius,layer:f.layer});
+            fls.forEach(function(f){
+                nodes.push({id:f.path,name:f.name,folder:folder,angle:angle,x:Math.cos(angle-Math.PI/2)*radius,y:Math.sin(angle-Math.PI/2)*radius,layer:f.layer,fns:f.functions.length,lines:f.lines});
                 angle+=step/fls.length;
             });
         });
@@ -1214,33 +1287,76 @@ function App(){
             var tgt=typeof c.target==='object'?c.target.id:c.target;
             if(nodeMap[src]&&nodeMap[tgt])links.push({source:nodeMap[src],target:nodeMap[tgt],count:c.count||1});
         });
-        var line=d3.lineRadial().curve(d3.curveBundle.beta(0.85)).radius(radius-10).angle(function(d){return d;});
-        g.selectAll('path.bundle-link').data(links).join('path').attr('class','bundle-link')
-            .attr('d',function(d){return line([d.source.angle,d.target.angle]);})
-            .attr('stroke',function(d){return colorMap[d.source.folder]||'var(--acc)';})
-            .attr('stroke-width',1.5)
-            .attr('stroke-opacity',0.3);
-        var node=g.selectAll('g.bundle-node').data(nodes).join('g').attr('class','bundle-node')
+        var link=mainG.selectAll('path.bundle-link').data(links).join('path').attr('class','bundle-link')
+            .attr('d',function(d){
+                var a1=d.source.angle,a2=d.target.angle;
+                var x1=Math.cos(a1-Math.PI/2)*(radius-15),y1=Math.sin(a1-Math.PI/2)*(radius-15);
+                var x2=Math.cos(a2-Math.PI/2)*(radius-15),y2=Math.sin(a2-Math.PI/2)*(radius-15);
+                var midAngle=(a1+a2)/2;
+                var tension=0.3*radius;
+                var cx=Math.cos(midAngle-Math.PI/2)*tension,cy=Math.sin(midAngle-Math.PI/2)*tension;
+                return'M'+x1+','+y1+'Q'+cx+','+cy+' '+x2+','+y2;
+            })
+            .attr('fill','none').attr('stroke',function(d){return colorMap[d.source.folder]||'var(--acc)';})
+            .attr('stroke-width',1.5).attr('stroke-opacity',0.25);
+        var tooltip=container.append('div').attr('class','treemap-tooltip').style('display','none').style('position','absolute');
+        var node=mainG.selectAll('g.bundle-node').data(nodes).join('g').attr('class','bundle-node').style('cursor','pointer')
             .attr('transform',function(d){return'rotate('+(d.angle*180/Math.PI-90)+') translate('+radius+',0)'+(d.angle>Math.PI?' rotate(180)':'');});
-        node.append('circle').attr('r',5).attr('fill',function(d){return colorMap[d.folder]||COLORS[0];}).attr('transform',function(d){return d.angle>Math.PI?'translate(-5,0)':'translate(5,0)';});
-        node.append('text').attr('dy','0.31em').attr('x',function(d){return d.angle>Math.PI?-10:10;}).attr('text-anchor',function(d){return d.angle>Math.PI?'end':'start';})
-            .attr('fill','var(--t2)').attr('font-size','8px').text(function(d){var n=d.name.replace(/\.[^.]+$/,'');return n.length>15?n.slice(0,12)+'…':n;});
-        node.on('click',function(e,d){if(selectFileRef.current)selectFileRef.current(d.id);});
+        node.append('circle').attr('class','bundle-circle').attr('r',6).attr('fill',function(d){return colorMap[d.folder]||COLORS[0];}).attr('stroke','var(--bg0)').attr('stroke-width',1.5)
+            .attr('transform',function(d){return d.angle>Math.PI?'translate(-6,0)':'translate(6,0)';});
+        node.append('text').attr('dy','0.31em').attr('x',function(d){return d.angle>Math.PI?-14:14;}).attr('text-anchor',function(d){return d.angle>Math.PI?'end':'start';})
+            .attr('fill','var(--t2)').attr('font-size','9px').text(function(d){var n=d.name.replace(/\.[^.]+$/,'');return n.length>16?n.slice(0,13)+'…':n;});
         node.on('mouseenter',function(e,d){
-            g.selectAll('path.bundle-link').attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.9:0.05;})
-                .attr('stroke-width',function(l){return l.source.id===d.id||l.target.id===d.id?2.5:1;});
-        }).on('mouseleave',function(){g.selectAll('path.bundle-link').attr('stroke-opacity',0.3).attr('stroke-width',1.5);});
-        var arcGen=d3.arc().innerRadius(radius+15).outerRadius(radius+22);
-        var folders=Object.keys(folderGroups);
+            var rect=bundleRef.current.getBoundingClientRect();
+            tooltip.html('<div class="treemap-tooltip-title">'+d.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+(d.lines||0)+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(d.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Folder:</span><span>'+(d.folder||'root')+'</span></div>')
+                .style('display','block').style('left',(e.clientX-rect.left+15)+'px').style('top',(e.clientY-rect.top+15)+'px');
+            link.transition().duration(200).attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.85:0.03;})
+                .attr('stroke-width',function(l){return l.source.id===d.id||l.target.id===d.id?3:1;})
+                .attr('stroke',function(l){return l.source.id===d.id||l.target.id===d.id?'var(--acc)':colorMap[l.source.folder]||'#333';});
+            node.selectAll('.bundle-circle').transition().duration(200).attr('opacity',function(n){return n.id===d.id||links.some(function(l){return(l.source.id===d.id&&l.target.id===n.id)||(l.target.id===d.id&&l.source.id===n.id);})?1:0.2;});
+            d3.select(this).select('.bundle-circle').transition().duration(150).attr('r',9).attr('stroke','var(--acc)').attr('stroke-width',2);
+        }).on('mousemove',function(e){var rect=bundleRef.current.getBoundingClientRect();tooltip.style('left',(e.clientX-rect.left+15)+'px').style('top',(e.clientY-rect.top+15)+'px');})
+        .on('mouseleave',function(){
+            tooltip.style('display','none');
+            link.transition().duration(200).attr('stroke-opacity',0.25).attr('stroke-width',1.5).attr('stroke',function(d){return colorMap[d.source.folder]||'var(--acc)';});
+            node.selectAll('.bundle-circle').transition().duration(200).attr('opacity',1);
+            d3.select(this).select('.bundle-circle').transition().duration(150).attr('r',6).attr('stroke','var(--bg0)').attr('stroke-width',1.5);
+        }).on('click',function(e,d){
+            e.stopPropagation();
+            if(selectFileRef.current){
+                selectFileRef.current(d.id);
+                setTimeout(function(){
+                    var blast=blastRadius;
+                    node.selectAll('.bundle-circle').transition().duration(300)
+                        .attr('fill',function(n){return n.id===d.id?'#ff5f5f':(blast&&blast.affected.includes(n.id))?'#ff9f43':colorMap[n.folder]||COLORS[0];})
+                        .attr('opacity',function(n){return n.id===d.id||(blast&&blast.affected.includes(n.id))?1:0.2;});
+                    link.transition().duration(300).attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.8:0.05;});
+                },100);
+            }
+        });
+        var arcGen=d3.arc().innerRadius(radius+20).outerRadius(radius+30);
         var folderAngleStart=0;
-        folders.forEach(function(folder,i){
-            var count=folderGroups[folder].length;
+        sortedFolders.forEach(function(entry,i){
+            var folder=entry[0],count=entry[1].length;
             var span=2*Math.PI*count/files.length;
-            g.append('path').attr('d',arcGen({startAngle:folderAngleStart,endAngle:folderAngleStart+span}))
-                .attr('fill',colorMap[folder]||COLORS[i%COLORS.length]).attr('opacity',0.6);
+            mainG.append('path').attr('d',arcGen({startAngle:folderAngleStart,endAngle:folderAngleStart+span}))
+                .attr('fill',colorMap[folder]||COLORS[i%COLORS.length]).attr('opacity',0.5).style('cursor','pointer')
+                .on('click',function(){filterByFolder(folder);});
+            if(span>0.15){
+                var midAngle=folderAngleStart+span/2-Math.PI/2;
+                mainG.append('text').attr('x',Math.cos(midAngle)*(radius+40)).attr('y',Math.sin(midAngle)*(radius+40))
+                    .attr('text-anchor','middle').attr('fill','var(--t2)').attr('font-size','8px')
+                    .attr('transform','rotate('+(midAngle*180/Math.PI+90)+','+Math.cos(midAngle)*(radius+40)+','+Math.sin(midAngle)*(radius+40)+')')
+                    .text(folder.split('/').pop()||'root');
+            }
             folderAngleStart+=span;
         });
-    },[data,graphConfig.vizType,colorMap]);
+        svg.on('click',function(){
+            setSelected(null);setBlastRadius(null);
+            node.selectAll('.bundle-circle').transition().duration(300).attr('fill',function(d){return colorMap[d.folder]||COLORS[0];}).attr('opacity',1);
+            link.transition().duration(300).attr('stroke-opacity',0.25);
+        });
+    },[data,graphConfig.vizType,colorMap,folderFilter,blastRadius]);
 
     function zoomIn(){if(zoomRef.current&&svgRef.current)d3.select(svgRef.current).transition().duration(200).call(zoomRef.current.scaleBy,1.4);}
     function zoomOut(){if(zoomRef.current&&svgRef.current)d3.select(svgRef.current).transition().duration(200).call(zoomRef.current.scaleBy,0.7);}
@@ -1257,6 +1373,183 @@ function App(){
     }
     function exportSVG(){if(!svgRef.current)return;var svgClone=svgRef.current.cloneNode(true);svgClone.setAttribute('xmlns','http://www.w3.org/2000/svg');svgClone.setAttribute('width',svgRef.current.clientWidth);svgClone.setAttribute('height',svgRef.current.clientHeight);var style=document.createElementNS('http://www.w3.org/2000/svg','style');style.textContent='text{font-family:JetBrains Mono,monospace;pointer-events:none}';svgClone.insertBefore(style,svgClone.firstChild);var blob=new Blob([new XMLSerializer().serializeToString(svgClone)],{type:'image/svg+xml'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow-'+Date.now()+'.svg';a.click();URL.revokeObjectURL(url);}
     function exportJSON(){if(!data)return;var blob=new Blob([JSON.stringify({stats:data.stats,files:data.files.map(function(f){return{path:f.path,fns:f.functions.length,layer:f.layer,lines:f.lines};}),connections:data.connections,issues:data.issues,patterns:data.patterns,security:data.securityIssues},null,2)],{type:'application/json'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow-analysis.json';a.click();}
+    function generateReport(format){
+        if(!data)return;
+        var repo=repoInfo?repoInfo.owner+'/'+repoInfo.repo:'Unknown Repository';
+        var h=calcHealth(data);
+        var report={
+            repository:repo,
+            analyzedAt:new Date().toISOString(),
+            summary:{
+                healthScore:h.score,
+                healthGrade:h.grade,
+                totalFiles:data.stats.files,
+                totalFunctions:data.stats.functions,
+                totalConnections:data.stats.connections,
+                linesOfCode:data.stats.loc,
+                unusedFunctions:data.stats.dead,
+                securityIssues:data.securityIssues.length,
+                patterns:data.patterns.length
+            },
+            files:data.files.map(function(f){
+                var fns=f.functions.map(function(fn){
+                    var st=data.fnStats[fn.name];
+                    return{name:fn.name,line:fn.line,internalCalls:st?st.internal:0,externalCalls:st?st.external:0,isUnused:st?(st.internal+st.external===0):true,code:fn.code};
+                });
+                return{path:f.path,folder:f.folder,layer:f.layer,lines:f.lines,functions:fns,functionCount:f.functions.length};
+            }),
+            unusedFunctions:data.deadFunctions.map(function(fn){return{name:fn.name,file:fn.file,folder:fn.folder,line:fn.line,codeLines:fn.codeLines,code:fn.code};}),
+            dependencies:data.connections.map(function(c){
+                var src=typeof c.source==='object'?c.source.id:c.source;
+                var tgt=typeof c.target==='object'?c.target.id:c.target;
+                return{from:src,to:tgt,function:c.fn,callCount:c.count};
+            }),
+            architectureIssues:data.issues.map(function(i){return{type:i.type,title:i.title,description:i.desc,affectedFiles:i.items?i.items.map(function(x){return x.file||x.name;}):[]};}),
+            patterns:data.patterns.map(function(p){return{name:p.name,description:p.desc,isAntiPattern:p.isAnti||false,severity:p.severity||'info',files:p.files.map(function(f){return f.path||f.name;}),metrics:p.metrics};}),
+            securityIssues:data.securityIssues.map(function(s){return{severity:s.severity,title:s.title,description:s.desc,file:s.file,path:s.path,line:s.line,code:s.code};}),
+            languageBreakdown:data.stats.languages||[],
+            folderStructure:data.folders
+        };
+        if(format==='json'){
+            var blob=new Blob([JSON.stringify(report,null,2)],{type:'application/json'});
+            var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow-report.json';a.click();URL.revokeObjectURL(url);
+        }else if(format==='md'){
+            var md='# CodeFlow Analysis Report\n\n';
+            md+='**Repository:** '+repo+'\n';
+            md+='**Analyzed:** '+new Date().toLocaleString()+'\n\n';
+            md+='## Summary\n\n';
+            md+='| Metric | Value |\n|--------|-------|\n';
+            md+='| Health Score | '+h.score+'/100 ('+h.grade+') |\n';
+            md+='| Files | '+data.stats.files+' |\n';
+            md+='| Functions | '+data.stats.functions+' |\n';
+            md+='| Lines of Code | '+data.stats.loc.toLocaleString()+' |\n';
+            md+='| Dependencies | '+data.stats.connections+' |\n';
+            md+='| Unused Functions | '+data.stats.dead+' |\n';
+            md+='| Security Issues | '+data.securityIssues.length+' |\n\n';
+            if(data.securityIssues.length>0){
+                md+='## Security Issues\n\n';
+                data.securityIssues.forEach(function(s){
+                    md+='### '+s.severity.toUpperCase()+': '+s.title+'\n';
+                    md+='- **File:** `'+s.path+'`'+(s.line?' (line '+s.line+')':'')+'\n';
+                    md+='- **Description:** '+s.desc+'\n';
+                    if(s.code)md+='- **Code:** `'+s.code+'`\n';
+                    md+='\n';
+                });
+            }
+            if(data.deadFunctions.length>0){
+                md+='## Unused Functions ('+data.deadFunctions.length+')\n\n';
+                md+='These functions have zero calls (internal or external) and may be dead code:\n\n';
+                data.deadFunctions.slice(0,50).forEach(function(fn){
+                    md+='### `'+fn.name+'()`\n';
+                    md+='- **File:** `'+fn.file+'`\n';
+                    md+='- **Line:** '+fn.line+'\n';
+                    md+='- **Lines of code:** '+fn.codeLines+'\n';
+                    if(fn.code)md+='```\n'+fn.code+'\n```\n';
+                    md+='\n';
+                });
+                if(data.deadFunctions.length>50)md+='\n*...and '+(data.deadFunctions.length-50)+' more unused functions*\n\n';
+            }
+            if(data.patterns.length>0){
+                md+='## Design Patterns\n\n';
+                data.patterns.filter(function(p){return!p.isAnti;}).forEach(function(p){
+                    md+='### '+p.icon+' '+p.name+'\n';
+                    md+=p.desc+'\n\n';
+                    md+='**Files:** '+p.files.slice(0,5).map(function(f){return'`'+f.name+'`';}).join(', ')+(p.files.length>5?' (+'+p.files.length-5+' more)':'')+'\n\n';
+                });
+                var antiPatterns=data.patterns.filter(function(p){return p.isAnti;});
+                if(antiPatterns.length>0){
+                    md+='## Anti-Patterns\n\n';
+                    antiPatterns.forEach(function(p){
+                        md+='### '+p.icon+' '+p.name+'\n';
+                        md+=p.desc+'\n\n';
+                        md+='**Affected files:** '+p.files.slice(0,5).map(function(f){return'`'+f.name+'`';}).join(', ')+'\n\n';
+                    });
+                }
+            }
+            if(data.issues.length>0){
+                md+='## Architecture Issues\n\n';
+                data.issues.forEach(function(i){
+                    md+='### '+i.title+'\n';
+                    md+=i.desc+'\n\n';
+                    if(i.items)md+='**Affected:** '+i.items.slice(0,5).map(function(x){return'`'+(x.name||x.file)+'`';}).join(', ')+'\n\n';
+                });
+            }
+            md+='## File Details\n\n';
+            md+='| File | Folder | Layer | Lines | Functions |\n';
+            md+='|------|--------|-------|-------|----------|\n';
+            data.files.slice(0,100).forEach(function(f){
+                md+='| `'+f.name+'` | '+f.folder+' | '+f.layer+' | '+f.lines+' | '+f.functions.length+' |\n';
+            });
+            if(data.files.length>100)md+='\n*...and '+(data.files.length-100)+' more files*\n';
+            var blob=new Blob([md],{type:'text/markdown'});
+            var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow-report.md';a.click();URL.revokeObjectURL(url);
+        }else if(format==='txt'){
+            var txt='CODEFLOW ANALYSIS REPORT\n';
+            txt+='========================\n\n';
+            txt+='Repository: '+repo+'\n';
+            txt+='Analyzed: '+new Date().toLocaleString()+'\n\n';
+            txt+='SUMMARY\n-------\n';
+            txt+='Health Score: '+h.score+'/100 (Grade: '+h.grade+')\n';
+            txt+='Files: '+data.stats.files+'\n';
+            txt+='Functions: '+data.stats.functions+'\n';
+            txt+='Lines of Code: '+data.stats.loc.toLocaleString()+'\n';
+            txt+='Dependencies: '+data.stats.connections+'\n';
+            txt+='Unused Functions: '+data.stats.dead+'\n';
+            txt+='Security Issues: '+data.securityIssues.length+'\n\n';
+            if(data.securityIssues.length>0){
+                txt+='SECURITY ISSUES\n---------------\n';
+                data.securityIssues.forEach(function(s,i){
+                    txt+=(i+1)+'. ['+s.severity.toUpperCase()+'] '+s.title+'\n';
+                    txt+='   File: '+s.path+(s.line?' (line '+s.line+')':'')+'\n';
+                    txt+='   '+s.desc+'\n';
+                    if(s.code)txt+='   Code: '+s.code+'\n';
+                    txt+='\n';
+                });
+            }
+            if(data.deadFunctions.length>0){
+                txt+='UNUSED FUNCTIONS ('+data.deadFunctions.length+')\n'+'-'.repeat(20)+'\n';
+                txt+='These functions are never called and may be dead code:\n\n';
+                data.deadFunctions.forEach(function(fn,i){
+                    txt+=(i+1)+'. '+fn.name+'()\n';
+                    txt+='   File: '+fn.file+' (line '+fn.line+')\n';
+                    txt+='   Lines: '+fn.codeLines+'\n';
+                    if(fn.code){txt+='   Code:\n';fn.code.split('\n').forEach(function(line){txt+='      '+line+'\n';});}
+                    txt+='\n';
+                });
+            }
+            if(data.patterns.length>0){
+                txt+='PATTERNS DETECTED\n-----------------\n';
+                data.patterns.forEach(function(p){
+                    txt+=(p.isAnti?'[ANTI-PATTERN] ':'')+p.name+'\n';
+                    txt+='  '+p.desc+'\n';
+                    txt+='  Files: '+p.files.map(function(f){return f.name;}).join(', ')+'\n\n';
+                });
+            }
+            if(data.issues.length>0){
+                txt+='ARCHITECTURE ISSUES\n-------------------\n';
+                data.issues.forEach(function(i){
+                    txt+='['+i.type.toUpperCase()+'] '+i.title+'\n';
+                    txt+='  '+i.desc+'\n';
+                    if(i.items)txt+='  Affected: '+i.items.map(function(x){return x.name||x.file;}).join(', ')+'\n';
+                    txt+='\n';
+                });
+            }
+            txt+='FILE LIST\n---------\n';
+            data.files.forEach(function(f){
+                txt+=f.path+' ('+f.lines+' lines, '+f.functions.length+' functions, '+f.layer+')\n';
+            });
+            txt+='\nDEPENDENCIES\n------------\n';
+            data.connections.slice(0,100).forEach(function(c){
+                var src=typeof c.source==='object'?c.source.id:c.source;
+                var tgt=typeof c.target==='object'?c.target.id:c.target;
+                txt+=src.split('/').pop()+' -> '+tgt.split('/').pop()+' ('+c.fn+': '+c.count+' calls)\n';
+            });
+            if(data.connections.length>100)txt+='\n...and '+(data.connections.length-100)+' more dependencies\n';
+            var blob=new Blob([txt],{type:'text/plain'});
+            var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow-report.txt';a.click();URL.revokeObjectURL(url);
+        }
+        showNotification('Report exported as '+format.toUpperCase(),'success');
+    }
     function showNotification(msg,type){setToast({msg:msg,type:type||'success'});setTimeout(function(){setToast(null);},3000);}
     function copyLink(){navigator.clipboard.writeText(window.location.href).then(function(){showNotification('Link copied to clipboard!');}).catch(function(){showNotification('Failed to copy link','error');});}
     function analyzePR(){if(!prUrl||!repoInfo)return;var m=prUrl.match(/\/pull\/(\d+)/);if(!m){showNotification('Invalid PR URL','error');return;}GitHub.getPR(repoInfo.owner,repoInfo.repo,m[1]).then(function(pr){if(pr)setPrData(pr);else showNotification('Could not load PR','error');});}
@@ -1543,13 +1836,24 @@ function App(){
             )
         ),
         showExport&&React.createElement('div',{className:'modal-overlay',onClick:function(){setShowExport(false);}},
-            React.createElement('div',{className:'modal',onClick:function(e){e.stopPropagation();}},
+            React.createElement('div',{className:'modal',onClick:function(e){e.stopPropagation();},style:{maxWidth:480}},
                 React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},'📤 Export'),React.createElement('button',{className:'modal-close',onClick:function(){setShowExport(false);}},'×')),
                 React.createElement('div',{className:'modal-body'},
+                    React.createElement('div',{style:{fontSize:10,fontWeight:600,color:'var(--t3)',textTransform:'uppercase',marginBottom:8}},'Visualization'),
                     React.createElement('div',{className:'export-options'},
                         React.createElement('div',{className:'export-option',onClick:function(){exportSVG();setShowExport(false);}},React.createElement('div',{className:'export-option-icon'},'🖼️'),React.createElement('div',{className:'export-option-label'},'SVG Image')),
-                        React.createElement('div',{className:'export-option',onClick:function(){exportJSON();setShowExport(false);}},React.createElement('div',{className:'export-option-icon'},'📋'),React.createElement('div',{className:'export-option-label'},'JSON Data')),
                         React.createElement('div',{className:'export-option',onClick:function(){copyLink();setShowExport(false);}},React.createElement('div',{className:'export-option-icon'},'🔗'),React.createElement('div',{className:'export-option-label'},'Share Link'))
+                    ),
+                    React.createElement('div',{style:{fontSize:10,fontWeight:600,color:'var(--t3)',textTransform:'uppercase',marginBottom:8,marginTop:16}},'Analysis Report'),
+                    React.createElement('div',{style:{fontSize:9,color:'var(--t2)',marginBottom:10}},'Complete analysis with files, functions, patterns, security issues, and dependencies'),
+                    React.createElement('div',{className:'export-options'},
+                        React.createElement('div',{className:'export-option',onClick:function(){generateReport('json');setShowExport(false);}},React.createElement('div',{className:'export-option-icon'},'📋'),React.createElement('div',{className:'export-option-label'},'JSON Report')),
+                        React.createElement('div',{className:'export-option',onClick:function(){generateReport('md');setShowExport(false);}},React.createElement('div',{className:'export-option-icon'},'📝'),React.createElement('div',{className:'export-option-label'},'Markdown')),
+                        React.createElement('div',{className:'export-option',onClick:function(){generateReport('txt');setShowExport(false);}},React.createElement('div',{className:'export-option-icon'},'📄'),React.createElement('div',{className:'export-option-label'},'Plain Text'))
+                    ),
+                    React.createElement('div',{style:{fontSize:10,fontWeight:600,color:'var(--t3)',textTransform:'uppercase',marginBottom:8,marginTop:16}},'Raw Data'),
+                    React.createElement('div',{className:'export-options'},
+                        React.createElement('div',{className:'export-option',onClick:function(){exportJSON();setShowExport(false);}},React.createElement('div',{className:'export-option-icon'},'⚙️'),React.createElement('div',{className:'export-option-label'},'Raw JSON'))
                     )
                 )
             )
