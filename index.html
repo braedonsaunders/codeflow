@@ -1012,7 +1012,7 @@ function App(){
                 React.createElement('div',{className:'resize-handle',onMouseDown:function(e){
                     e.preventDefault();
                     var startX=e.clientX,startW=rightPanelWidth;
-                    function onMove(e){setRightPanelWidth(Math.max(280,Math.min(500,startW-(e.clientX-startX)));}
+                    function onMove(e){setRightPanelWidth(Math.max(280,Math.min(500,startW-(e.clientX-startX))));}
                     function onUp(){document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);}
                     document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
                 }}),
