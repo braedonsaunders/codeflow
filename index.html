@@ -1431,6 +1431,77 @@ var GitHub={
     }
 };
 
+// Local File System Scanner - No GitHub token needed!
+var LocalFS={
+    supportsFileSystem: typeof window.showDirectoryPicker === 'function',
+
+    async scanDirectory(dirHandle, basePath, cb) {
+        var files = [];
+        var entries = [];
+
+        for await (var entry of dirHandle.values()) {
+            entries.push(entry);
+        }
+
+        for (var entry of entries) {
+            var path = basePath ? basePath + '/' + entry.name : entry.name;
+
+            if (entry.kind === 'directory') {
+                // Skip ignored directories
+                if (IGNORE.has(entry.name)) continue;
+                if (cb) cb('Scanning /' + path + '...');
+
+                try {
+                    var subFiles = await this.scanDirectory(entry, path, cb);
+                    files = files.concat(subFiles);
+                } catch (e) {
+                    // Permission denied or other error, skip
+                }
+            } else if (entry.kind === 'file') {
+                if (!Parser.isIncluded(entry.name)) continue;
+                var folder = basePath || 'root';
+                files.push({
+                    path: path,
+                    name: entry.name,
+                    folder: folder,
+                    handle: entry,
+                    isCode: Parser.isCode(entry.name)
+                });
+            }
+        }
+        return files;
+    },
+
+    async getFileContent(fileHandle) {
+        try {
+            var file = await fileHandle.getFile();
+            return await file.text();
+        } catch (e) {
+            return null;
+        }
+    },
+
+    async scan(cb) {
+        if (!this.supportsFileSystem) {
+            throw new Error('File System Access API not supported. Try Chrome, Edge, or Opera.');
+        }
+
+        try {
+            if (cb) cb('Select a folder...');
+            var dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+            if (cb) cb('Scanning ' + dirHandle.name + '...');
+            var files = await this.scanDirectory(dirHandle, '', cb);
+            if (cb) cb('Found ' + files.length + ' files');
+            return { files: files, name: dirHandle.name };
+        } catch (e) {
+            if (e.name === 'AbortError') {
+                throw new Error('cancelled');
+            }
+            throw e;
+        }
+    }
+};
+
 function buildTree(files){
     var root={name:'root',path:'',children:{},files:[]};
     files.forEach(function(f){
@@ -1934,6 +2005,231 @@ function App(){
 
             processFile(0);
         }).catch(function(e){if(e!=='cancelled'){setError(e.message||e);setLoading(false);}});
+    }
+
+    // Analyze local folder - no GitHub token needed!
+    async function analyzeLocal() {
+        if (!LocalFS.supportsFileSystem) {
+            setError('File System Access API not supported. Use Chrome, Edge, or Opera.');
+            return;
+        }
+
+        setError(null);
+        setData(null);
+        setSelected(null);
+        setBlastRadius(null);
+        setLoading(true);
+        setProgress('Select a folder...');
+        setFolderFilter(null);
+
+        try {
+            var result = await LocalFS.scan(setProgress);
+            if (!result) return;
+
+            var files = result.files;
+            var folderName = result.name;
+
+            setRepoInfo({ owner: 'local', repo: folderName });
+            setRepoUrl('local/' + folderName);
+
+            if (!files.length) {
+                throw new Error('No code files found');
+            }
+
+            var SOFT_LIMIT = 300, HARD_LIMIT = 750;
+            if (files.length > SOFT_LIMIT && files.length <= HARD_LIMIT) {
+                var proceed = window.confirm('This folder has ' + files.length + ' files.\n\nAnalyzing large folders may be slow.\n\nProceed with all ' + files.length + ' files?');
+                if (!proceed) { setLoading(false); return; }
+            } else if (files.length > HARD_LIMIT) {
+                showNotification('Found ' + files.length + ' files. Limiting to ' + HARD_LIMIT + ' for performance.', 'warning');
+            }
+
+            var max = Math.min(files.length, HARD_LIMIT);
+            var analyzed = [];
+            var allFns = [];
+
+            for (var i = 0; i < max; i++) {
+                var f = files[i];
+                setProgress('Analyzing ' + (i + 1) + '/' + max + ': ' + f.name);
+
+                var isCodeFile = f.isCode !== false && Parser.isCode(f.name);
+                var content = await LocalFS.getFileContent(f.handle);
+
+                if (content && isCodeFile) {
+                    var fns = Parser.extract(content, f.path);
+                    var layer = Parser.detectLayer(f.path);
+                    analyzed.push({
+                        path: f.path,
+                        name: f.name,
+                        folder: f.folder,
+                        content: content,
+                        functions: fns,
+                        lines: content.split('\n').length,
+                        layer: layer,
+                        churn: 0,
+                        isCode: true
+                    });
+                    fns.forEach(function(fn) {
+                        allFns.push(Object.assign({}, fn, { folder: f.folder, layer: layer }));
+                    });
+                } else if (content) {
+                    var layer = Parser.detectLayer(f.path);
+                    var lines = content.split('\n').length;
+                    analyzed.push({
+                        path: f.path,
+                        name: f.name,
+                        folder: f.folder,
+                        content: content,
+                        functions: [],
+                        lines: lines,
+                        layer: layer,
+                        churn: 0,
+                        isCode: false
+                    });
+                }
+            }
+
+            // Build dependency graph (same as GitHub flow)
+            setProgress('Building dependency graph...');
+            var fnNames = [...new Set(allFns.map(function(f) { return f.name; }))];
+            var conns = [];
+            var fnStats = {};
+
+            allFns.forEach(function(fn) {
+                if (!fnStats[fn.name]) {
+                    fnStats[fn.name] = {
+                        internal: 0,
+                        external: 0,
+                        callers: new Map(),
+                        file: fn.file,
+                        folder: fn.folder,
+                        line: fn.line,
+                        code: fn.code,
+                        isTopLevel: fn.isTopLevel !== false,
+                        isExported: fn.isExported || false,
+                        isClassMethod: fn.isClassMethod || false,
+                        type: fn.type || 'function'
+                    };
+                }
+            });
+
+            analyzed.forEach(function(file) {
+                var calls = Parser.findCalls(file.content, fnNames, file.path, allFns);
+                Object.entries(calls).forEach(function(entry) {
+                    var fn = entry[0], cnt = entry[1];
+                    if (cnt <= 0) return;
+                    var def = fnStats[fn] ? fnStats[fn].file : null;
+                    if (def) {
+                        if (def === file.path) {
+                            fnStats[fn].internal += cnt;
+                        } else {
+                            conns.push({ source: def, target: file.path, fn: fn, count: cnt });
+                            var ex = fnStats[fn].callers.get(file.path);
+                            if (ex) ex.count += cnt; else fnStats[fn].callers.set(file.path, { file: file.path, name: file.name, count: cnt });
+                            fnStats[fn].external += cnt;
+                        }
+                    }
+                });
+            });
+
+            Object.values(fnStats).forEach(function(s) { s.callers = Array.from(s.callers.values()); s.count = s.internal + s.external; });
+
+            var issues = [];
+            var deadFns = Object.entries(fnStats).filter(function(x) {
+                var stats = x[1];
+                if (stats.internal > 0 || stats.external > 0) return false;
+                if (stats.isClassMethod) return false;
+                if (!stats.isTopLevel) return false;
+                return true;
+            });
+
+            if (deadFns.length) issues.push({ type: 'warning', title: deadFns.length + ' Unused Functions', desc: 'Functions not called from other files', items: deadFns.map(function(x) { return { name: x[0], file: x[1].file, line: x[1].line, code: x[1].code }; }) });
+
+            var godFiles = analyzed.filter(function(f) { return f.functions.length > 15; });
+            if (godFiles.length) issues.push({ type: 'critical', title: godFiles.length + ' Large Files', desc: 'Files with 15+ functions', items: godFiles.map(function(f) { return { name: f.name + ' (' + f.functions.length + ' fns)', file: f.path, fns: f.functions.length, lines: f.lines }; }) });
+
+            var coupling = {};
+            conns.forEach(function(c) { coupling[c.target] = (coupling[c.target] || 0) + 1; });
+            var highCoup = Object.entries(coupling).filter(function(x) { return x[1] > 8; }).sort(function(a, b) { return b[1] - a[1]; });
+            if (highCoup.length) issues.push({ type: 'warning', title: highCoup.length + ' Highly Coupled', desc: 'Files imported by 8+ others', items: highCoup.map(function(x) { return { name: x[0].split('/').pop() + ' (' + x[1] + ' imports)', file: x[0], imports: x[1] }; }) });
+
+            var connSet = new Set(conns.map(function(c) { return c.source + '|' + c.target; }));
+            var circular = [];
+            conns.forEach(function(c) { if (connSet.has(c.target + '|' + c.source)) { var key = [c.source, c.target].sort().join('|'); if (!circular.includes(key)) circular.push(key); } });
+            if (circular.length) issues.push({ type: 'critical', title: circular.length + ' Circular Dependencies', desc: 'Files that import each other', items: circular.map(function(p) { var parts = p.split('|'); return { name: parts.map(function(x) { return x.split('/').pop(); }).join(' ↔ '), files: parts }; }) });
+
+            var patterns = Parser.detectPatterns(analyzed);
+            var securityIssues = Parser.detectSecurity(analyzed);
+            var duplicates = Parser.detectDuplicates(analyzed, allFns);
+            var layerViolations = Parser.detectLayerViolations(analyzed, conns);
+
+            analyzed.forEach(function(f) { f.complexity = Parser.calcComplexity(f.content); });
+
+            var folders = [...new Set(analyzed.map(function(f) { return f.folder; }))].sort();
+            var tree = buildTree(analyzed);
+            var totalLoc = analyzed.reduce(function(s, f) { return s + f.lines; }, 0);
+
+            var langStats = {};
+            analyzed.forEach(function(f) { var ext = f.name.split('.').pop().toLowerCase(); langStats[ext] = (langStats[ext] || 0) + f.lines; });
+            var langArray = Object.entries(langStats).sort(function(a, b) { return b[1] - a[1]; }).map(function(e) { return { ext: e[0], lines: e[1], pct: Math.round(e[1] / totalLoc * 100) }; });
+
+            if (duplicates.length > 0) {
+                var nameDups = duplicates.filter(function(d) { return d.type === 'name'; });
+                var codeDups = duplicates.filter(function(d) { return d.type === 'code'; });
+                if (nameDups.length) issues.push({ type: 'warning', title: nameDups.length + ' Duplicate Function Names', desc: 'Same function name in multiple files', items: nameDups.map(function(d) { return { name: d.name + ' (' + d.count + ' files)', suggestion: d.suggestion, files: d.files, count: d.count }; }) });
+                if (codeDups.length) issues.push({ type: 'warning', title: codeDups.length + ' Similar Code Blocks', desc: 'Copy-paste code detected', items: codeDups.map(function(d) { return { name: d.name, suggestion: d.suggestion, files: d.files }; }) });
+            }
+
+            if (layerViolations.length > 0) {
+                issues.push({ type: 'critical', title: layerViolations.length + ' Architecture Violations', desc: 'Lower layers importing from higher layers', items: layerViolations.map(function(v) { return { name: v.fromLayer + ' → ' + v.toLayer, file: v.from, toFile: v.to, fn: v.fn, suggestion: v.suggestion }; }) });
+            }
+
+            var highComplexity = analyzed.filter(function(f) { return f.complexity && f.complexity.level === 'critical'; }).sort(function(a, b) { return b.complexity.score - a.complexity.score; });
+            if (highComplexity.length) issues.push({ type: 'warning', title: highComplexity.length + ' High Complexity Files', desc: 'Files with complexity score >30', items: highComplexity.map(function(f) { return { name: f.name + ' (' + f.complexity.score + ')', file: f.path, score: f.complexity.score, lines: f.lines }; }) });
+
+            var dataObj = {
+                files: analyzed,
+                functions: allFns,
+                connections: conns,
+                fnStats: fnStats,
+                folders: folders,
+                tree: tree,
+                issues: issues,
+                patterns: patterns,
+                securityIssues: securityIssues,
+                duplicates: duplicates,
+                layerViolations: layerViolations,
+                deadFunctions: deadFns.map(function(x) {
+                    var codeLines = x[1].code ? x[1].code.split('\n').length : 0;
+                    return { name: x[0], file: x[1].file, folder: x[1].folder, line: x[1].line, code: x[1].code, codeLines: codeLines, ext: x[1].file.split('.').pop() };
+                }),
+                stats: {
+                    files: analyzed.length,
+                    functions: allFns.length,
+                    connections: conns.length,
+                    dead: deadFns.length,
+                    patterns: patterns.length,
+                    security: securityIssues.filter(function(i) { return i.severity === 'high'; }).length,
+                    duplicates: duplicates.length,
+                    violations: layerViolations.length,
+                    loc: totalLoc,
+                    languages: langArray
+                },
+                isLocal: true
+            };
+            dataObj.suggestions = Parser.generateSuggestions(dataObj);
+
+            setData(dataObj);
+            setExpandedPaths(new Set(['']));
+            window.history.replaceState({}, '', window.location.pathname);
+            setLoading(false);
+
+        } catch (e) {
+            if (e.message !== 'cancelled') {
+                setError(e.message || String(e));
+            }
+            setLoading(false);
+        }
     }
 
     var selectFile=useCallback(function(path){
@@ -2831,6 +3127,7 @@ function App(){
                 React.createElement('input',{className:'repo-input','aria-label':'Repository URL',placeholder:'owner/repo or GitHub URL',value:repoUrl,onChange:function(e){setRepoUrl(e.target.value);},onKeyDown:function(e){if(e.key==='Enter'&&!loading)analyze();}}),
                 React.createElement('input',{className:'repo-input',type:'password','aria-label':'GitHub Token',placeholder:'Token (optional)',value:token,onChange:function(e){setToken(e.target.value);},onKeyDown:function(e){if(e.key==='Enter'&&!loading)analyze();},style:{maxWidth:120}}),
                 React.createElement('button',{id:'analyze-btn',className:'top-btn primary','aria-label':'Analyze repository',onClick:analyze,disabled:loading||!repoUrl},loading?'⏳':'🔍',' Analyze'),
+                React.createElement('button',{className:'top-btn','aria-label':'Analyze local folder',onClick:analyzeLocal,disabled:loading,title:'Scan local folder (no token needed)'},'📁 Local'),
                 data&&React.createElement('button',{className:'refresh-btn','aria-label':'Refresh analysis',onClick:analyze,disabled:loading,title:'Refresh Analysis'},'↻ Refresh'),
                 data&&React.createElement('button',{className:'reset-btn','aria-label':'Reset analysis',onClick:resetAnalysis,title:'Clear & Reset'},'✕ Reset')
             ),
@@ -2896,7 +3193,7 @@ function App(){
                         folderFilter&&React.createElement('button',{className:'top-btn',style:{width:'100%',marginTop:8},onClick:function(){setFolderFilter(null);}},'✕ Clear Filter: ',folderFilter)
                     ),
                     React.createElement('div',{className:'sidebar-scroll'},React.createElement(TreeNode,{node:data.tree,selected:selected,onSelect:selectFile,expanded:expandedPaths,toggle:togglePath,filterFolder:filterByFolder,activeFilter:folderFilter}))
-                ):React.createElement('div',{className:'empty-state'},React.createElement('div',{className:'empty-icon'},'🔍'),React.createElement('div',{className:'empty-title'},'No Repository'),React.createElement('div',{className:'empty-desc'},'Enter a GitHub URL to analyze'))
+                ):React.createElement('div',{className:'empty-state'},React.createElement('div',{className:'empty-icon'},'🔍'),React.createElement('div',{className:'empty-title'},'No Repository'),React.createElement('div',{className:'empty-desc'},'Enter a GitHub URL or click "📁 Local" to scan a folder'))
             ),
             React.createElement('div',{className:'canvas-area'},
                 loading?React.createElement('div',{className:'loading'},React.createElement('div',{className:'spinner'}),React.createElement('div',{className:'loading-text'},'Analyzing...'),React.createElement('div',{className:'loading-progress'},progress)):
@@ -3509,8 +3806,12 @@ function App(){
                         React.createElement('div',{className:'privacy-icon'},'🗑️'),
                         React.createElement('div',null,React.createElement('div',{className:'privacy-title'},'Nothing Persisted'),React.createElement('div',{className:'privacy-text'},'Close the tab and everything is gone. No cookies, no local storage, no tracking. Check the source code - it\'s all in one HTML file!'))
                     ),
+                    React.createElement('div',{className:'privacy-item'},
+                        React.createElement('div',{className:'privacy-icon'},'📁'),
+                        React.createElement('div',null,React.createElement('div',{className:'privacy-title'},'Local Folder Scanning'),React.createElement('div',{className:'privacy-text'},'Use the "📁 Local" button to analyze repos on your machine. Completely offline - no network requests, no tokens needed. Your code never leaves your computer.'))
+                    ),
                     React.createElement('div',{style:{marginTop:16,padding:12,background:'var(--accbg)',borderRadius:8,fontSize:10,color:'var(--t1)'}},
-                        '💡 Tip: Create a ',React.createElement('a',{href:'https://github.com/settings/tokens',target:'_blank',rel:'noopener',style:{color:'var(--acc)'}},'Personal Access Token'),' with only "public_repo" scope for extra peace of mind when analyzing public repositories.'
+                        '💡 Tip: Use "📁 Local" for private repos to avoid tokens entirely, or create a ',React.createElement('a',{href:'https://github.com/settings/tokens',target:'_blank',rel:'noopener',style:{color:'var(--acc)'}},'Personal Access Token'),' with only "public_repo" scope for GitHub analysis.'
                     )
                 ),
                 React.createElement('div',{className:'modal-footer'},
