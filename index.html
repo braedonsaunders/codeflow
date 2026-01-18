@@ -412,7 +412,21 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .mode-btn{padding:4px 10px;background:transparent;border:none;border-radius:4px;color:var(--t2);font-family:inherit;font-size:10px;cursor:pointer;transition:all 0.15s}
 .mode-btn:hover{color:var(--t0)}
 .mode-btn.active{background:var(--acc);color:var(--bg0)}
-.local-folder-name{padding:6px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;font-size:10px;color:var(--acc);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.local-folder-name{padding:6px 10px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;font-size:10px;color:var(--acc);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.file-count{background:var(--acc);color:var(--bg0);padding:2px 6px;border-radius:4px;font-weight:600;font-size:9px;flex-shrink:0}
+.drop-zone{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg0);z-index:100;cursor:pointer;transition:all 0.2s}
+.drop-zone:hover{background:var(--bg1)}
+.drop-zone.drag-over{background:var(--accbg);border:3px dashed var(--acc)}
+.drop-zone-icon{font-size:72px;margin-bottom:24px;opacity:0.5;transition:all 0.3s}
+.drop-zone:hover .drop-zone-icon,.drop-zone.drag-over .drop-zone-icon{opacity:1;transform:scale(1.15)}
+.drop-zone-title{font-size:22px;font-weight:700;color:var(--t0);margin-bottom:8px}
+.drop-zone-desc{font-size:13px;color:var(--t2);margin-bottom:28px;text-align:center;max-width:300px;line-height:1.5}
+.drop-zone-btn{padding:14px 32px;background:var(--acc);color:var(--bg0);border:none;border-radius:8px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.2s;display:flex;align-items:center;gap:8px}
+.drop-zone-btn:hover{background:var(--acc2);transform:translateY(-2px);box-shadow:0 8px 20px rgba(0,255,157,0.3)}
+.drop-zone-or{font-size:11px;color:var(--t3);margin:20px 0}
+.drop-zone-hint{font-size:11px;color:var(--t3);padding:8px 16px;background:var(--bg2);border-radius:6px}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:0.5}50%{transform:scale(1.05);opacity:0.8}}
+.drop-zone.loading .drop-zone-icon{animation:pulse 1.5s ease-in-out infinite}
     </style>
 </head>
 <body>
@@ -1858,7 +1872,9 @@ function App(){
     var _z=useState(false),showUnused=_z[0],setShowUnused=_z[1];
     var _mode=useState('github'),mode=_mode[0],setMode=_mode[1];// 'github' or 'local'
     var _localFolder=useState(''),localFolderName=_localFolder[0],setLocalFolderName=_localFolder[1];
+    var _dragOver=useState(false),isDragOver=_dragOver[0],setIsDragOver=_dragOver[1];
     var fileInputRef=useRef(null);
+    var dropZoneRef=useRef(null);
     var _aa=useState({spacing:200,linkDist:70,viewMode:'force',vizType:'graph',showLabels:true,curvedLinks:true}),graphConfig=_aa[0],setGraphConfig=_aa[1];
     var _ab=useState(false),showGraphConfig=_ab[0],setShowGraphConfig=_ab[1];
     var _ac=useState(260),sidebarWidth=_ac[0],setSidebarWidth=_ac[1];
@@ -1902,15 +1918,20 @@ function App(){
     }
 
     // Local folder selection using File System Access API
-    async function selectLocalFolder(){
+    async function selectLocalFolder(autoAnalyze){
         setError(null);setLoading(true);setProgress('Selecting folder...');
         try{
             var files=await LocalRepository.loadFromFileSystem(setProgress);
             if(files.length>0){
                 setLocalFolderName(files[0].path.split('/')[0]||'Local Folder');
-                setProgress('Ready to analyze '+files.length+' files');
+                setLoading(false);
+                // Auto-analyze after loading
+                if(autoAnalyze!==false){
+                    setTimeout(function(){analyzeLocal();},100);
+                }
+            }else{
+                setLoading(false);
             }
-            setLoading(false);
         }catch(e){
             if(e.message!=='cancelled'){
                 setError(e.message||'Failed to load folder');
@@ -1920,7 +1941,7 @@ function App(){
     }
 
     // Handle folder upload (fallback for browsers without File System Access API)
-    async function handleFolderUpload(fileList){
+    async function handleFolderUpload(fileList,autoAnalyze){
         if(!fileList||fileList.length===0)return;
         setError(null);setLoading(true);setProgress('Loading files...');
         try{
@@ -1930,12 +1951,69 @@ function App(){
                 var firstPath=fileList[0].webkitRelativePath||fileList[0].name;
                 var folderName=firstPath.split('/')[0]||'Local Folder';
                 setLocalFolderName(folderName);
-                setProgress('Ready to analyze '+files.length+' files');
+                setLoading(false);
+                // Auto-analyze after loading
+                if(autoAnalyze!==false){
+                    setTimeout(function(){analyzeLocal();},100);
+                }
+            }else{
+                setLoading(false);
             }
-            setLoading(false);
         }catch(e){
             setError(e.message||'Failed to load folder');
             setLoading(false);
+        }
+    }
+
+    // Drag and drop handlers for local folder
+    function handleDragOver(e){
+        e.preventDefault();
+        e.stopPropagation();
+        if(mode==='local'&&!data&&!loading){
+            setIsDragOver(true);
+        }
+    }
+    function handleDragLeave(e){
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+    }
+    async function handleDrop(e){
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragOver(false);
+        if(mode!=='local'||data||loading)return;
+
+        // Try to get folder from DataTransfer
+        var items=e.dataTransfer.items;
+        if(items&&items.length>0){
+            var item=items[0];
+            // Check if File System Access API is available for drag-drop
+            if(item.getAsFileSystemHandle){
+                try{
+                    var handle=await item.getAsFileSystemHandle();
+                    if(handle.kind==='directory'){
+                        setError(null);setLoading(true);setProgress('Loading folder...');
+                        await LocalRepository._readDirectory(handle,'',setProgress);
+                        LocalRepository.tree=Object.keys(LocalRepository.files).map(function(path){
+                            var name=path.split('/').pop();
+                            var folder=path.includes('/')?path.substring(0,path.lastIndexOf('/')):'root';
+                            return{path:path,name:name,folder:folder,size:LocalRepository.files[path].length,isCode:Parser.isCode(name)};
+                        });
+                        setLocalFolderName(handle.name);
+                        setLoading(false);
+                        setTimeout(function(){analyzeLocal();},100);
+                        return;
+                    }
+                }catch(err){
+                    // Fall through to file list handling
+                }
+            }
+        }
+        // Fallback: handle as file list
+        var files=e.dataTransfer.files;
+        if(files&&files.length>0){
+            handleFolderUpload(files);
         }
     }
 
@@ -3156,7 +3234,7 @@ function App(){
                     LocalRepository.hasFileSystemAccess()?
                         React.createElement('button',{className:'top-btn',onClick:selectLocalFolder,disabled:loading,style:{minWidth:160}},loading?'⏳ Loading...':'📂 Select Folder')
                         :React.createElement('button',{className:'top-btn',onClick:function(){fileInputRef.current&&fileInputRef.current.click();},disabled:loading,style:{minWidth:160}},loading?'⏳ Loading...':'📂 Select Folder'),
-                    localFolderName&&React.createElement('span',{className:'local-folder-name'},localFolderName),
+                    localFolderName&&React.createElement('span',{className:'local-folder-name'},localFolderName,LocalRepository.tree.length>0&&React.createElement('span',{className:'file-count'},LocalRepository.tree.length)),
                     React.createElement('button',{id:'analyze-btn',className:'top-btn primary','aria-label':'Analyze local folder',onClick:analyzeLocal,disabled:loading||!LocalRepository.tree.length},loading?'⏳':'🔍',' Analyze')
                 ),
                 data&&React.createElement('button',{className:'refresh-btn','aria-label':'Refresh analysis',onClick:mode==='github'?analyze:analyzeLocal,disabled:loading,title:'Refresh Analysis'},'↻ Refresh'),
@@ -3226,9 +3304,19 @@ function App(){
                     React.createElement('div',{className:'sidebar-scroll'},React.createElement(TreeNode,{node:data.tree,selected:selected,onSelect:selectFile,expanded:expandedPaths,toggle:togglePath,filterFolder:filterByFolder,activeFilter:folderFilter}))
                 ):React.createElement('div',{className:'empty-state'},React.createElement('div',{className:'empty-icon'},'🔍'),React.createElement('div',{className:'empty-title'},'No Repository'),React.createElement('div',{className:'empty-desc'},mode==='github'?'Enter a GitHub URL to analyze':'Select a local folder to analyze'))
             ),
-            React.createElement('div',{className:'canvas-area'},
-                loading?React.createElement('div',{className:'loading'},React.createElement('div',{className:'spinner'}),React.createElement('div',{className:'loading-text'},'Analyzing...'),React.createElement('div',{className:'loading-progress'},progress)):
-                !data?React.createElement('div',{className:'empty-state'},React.createElement('div',{className:'empty-icon'},'⚡'),React.createElement('div',{className:'empty-title'},'CodeFlow'),React.createElement('div',{className:'empty-desc'},mode==='github'?'Enter a GitHub URL or switch to Local mode':'Select a folder to analyze your codebase')):
+            React.createElement('div',{className:'canvas-area',onDragOver:handleDragOver,onDragLeave:handleDragLeave,onDrop:handleDrop},
+                loading?React.createElement('div',{className:'loading'+(mode==='local'?' drop-zone loading':'')},React.createElement('div',{className:'drop-zone-icon'},'📂'),React.createElement('div',{className:'loading-text'},progress||'Loading...')):
+                !data?(mode==='local'?
+                    React.createElement('div',{ref:dropZoneRef,className:'drop-zone'+(isDragOver?' drag-over':''),onClick:function(){selectLocalFolder();}},
+                        React.createElement('div',{className:'drop-zone-icon'},'📂'),
+                        React.createElement('div',{className:'drop-zone-title'},'Drop folder here'),
+                        React.createElement('div',{className:'drop-zone-desc'},'Drag and drop a project folder to analyze its architecture, dependencies, and code quality'),
+                        React.createElement('button',{className:'drop-zone-btn',onClick:function(e){e.stopPropagation();selectLocalFolder();}},'📁 Browse Folder'),
+                        React.createElement('div',{className:'drop-zone-or'},'or drag & drop'),
+                        React.createElement('div',{className:'drop-zone-hint'},'Works with any code: JS, TS, Python, Go, Java, and more')
+                    ):
+                    React.createElement('div',{className:'empty-state'},React.createElement('div',{className:'empty-icon'},'⚡'),React.createElement('div',{className:'empty-title'},'CodeFlow'),React.createElement('div',{className:'empty-desc'},'Enter a GitHub URL or switch to Local mode'))
+                ):
                 React.createElement(React.Fragment,null,
                     React.createElement('div',{className:'viz-selector'},
                         React.createElement('button',{className:'viz-selector-btn'+(graphConfig.vizType==='graph'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{vizType:'graph'}));}},'🕸️ Graph'),
