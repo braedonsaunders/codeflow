@@ -1994,6 +1994,7 @@ function App(){
                     var handle=await item.getAsFileSystemHandle();
                     if(handle.kind==='directory'){
                         setError(null);setLoading(true);setProgress('Loading folder...');
+                        LocalRepository.clear();// Clear existing files before loading
                         await LocalRepository._readDirectory(handle,'',setProgress);
                         LocalRepository.tree=Object.keys(LocalRepository.files).map(function(path){
                             var name=path.split('/').pop();
@@ -3241,7 +3242,7 @@ function App(){
                 data&&React.createElement('button',{className:'reset-btn','aria-label':'Reset analysis',onClick:resetAnalysis,title:'Clear & Reset'},'✕ Reset')
             ),
             React.createElement('div',{className:'topbar-actions'},
-                React.createElement('button',{className:'top-btn','aria-label':'Analyze Pull Request',onClick:function(){setShowPR(true);},disabled:!data},'📊 PR'),
+                React.createElement('button',{className:'top-btn','aria-label':'Analyze Pull Request',onClick:function(){setShowPR(true);},disabled:!data||(data&&data.isLocal),title:data&&data.isLocal?'PR analysis not available for local repos':'Analyze Pull Request'},'📊 PR'),
                 React.createElement('button',{className:'top-btn','aria-label':'Export analysis',onClick:function(){setShowExport(true);},disabled:!data},'📤'),
                 React.createElement('button',{className:'top-btn','aria-label':'Copy share link',onClick:copyLink,disabled:!data||(data&&data.isLocal),title:data&&data.isLocal?'Sharing not available for local repos':'Copy share link'},'🔗'),
                 React.createElement('button',{className:'top-btn','aria-label':'Toggle theme',onClick:function(){setTheme(function(t){return t==='dark'?'light':'dark';});}},theme==='dark'?'☀️':'🌙')
@@ -3305,7 +3306,10 @@ function App(){
                 ):React.createElement('div',{className:'empty-state'},React.createElement('div',{className:'empty-icon'},'🔍'),React.createElement('div',{className:'empty-title'},'No Repository'),React.createElement('div',{className:'empty-desc'},mode==='github'?'Enter a GitHub URL to analyze':'Select a local folder to analyze'))
             ),
             React.createElement('div',{className:'canvas-area',onDragOver:handleDragOver,onDragLeave:handleDragLeave,onDrop:handleDrop},
-                loading?React.createElement('div',{className:'loading'+(mode==='local'?' drop-zone loading':'')},React.createElement('div',{className:'drop-zone-icon'},'📂'),React.createElement('div',{className:'loading-text'},progress||'Loading...')):
+                loading?(mode==='local'?
+                    React.createElement('div',{className:'drop-zone loading'},React.createElement('div',{className:'drop-zone-icon'},'📂'),React.createElement('div',{className:'loading-text'},progress||'Loading...')):
+                    React.createElement('div',{className:'loading'},React.createElement('div',{className:'spinner'}),React.createElement('div',{className:'loading-text'},'Analyzing...'),React.createElement('div',{className:'loading-progress'},progress))
+                ):
                 !data?(mode==='local'?
                     React.createElement('div',{ref:dropZoneRef,className:'drop-zone'+(isDragOver?' drag-over':''),onClick:function(){selectLocalFolder();}},
                         React.createElement('div',{className:'drop-zone-icon'},'📂'),
