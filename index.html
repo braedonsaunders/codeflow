@@ -450,9 +450,9 @@ const Parser={
         if(hocs.length)patterns.push({name:'Higher-Order Component',icon:'🎁',desc:'Functions that take a component and return an enhanced component.',severity:'info',files:hocs.map(function(f){return{name:f.name,path:f.path};}),metrics:{hocs:hocs.length}});
         var providers=files.filter(function(f){return f.content&&(f.content.includes('createContext')||f.content.includes('Provider')||f.content.includes('useContext'));});
         if(providers.length)patterns.push({name:'Context Provider',icon:'🌐',desc:'React Context for global state. Alternative to prop drilling.',severity:'info',files:providers.map(function(f){return{name:f.name,path:f.path};}),metrics:{contexts:providers.length}});
-        var godFiles=files.filter(function(f){return f.functions&&f.functions.length>15;});
+        var godFiles=files.filter(function(f){return f.isCode!==false&&f.functions&&f.functions.length>15;});
         if(godFiles.length)patterns.push({name:'God Object',icon:'⚠️',desc:'Files with too many responsibilities (15+ functions). Consider splitting into smaller modules.',severity:'warning',isAnti:true,files:godFiles.map(function(f){return{name:f.name,path:f.path,fns:f.functions.length};}),metrics:{files:godFiles.length,avgFns:Math.round(godFiles.reduce(function(s,f){return s+f.functions.length;},0)/godFiles.length)}});
-        var longFiles=files.filter(function(f){return f.lines&&f.lines>500;});
+        var longFiles=files.filter(function(f){return f.isCode!==false&&f.lines&&f.lines>500;});
         if(longFiles.length)patterns.push({name:'Long File',icon:'📜',desc:'Files over 500 lines are harder to maintain. Consider breaking into smaller modules.',severity:'warning',isAnti:true,files:longFiles.map(function(f){return{name:f.name,path:f.path,lines:f.lines};}),metrics:{files:longFiles.length,avgLines:Math.round(longFiles.reduce(function(s,f){return s+f.lines;},0)/longFiles.length)}});
         return patterns;
     },
