@@ -22,6 +22,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-sankey/0.12.3/d3-sankey.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/acorn/8.11.3/acorn.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/11.1.0/jsrsasign-all-min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <style>
 :root{--bg0:#0a0a0c;--bg1:#0f0f12;--bg2:#161619;--bg3:#1c1c21;--bg4:#252529;--hover:#2a2a30;--border:#2d2d35;--border2:#222228;--t0:#f0f0f2;--t1:#c8c8cd;--t2:#8b8b95;--t3:#5c5c66;--acc:#00ff9d;--acc2:#00cc7d;--accbg:rgba(0,255,157,0.08);--blue:#4d9fff;--purple:#a78bfa;--orange:#ff9f43;--red:#ff5f5f;--cyan:#22d3ee;--pink:#ec4899;--green:#22c55e}
@@ -408,6 +409,19 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .light .syn-tag{color:#e45649}
 .light .syn-attr{color:#986801}
 .light .syn-punct{color:#383a42}
+.auth-select{padding:6px 10px;background:var(--bg0);border:1px solid var(--border);border-radius:6px;color:var(--t0);font-family:inherit;font-size:10px;cursor:pointer;min-width:100px;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b8b95' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:28px}
+.auth-select:focus{outline:none;border-color:var(--acc)}
+.auth-select:hover{border-color:var(--acc)}
+.auth-select option{background:var(--bg1);color:var(--t0);padding:8px}
+.auth-inputs{display:flex;gap:6px;align-items:center}
+.auth-inputs .repo-input{transition:all 0.2s ease}
+.private-key-btn{padding:6px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:4px}
+.private-key-btn:hover{background:var(--bg4);border-color:var(--acc);color:var(--acc)}
+.private-key-btn.has-key{background:var(--accbg);border-color:var(--acc);color:var(--acc)}
+.key-modal{max-width:550px}
+.key-modal .form-input{min-height:200px;font-family:'JetBrains Mono',monospace;font-size:10px;resize:vertical}
+.key-info{font-size:10px;color:var(--t2);margin-bottom:12px;padding:10px;background:var(--bg0);border-radius:6px;line-height:1.5}
+.key-info code{background:var(--bg3);padding:2px 5px;border-radius:3px;color:var(--acc)}
     </style>
 </head>
 <body>
@@ -1324,7 +1338,93 @@ const Parser={
 
 var GitHub={
     token:null,
+    appId:null,
+    privateKey:null,
+    installationToken:null,
+    installationTokenExpiry:null,
     rateLimit:{remaining:60,limit:60,reset:0},
+    
+    // Generate JWT for GitHub App authentication
+    generateJWT:function(){
+        if(!this.appId||!this.privateKey)return null;
+        try{
+            var now=Math.floor(Date.now()/1000);
+            var payload={
+                iat:now-60,// Issued at (60 seconds in past to account for clock drift)
+                exp:now+600,// Expires in 10 minutes (max allowed)
+                iss:this.appId
+            };
+            var header={alg:'RS256',typ:'JWT'};
+            var sHeader=JSON.stringify(header);
+            var sPayload=JSON.stringify(payload);
+            var jwt=KJUR.jws.JWS.sign('RS256',sHeader,sPayload,this.privateKey);
+            return jwt;
+        }catch(e){
+            console.error('JWT generation failed:',e);
+            return null;
+        }
+    },
+    
+    // Get installations for the GitHub App
+    getInstallations:function(){
+        var jwt=this.generateJWT();
+        if(!jwt)return Promise.reject(new Error('Failed to generate JWT'));
+        return fetch('https://api.github.com/app/installations',{
+            headers:{
+                'Accept':'application/vnd.github.v3+json',
+                'Authorization':'Bearer '+jwt
+            }
+        }).then(function(r){
+            if(!r.ok)throw new Error(r.status===401?'Invalid App credentials':'Error '+r.status);
+            return r.json();
+        });
+    },
+    
+    // Get installation access token
+    getInstallationToken:function(installationId){
+        var self=this;
+        var jwt=this.generateJWT();
+        if(!jwt)return Promise.reject(new Error('Failed to generate JWT'));
+        return fetch('https://api.github.com/app/installations/'+installationId+'/access_tokens',{
+            method:'POST',
+            headers:{
+                'Accept':'application/vnd.github.v3+json',
+                'Authorization':'Bearer '+jwt
+            }
+        }).then(function(r){
+            if(!r.ok)throw new Error(r.status===401?'Invalid App credentials':r.status===404?'Installation not found':'Error '+r.status);
+            return r.json();
+        }).then(function(data){
+            self.installationToken=data.token;
+            self.installationTokenExpiry=new Date(data.expires_at).getTime();
+            self.token=data.token;// Use installation token for API calls
+            return data.token;
+        });
+    },
+    
+    // Authenticate with GitHub App for a specific repo
+    authenticateApp:function(owner,repo){
+        var self=this;
+        // Check if we have a valid installation token
+        if(this.installationToken&&this.installationTokenExpiry&&Date.now()<this.installationTokenExpiry-60000){
+            this.token=this.installationToken;
+            return Promise.resolve(this.installationToken);
+        }
+        // Get installations and find the one for this repo
+        return this.getInstallations().then(function(installations){
+            if(!installations||!installations.length){
+                throw new Error('No installations found for this GitHub App');
+            }
+            // Try to find installation that has access to this repo
+            // For simplicity, we'll use the first installation
+            // In production, you'd want to match by account/owner
+            var installation=installations.find(function(i){
+                return i.account&&i.account.login&&i.account.login.toLowerCase()===owner.toLowerCase();
+            })||installations[0];
+            return self.getInstallationToken(installation.id);
+        });
+    },
+    
     fetch:function(url){
         var self=this;
         var h={'Accept':'application/vnd.github.v3+json'};
@@ -1685,6 +1785,10 @@ function App(){
     var _a=useState(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'),theme=_a[0],setTheme=_a[1];
     var _b=useState(''),repoUrl=_b[0],setRepoUrl=_b[1];
     var _c=useState(''),token=_c[0],setToken=_c[1];
+    var _authMethod=useState('none'),authMethod=_authMethod[0],setAuthMethod=_authMethod[1];// 'none', 'pat', 'github_app'
+    var _appId=useState(''),appId=_appId[0],setAppId=_appId[1];
+    var _privateKey=useState(''),privateKey=_privateKey[0],setPrivateKey=_privateKey[1];
+    var _showKeyModal=useState(false),showKeyModal=_showKeyModal[0],setShowKeyModal=_showKeyModal[1];
     var _d=useState(false),loading=_d[0],setLoading=_d[1];
     var _e=useState(''),progress=_e[0],setProgress=_e[1];
     var _f=useState(null),error=_f[0],setError=_f[1];
@@ -1755,28 +1859,63 @@ function App(){
     function analyze(){
         var p=parseUrl(repoUrl);
         if(!p){setError('Invalid URL. Use format: owner/repo');return;}
-        setError(null);setData(null);setSelected(null);setBlastRadius(null);setLoading(true);setProgress('Checking rate limit...');setFolderFilter(null);
-        GitHub.token=token||null;
+        
+        // Validate authentication inputs
+        if(authMethod==='pat'&&!token){
+            setError('Please enter a Personal Access Token');return;
+        }
+        if(authMethod==='github_app'){
+            if(!appId){setError('Please enter the GitHub App ID');return;}
+            if(!privateKey){setError('Please set the GitHub App private key');return;}
+        }
+        
+        setError(null);setData(null);setSelected(null);setBlastRadius(null);setLoading(true);setProgress('Initializing...');setFolderFilter(null);
+        
+        // Configure GitHub authentication based on method
+        GitHub.token=null;
+        GitHub.appId=null;
+        GitHub.privateKey=null;
+        GitHub.installationToken=null;
+        
+        if(authMethod==='pat'){
+            GitHub.token=token;
+        }else if(authMethod==='github_app'){
+            GitHub.appId=appId;
+            GitHub.privateKey=privateKey;
+        }
+        
         setRepoInfo(p);
 
-        // Check rate limit first
-        GitHub.getRateLimit().then(function(rl){
-            var hasToken=!!GitHub.token;
+        // Authentication promise - resolve immediately for no auth/PAT, authenticate for GitHub App
+        var authPromise;
+        if(authMethod==='github_app'){
+            setProgress('Authenticating with GitHub App...');
+            authPromise=GitHub.authenticateApp(p.owner,p.repo).catch(function(err){
+                throw new Error('GitHub App authentication failed: '+err.message);
+            });
+        }else{
+            authPromise=Promise.resolve();
+        }
+        
+        authPromise.then(function(){
+            setProgress('Checking rate limit...');
+            return GitHub.getRateLimit();
+        }).then(function(rl){
+            var hasAuth=!!GitHub.token||authMethod==='github_app';
             var estimatedRequests=50;// Conservative estimate for a small-medium repo
 
-            // Warn if rate limit is very low and no token
-            if(!hasToken&&rl.remaining<estimatedRequests){
+            // Warn if rate limit is very low and no authentication
+            if(!hasAuth&&rl.remaining<estimatedRequests){
                 var resetTime=new Date(rl.reset*1000).toLocaleTimeString();
                 var proceed=window.confirm(
                     '⚠️ GitHub API Rate Limit Low\n\n'+
                     'Remaining requests: '+rl.remaining+'/'+rl.limit+'\n'+
                     'Resets at: '+resetTime+'\n\n'+
-                    'Without a GitHub token, you only get 60 requests/hour.\n'+
-                    'Adding a token gives you 5000 requests/hour.\n\n'+
-                    'To get a token:\n'+
-                    '1. Go to GitHub Settings → Developer Settings\n'+
-                    '2. Personal access tokens → Tokens (classic)\n'+
-                    '3. Generate new token (no special permissions needed)\n\n'+
+                    'Without authentication, you only get 60 requests/hour.\n'+
+                    'Adding a token or GitHub App gives you 5000 requests/hour.\n\n'+
+                    'Authentication options:\n'+
+                    '• Token (PAT): GitHub Settings → Developer Settings → Personal access tokens\n'+
+                    '• GitHub App: Use App ID + Private Key for organization access\n\n'+
                     'Continue anyway with '+rl.remaining+' requests?'
                 );
                 if(!proceed){setLoading(false);return Promise.reject('cancelled');}
@@ -3112,8 +3251,19 @@ function App(){
             ),
             React.createElement('div',{className:'repo-input-group'},
                 React.createElement('input',{className:'repo-input','aria-label':'Repository URL',placeholder:'owner/repo or GitHub URL',value:repoUrl,onChange:function(e){setRepoUrl(e.target.value);},onKeyDown:function(e){if(e.key==='Enter'&&!loading)analyze();}}),
-                React.createElement('input',{className:'repo-input',type:'password','aria-label':'GitHub Token',placeholder:'Token (optional)',value:token,onChange:function(e){setToken(e.target.value);},onKeyDown:function(e){if(e.key==='Enter'&&!loading)analyze();},style:{maxWidth:120}}),
-                React.createElement('button',{className:'top-btn primary','aria-label':'Analyze repository',onClick:analyze,disabled:loading||!repoUrl},loading?'⏳':'🔍',' Analyze'),
+                React.createElement('select',{className:'auth-select','aria-label':'Authentication Method',value:authMethod,onChange:function(e){setAuthMethod(e.target.value);}},
+                    React.createElement('option',{value:'none'},'No Auth'),
+                    React.createElement('option',{value:'pat'},'Token (PAT)'),
+                    React.createElement('option',{value:'github_app'},'GitHub App')
+                ),
+                React.createElement('div',{className:'auth-inputs'},
+                    authMethod==='pat'&&React.createElement('input',{className:'repo-input',type:'password','aria-label':'GitHub Token',placeholder:'Personal Access Token',value:token,onChange:function(e){setToken(e.target.value);},onKeyDown:function(e){if(e.key==='Enter'&&!loading)analyze();},style:{minWidth:140}}),
+                    authMethod==='github_app'&&React.createElement(React.Fragment,null,
+                        React.createElement('input',{className:'repo-input','aria-label':'App ID',placeholder:'App ID',value:appId,onChange:function(e){setAppId(e.target.value);},onKeyDown:function(e){if(e.key==='Enter'&&!loading)analyze();},style:{width:80}}),
+                        React.createElement('button',{className:'private-key-btn'+(privateKey?' has-key':''),'aria-label':'Set Private Key',onClick:function(){setShowKeyModal(true);},type:'button'},privateKey?'🔑 Key Set':'🔐 Private Key')
+                    )
+                ),
+                React.createElement('button',{id:'analyze-btn',className:'top-btn primary','aria-label':'Analyze repository',onClick:analyze,disabled:loading||!repoUrl},loading?'⏳':'🔍',' Analyze'),
                 React.createElement('button',{className:'top-btn','aria-label':'Open local folder',onClick:function(){openLocalFolder();},disabled:loading},'📁 Open Folder'),
                 data&&React.createElement('button',{className:'refresh-btn','aria-label':'Refresh analysis',onClick:analyze,disabled:loading,title:'Refresh Analysis'},'↻ Refresh'),
                 data&&React.createElement('button',{className:'reset-btn','aria-label':'Reset analysis',onClick:resetAnalysis,title:'Clear & Reset'},'✕ Reset')
@@ -3799,6 +3949,30 @@ function App(){
                 ),
                 React.createElement('div',{className:'modal-footer'},
                     React.createElement('button',{className:'top-btn primary',onClick:function(){setShowPrivacy(false);}},'Got it!')
+                )
+            )
+        ),
+        showKeyModal&&React.createElement('div',{className:'modal-overlay',onClick:function(){setShowKeyModal(false);}},
+            React.createElement('div',{className:'modal key-modal',onClick:function(e){e.stopPropagation();}},
+                React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},'🔐 GitHub App Private Key'),React.createElement('button',{className:'modal-close',onClick:function(){setShowKeyModal(false);}},'×')),
+                React.createElement('div',{className:'modal-body'},
+                    React.createElement('div',{className:'key-info'},
+                        'Paste the private key from your GitHub App. This key is stored only in memory and never leaves your browser.',
+                        React.createElement('br'),React.createElement('br'),
+                        'To get a private key:',React.createElement('br'),
+                        '1. Go to GitHub → Settings → Developer settings → GitHub Apps',React.createElement('br'),
+                        '2. Select your app → Generate a private key',React.createElement('br'),
+                        '3. Open the downloaded ',React.createElement('code',null,'.pem'),' file and paste its contents below'
+                    ),
+                    React.createElement('div',{className:'form-group'},
+                        React.createElement('label',{className:'form-label'},'Private Key (PEM format)'),
+                        React.createElement('textarea',{className:'form-input',placeholder:'-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----',value:privateKey,onChange:function(e){setPrivateKey(e.target.value);},rows:10})
+                    )
+                ),
+                React.createElement('div',{className:'modal-footer'},
+                    privateKey&&React.createElement('button',{className:'top-btn',onClick:function(){setPrivateKey('');},style:{marginRight:'auto'}},'Clear Key'),
+                    React.createElement('button',{className:'top-btn',onClick:function(){setShowKeyModal(false);}},'Cancel'),
+                    React.createElement('button',{className:'top-btn primary',onClick:function(){setShowKeyModal(false);}},'Save')
                 )
             )
         ),
