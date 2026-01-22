@@ -429,17 +429,21 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 <script type="text/babel">
 const{useState,useEffect,useRef,useMemo,useCallback}=React;
 const COLORS=['#4d9fff','#a78bfa','#22d3ee','#00ff9d','#ff9f43','#ec4899','#ff5f5f','#84cc16'];
-const LAYER_COLORS={ui:'#4d9fff',components:'#22d3ee',services:'#a78bfa',utils:'#00ff9d',data:'#ff9f43',config:'#ec4899'};
+const LAYER_COLORS={ui:'#4d9fff',components:'#22d3ee',services:'#a78bfa',utils:'#00ff9d',data:'#ff9f43',config:'#ec4899',modules:'#a78bfa',forms:'#22d3ee',classes:'#ff9f43'};
 const IGNORE=new Set(['node_modules','.git','vendor','dist','build','__pycache__','.next','coverage']);
 
 const Parser={
-    codeExts:['.js','.jsx','.ts','.tsx','.mjs','.cjs','.py','.java','.go','.rb','.php','.vue','.svelte','.rs','.c','.cpp','.cc','.h','.hpp','.cs','.swift','.kt','.kts','.scala','.clj','.ex','.exs','.erl','.hs','.lua','.r','.R','.jl','.dart','.elm','.fs','.fsx','.ml','.pl','.pm','.sh','.bash','.zsh','.fish','.ps1','.psm1','.groovy','.gradle'],
-    textExts:['.md','.txt','.json','.yaml','.yml','.toml','.xml','.html','.htm','.css','.scss','.sass','.less','.svg','.graphql','.gql','.sql','.prisma','.proto','.tf','.tfvars','.dockerfile','.env','.env.example','.gitignore','.eslintrc','.prettierrc','.babelrc','.editorconfig','.ini','.cfg','.conf','.properties','.lock','.csv','.rst','.tex','.makefile','.cmake','.rake'],
+    codeExts:['.js','.jsx','.ts','.tsx','.mjs','.cjs','.py','.java','.go','.rb','.php','.vue','.svelte','.rs','.c','.cpp','.cc','.h','.hpp','.cs','.swift','.kt','.kts','.scala','.clj','.ex','.exs','.erl','.hs','.lua','.r','.R','.jl','.dart','.elm','.fs','.fsx','.ml','.pl','.pm','.sh','.bash','.zsh','.fish','.ps1','.psm1','.groovy','.gradle','.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw'],
+    textExts:['.md','.txt','.json','.yaml','.yml','.toml','.xml','.html','.htm','.css','.scss','.sass','.less','.svg','.graphql','.gql','.sql','.prisma','.proto','.tf','.tfvars','.dockerfile','.env','.env.example','.gitignore','.eslintrc','.prettierrc','.babelrc','.editorconfig','.ini','.cfg','.conf','.properties','.lock','.csv','.rst','.tex','.makefile','.cmake','.rake','.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw'],
     binExts:['.png','.jpg','.jpeg','.gif','.ico','.webp','.bmp','.svg','.woff','.woff2','.ttf','.eot','.otf','.pdf','.zip','.tar','.gz','.rar','.7z','.exe','.dll','.so','.dylib','.bin','.dat','.db','.sqlite','.mp3','.mp4','.wav','.avi','.mov','.webm'],
     isCode:function(n){return Parser.codeExts.some(function(e){return n.toLowerCase().endsWith(e);});},
     isText:function(n){return Parser.textExts.some(function(e){return n.toLowerCase().endsWith(e);});},
     isBinary:function(n){return Parser.binExts.some(function(e){return n.toLowerCase().endsWith(e);});},
     isIncluded:function(n){return !Parser.isBinary(n);},
+    isVBA:function(n){return ['.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw'].some(function(e){return n.toLowerCase().endsWith(e);});},
+    isHTML:function(n){return ['.html','.htm','.xhtml'].some(function(e){return n.toLowerCase().endsWith(e);});},
+    isCSS:function(n){return ['.css','.scss','.sass','.less'].some(function(e){return n.toLowerCase().endsWith(e);});},
+    isJSON:function(n){return ['.json'].some(function(e){return n.toLowerCase().endsWith(e);});},
     detectLayer:function(p){
         var l=p.toLowerCase();
         if(l.includes('/ui/')||l.includes('/views/')||l.includes('/pages/'))return'ui';
@@ -448,6 +452,11 @@ const Parser={
         if(l.includes('/util')||l.includes('/helper')||l.includes('/lib/'))return'utils';
         if(l.includes('/data')||l.includes('/model')||l.includes('/store'))return'data';
         if(l.includes('/config'))return'config';
+        // VBA-specific layer detection
+        if(l.includes('/modules/')||l.includes('/bas/'))return'modules';
+        if(l.includes('/forms/')||l.includes('/userforms/'))return'ui';
+        if(l.includes('/classes/'))return'data';
+        if(l.includes('/standard/'))return'utils';
         return'utils';
     },
     detectPatterns:function(files){
@@ -464,10 +473,20 @@ const Parser={
         if(hocs.length)patterns.push({name:'Higher-Order Component',icon:'🎁',desc:'Functions that take a component and return an enhanced component.',severity:'info',files:hocs.map(function(f){return{name:f.name,path:f.path};}),metrics:{hocs:hocs.length}});
         var providers=files.filter(function(f){return f.content&&(f.content.includes('createContext')||f.content.includes('Provider')||f.content.includes('useContext'));});
         if(providers.length)patterns.push({name:'Context Provider',icon:'🌐',desc:'React Context for global state. Alternative to prop drilling.',severity:'info',files:providers.map(function(f){return{name:f.name,path:f.path};}),metrics:{contexts:providers.length}});
+        // VBA-specific patterns
+        var vbaUserForms=files.filter(function(f){return f.content&&(f.content.match(/Attribute\s+VB_Name\s*=\s*["']UserForm/i)||f.name.match(/UserForm/i));});
+        if(vbaUserForms.length)patterns.push({name:'UserForms',icon:'🖼️',desc:'VBA UserForms for UI components. Common in Excel/Access automation.',severity:'info',files:vbaUserForms.map(function(f){return{name:f.name,path:f.path};}),metrics:{forms:vbaUserForms.length}});
+        var vbaModules=files.filter(function(f){return f.content&&(f.content.match(/Attribute\s+VB_Name\s*=\s*["']Module/i)||f.name.match(/Module/i));});
+        if(vbaModules.length)patterns.push({name:'Modules',icon:'📦',desc:'VBA Modules for reusable code and business logic.',severity:'info',files:vbaModules.map(function(f){return{name:f.name,path:f.path};}),metrics:{modules:vbaModules.length}});
+        var vbaClasses=files.filter(function(f){return f.content&&(f.content.match(/Attribute\s+VB_Name\s*=\s*["']Class/i)||f.name.match(/Class/i));});
+        if(vbaClasses.length)patterns.push({name:'Class Modules',icon:'🏛️',desc:'VBA Class Modules for object-oriented programming patterns.',severity:'info',files:vbaClasses.map(function(f){return{name:f.name,path:f.path};}),metrics:{classes:vbaClasses.length}});
         var godFiles=files.filter(function(f){return f.isCode!==false&&f.functions&&f.functions.length>15;});
         if(godFiles.length)patterns.push({name:'God Object',icon:'⚠️',desc:'Files with too many responsibilities (15+ functions). Consider splitting into smaller modules.',severity:'warning',isAnti:true,files:godFiles.map(function(f){return{name:f.name,path:f.path,fns:f.functions.length};}),metrics:{files:godFiles.length,avgFns:Math.round(godFiles.reduce(function(s,f){return s+f.functions.length;},0)/godFiles.length)}});
         var longFiles=files.filter(function(f){return f.isCode!==false&&f.lines&&f.lines>500;});
         if(longFiles.length)patterns.push({name:'Long File',icon:'📜',desc:'Files over 500 lines are harder to maintain. Consider breaking into smaller modules.',severity:'warning',isAnti:true,files:longFiles.map(function(f){return{name:f.name,path:f.path,lines:f.lines};}),metrics:{files:longFiles.length,avgLines:Math.round(longFiles.reduce(function(s,f){return s+f.lines;},0)/longFiles.length)}});
+        // VBA-specific anti-patterns
+        var vbaGodFiles=files.filter(function(f){return f.isCode!==false&&f.functions&&f.functions.length>20;});
+        if(vbaGodFiles.length)patterns.push({name:'VBA God Module',icon:'⚠️',desc:'VBA modules with 20+ procedures. Consider splitting into smaller modules.',severity:'warning',isAnti:true,files:vbaGodFiles.map(function(f){return{name:f.name,path:f.path,fns:f.functions.length,lines:f.lines};}),metrics:{files:vbaGodFiles.length,avgFns:Math.round(vbaGodFiles.reduce(function(s,f){return s+f.functions.length;},0)/vbaGodFiles.length)}});
         return patterns;
     },
     detectDuplicates:function(files,allFns){
@@ -663,7 +682,7 @@ const Parser={
     },
     detectLayerViolations:function(files,connections){
         var violations=[];
-        var layerOrder={presentation:0,ui:0,component:0,page:0,view:0,feature:1,service:2,api:2,data:3,model:3,util:4,utils:4,helper:4,lib:4,core:4};
+        var layerOrder={presentation:0,ui:0,component:0,page:0,view:0,feature:1,service:2,api:2,data:3,model:3,util:4,utils:4,helper:4,lib:4,core:4,modules:5,forms:0,classes:3};
         connections.forEach(function(c){
             var srcFile=files.find(function(f){return f.path===c.source;});
             var tgtFile=files.find(function(f){return f.path===c.target;});
@@ -778,6 +797,25 @@ const Parser={
                 var consoleCount=(f.content.match(/console\.(log|debug|info)\(/g)||[]).length;
                 if(consoleCount>3){
                     issues.push({severity:'low',title:'Debug Statements',file:f.name,path:f.path,desc:consoleCount+' console statements found. Remove before production.',code:''});
+                }
+            }
+            // VBA-specific security checks
+            if(f.content.match(/SendKeys\s*\(/i)){
+                issues.push({severity:'high',title:'SendKeys Usage',file:f.name,path:f.path,desc:'SendKeys can be exploited for code injection. Avoid using SendKeys.',code:''});
+            }
+            if(f.content.match(/Shell\s*\(/i)){
+                issues.push({severity:'high',title:'Shell Command Execution',file:f.name,path:f.path,desc:'Shell() executes system commands. Ensure input is validated.',code:''});
+            }
+            if(f.content.match(/CreateObject\s*\(\s*["']WScript\.Shell["']/i)){
+                issues.push({severity:'high',title:'WScript.Shell Creation',file:f.name,path:f.path,desc:'Creating WScript.Shell object allows command execution. Use with caution.',code:''});
+            }
+            if(f.content.match(/Application\.Run\s*\(/i)){
+                issues.push({severity:'medium',title:'Dynamic Code Execution',file:f.name,path:f.path,desc:'Application.Run can execute arbitrary code. Validate input.',code:''});
+            }
+            if(f.content.match(/On Error Resume Next/i)){
+                var errorResumeCount=(f.content.match(/On Error Resume Next/gi)||[]).length;
+                if(errorResumeCount>2){
+                    issues.push({severity:'medium',title:'Excessive Error Suppression',file:f.name,path:f.path,desc:errorResumeCount+' instances of "On Error Resume Next" found. This can hide bugs.',code:''});
                 }
             }
             if(f.content.match(/TODO|FIXME|HACK|XXX/)){
@@ -1195,6 +1233,10 @@ const Parser={
             // Lua: function name( or local function name(
             if((m=line.match(/(?:local\s+)?function\s+([a-zA-Z_][a-zA-Z0-9_.:]*)\s*\(/)))
                 addFn({name:m[1].split(/[.:]/).pop(),file:filename,line:lineNum,code:extractCode(lineNum),isTopLevel:true,type:'function'});
+
+            // VBA: Sub Name() or Function Name()
+            if((m=line.match(/(?:Public|Private|Friend)?\s*(?:Sub|Function)\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/i)))
+                addFn({name:m[1],file:filename,line:lineNum,code:extractCode(lineNum),isTopLevel:true,type:'function'});
         });
     },
 
@@ -1216,6 +1258,7 @@ const Parser={
 
         // Check if this is a JS file
         var isJS=true;  // Assume JS for content analysis
+        var isVBA=fnNames.some(function(fn){return fn.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/i);});  // Simple VBA detection
 
         if(isJS&&typeof acorn!=='undefined'){
             try{
@@ -1328,6 +1371,11 @@ const Parser={
             var refPattern=new RegExp('[,\\[:\\(]\\s*'+fn+'\\s*[,\\]\\)\\}]','g');
             var refMatch=content.match(refPattern);
             var refCount=refMatch?refMatch.length:0;
+
+            // VBA-specific: Call Name() or Application.Run "Name"
+            var vbaCallPattern=new RegExp('(?:Call\\s+|Application\\.Run\\s*["\'])'+fn+'(?:["\'])?\\s*\\(','gi');
+            var vbaMatch=content.match(vbaCallPattern);
+            if(vbaMatch)callCount+=vbaMatch.length;
 
             calls[fn]=Math.max(0,callCount)+refCount;
         });
@@ -2310,7 +2358,7 @@ function App(){
 
     function getNodeColor(d){
         if(colorMode==='folder')return colorMap[d.folder]||COLORS[0];
-        if(colorMode==='layer')return LAYER_COLORS[d.layer]||COLORS[0];
+        if(colorMode==='layer')return LAYER_COLORS[d.layer]||LAYER_COLORS['utils'];
         if(colorMode==='churn')return colorMap[d.id]||'#22c55e';
         return COLORS[0];
     }
@@ -2331,6 +2379,7 @@ function App(){
         var isJSON=['json','yaml','yml','toml'].includes(ext);
         var isRuby=['rb','rake'].includes(ext);
         var isPHP=ext==='php';
+        var isVBA=['vba','bas','cls','xlsm','xlam','xlsb','xla','xlw'].includes(ext);
         function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
         // Split into tokens while preserving structure
         var result=code.split('\n').map(function(line){
@@ -2349,6 +2398,7 @@ function App(){
             if(isJava)escaped=escaped.replace(/\b(public|private|protected|static|final|void|class|interface|extends|implements|return|if|else|for|while|do|switch|case|break|continue|try|catch|finally|throw|new|import|package|this|super|null|true|false)\b/g,'<span class="syn-kw">$1</span>');
             if(isRuby)escaped=escaped.replace(/\b(def|class|module|end|return|if|elsif|else|unless|case|when|for|while|until|do|begin|rescue|ensure|raise|require|include|extend|attr_accessor|attr_reader|attr_writer|true|false|nil|self)\b/g,'<span class="syn-kw">$1</span>');
             if(isPHP)escaped=escaped.replace(/\b(function|class|return|if|else|elseif|for|foreach|while|do|switch|case|break|continue|try|catch|finally|throw|new|public|private|protected|static|const|use|namespace|extends|implements|true|false|null)\b/g,'<span class="syn-kw">$1</span>');
+            if(isVBA)escaped=escaped.replace(/\b(Public|Private|Friend|Static|Dim|Set|Let|Get|Call|Function|Sub|End Sub|End Function|Exit Sub|Exit Function|If|Then|Else|ElseIf|End If|For|To|Step|Next|Do|Loop|While|Wend|Select|Case|End Select|With|End With|On Error|Resume|GoTo|ByVal|ByRef|Optional|ParamArray|As|Type|Enum|Const|True|False|Nothing|Empty|Null|Me|Application|ThisWorkbook|Worksheets|Cells|Range|MsgBox|InputBox|Debug\.Print)\b/gi,'<span class="syn-kw">$1</span>');
             if(isCSS)escaped=escaped.replace(/(@media|@import|@keyframes|@font-face|!important)/g,'<span class="syn-kw">$1</span>');
             if(isHTML){escaped=escaped.replace(/(&lt;\/?)([\w-]+)/g,'$1<span class="syn-tag">$2</span>');escaped=escaped.replace(/([\w-]+)(=)/g,'<span class="syn-attr">$1</span>$2');}
             // Function calls
@@ -2453,7 +2503,7 @@ function App(){
         function getR(d){return Math.max(8,Math.min(24,5+d.fnCount*0.8));}
         function getC(d){
             if(colorMode==='folder')return colorMap[d.folder]||COLORS[0];
-            if(colorMode==='layer')return LAYER_COLORS[d.layer]||COLORS[0];
+            if(colorMode==='layer')return LAYER_COLORS[d.layer]||LAYER_COLORS['utils'];
             if(colorMode==='churn')return colorMap[d.id]||'#22c55e';
             return COLORS[0];
         }
@@ -2488,7 +2538,7 @@ function App(){
                .force('x',d3.forceX(function(d){return d.targetX;}).strength(0.8))
                .force('y',d3.forceY(function(d){return d.targetY;}).strength(0.8));
         }else if(graphConfig.viewMode==='hierarchical'){
-            var layerOrder={util:0,model:1,service:2,controller:3,view:4,test:5,config:6};
+            var layerOrder={util:0,model:1,service:2,controller:3,view:4,test:5,config:6,modules:7,forms:8,classes:9};
             var layerGroups={};
             nodes.forEach(function(n){var l=n.layer||'util';if(!layerGroups[l])layerGroups[l]=[];layerGroups[l].push(n);});
             var sortedLayers=Object.keys(layerGroups).sort(function(a,b){return(layerOrder[a]||99)-(layerOrder[b]||99);});
@@ -3402,7 +3452,7 @@ function App(){
                         React.createElement('div',{className:'legend-content'},
                             colorMode==='folder'&&data.folders.slice(0,12).map(function(f,i){return React.createElement('div',{key:f,className:'legend-item'+(folderFilter===f?' active':''),onClick:function(e){e.stopPropagation();filterByFolder(f);}},React.createElement('div',{className:'legend-color',style:{background:colorMap[f]||COLORS[i%COLORS.length]}}),f||'root');}),
                             colorMode==='folder'&&data.folders.length>12&&React.createElement('div',{style:{fontSize:9,color:'var(--t3)',marginTop:4}},'+',data.folders.length-12,' more'),
-                            colorMode==='layer'&&Object.entries(LAYER_COLORS).map(function(e){return React.createElement('div',{key:e[0],className:'legend-item'},React.createElement('div',{className:'legend-color',style:{background:e[1]}}),e[0]);}),
+                            colorMode==='layer'&&Object.entries(LAYER_COLORS).map(function(e){return React.createElement('div',{key:e[0],className:'legend-item'},React.createElement('div',{className:'legend-color',style:{background:e[1]}}),e[0]=== 'modules' ? 'Modules' : e[0]=== 'forms' ? 'UserForms' : e[0]=== 'classes' ? 'Classes' : e[0]);}),
                             colorMode==='churn'&&React.createElement(React.Fragment,null,React.createElement('div',{className:'legend-item'},React.createElement('div',{className:'legend-color',style:{background:'#ff5f5f'}}),'High (7+ commits)'),React.createElement('div',{className:'legend-item'},React.createElement('div',{className:'legend-color',style:{background:'#ff9f43'}}),'Medium (4-6)'),React.createElement('div',{className:'legend-item'},React.createElement('div',{className:'legend-color',style:{background:'#22c55e'}}),'Low (0-3)'))
                         )
                     ),
@@ -4032,7 +4082,7 @@ function App(){
             React.createElement('div',{className:'file-preview-modal',onClick:function(e){e.stopPropagation();}},
                 React.createElement('div',{className:'file-preview-header'},
                     React.createElement('div',{className:'file-preview-title'},
-                        React.createElement('span',{className:'file-preview-icon'},Parser.isCode(filePreview.filename)?'📄':'📝'),
+                        React.createElement('span',{className:'file-preview-icon'},Parser.isCode(filePreview.filename)?(Parser.isVBA(filePreview.filename)?'📊':Parser.isHTML(filePreview.filename)?'🌐':Parser.isCSS(filePreview.filename)?'🎨':Parser.isJSON(filePreview.filename)?'📋':'📝'):null),
                         React.createElement('span',{className:'file-preview-name'},filePreview.filename),
                         React.createElement('span',{className:'file-preview-path'},filePreview.path)
                     ),
@@ -4061,7 +4111,7 @@ function App(){
                 )
             )
         ),
-        error&&React.createElement('div',{style:{position:'fixed',bottom:20,right:20,background:'var(--red)',color:'white',padding:'12px 20px',borderRadius:8,zIndex:1000,maxWidth:350},'role':'alert'},error,React.createElement('button',{'aria-label':'Dismiss error',onClick:function(){setError(null);},style:{marginLeft:12,background:'none',border:'none',color:'white',cursor:'pointer',fontSize:16}},'×'))
+        error&&React.createElement('div',{style:{position:'fixed',bottom:20,right:20,background:'var(--red)',color:'white',padding:'12px 20px',borderRadius:8,zIndex:1000,maxWidth:350},'role':'alert'},[error,React.createElement('button',{'aria-label':'Dismiss error','onClick':function(){setError(null);},style:{marginLeft:12,background:'none',border:'none',color:'white',cursor:'pointer',fontSize:16}},'×')])
     );
 }
 

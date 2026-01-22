@@ -19,14 +19,15 @@
 
 ## Why CodeFlow?
 
-Ever opened a new codebase and felt completely lost? **CodeFlow** turns any GitHub repository into an interactive architecture map in seconds.
+Ever opened a new codebase and felt completely lost? **CodeFlow** turns any GitHub repository or local codebase into an interactive architecture map in seconds.
 
 - **No installation required** — runs entirely in your browser
 - **No data collection** — your code never leaves your machine
-- **No accounts** — just paste a URL and go
+- **No accounts** — just paste a URL or select local files and go
+- **Works offline** — analyze local files without internet
 
 ```
-⚡ Paste URL → See Architecture → Make Better Decisions
+⚡ Paste URL / Select Files → See Architecture → Make Better Decisions
 ```
 
 ---
@@ -70,6 +71,14 @@ Color files by commit frequency to see which parts of your codebase are most act
 ### 📋 **PR Impact Analysis**
 Paste a PR URL to see exactly which files it affects and calculate the blast radius of proposed changes.
 
+### 💻 **Local File Analysis**
+Analyze code directly from your computer without uploading to GitHub:
+- **Privacy First:** Your code never leaves your machine
+- **Offline Support:** Works without internet connection
+- **Drag & Drop:** Simply drag files or folders to analyze
+- **Folder Scanning:** Recursively analyze entire project structures
+- **Instant Results:** All processing happens in your browser
+
 ---
 
 ## Privacy First
@@ -102,6 +111,20 @@ open index.html
 
 No build process. No dependencies. No npm install. **It's just one HTML file.**
 
+### Option 3: Analyze Local Files
+You can now analyze code directly from your local machine without uploading to GitHub:
+
+1. Open CodeFlow in your browser
+2. Click the "📁 Local Files" button
+3. Select the folder or files you want to analyze
+4. CodeFlow will process them entirely in your browser
+
+**Perfect for:**
+- Private projects you don't want to upload
+- Offline development
+- Quick local analysis before committing
+- Working with sensitive code
+
 ---
 
 ## Usage
@@ -116,6 +139,14 @@ Or full URL: https://github.com/facebook/react
 1. Create a [GitHub Personal Access Token](https://github.com/settings/tokens) with `repo` scope
 2. Paste it in the Token field
 3. Analyze your private repos
+
+### Local Files
+Click the "📁 Local Files" button to analyze code from your computer:
+- **Folder Analysis:** Select a folder to analyze all supported files recursively
+- **File Selection:** Choose specific files to analyze
+- **Drag & Drop:** Drag files or folders directly onto the page
+
+All processing happens locally in your browser - nothing is uploaded.
 
 ### Shareable Links
 After analysis, click 🔗 to copy a shareable link. Anyone can re-run the same analysis.
@@ -158,6 +189,29 @@ CodeFlow extracts functions and analyzes dependencies for:
 | PHP | `.php` |
 | Vue | `.vue` |
 | Svelte | `.svelte` |
+| Rust | `.rs` |
+| C | `.c`, `.h` |
+| C++ | `.cpp`, `.cc`, `.cxx`, `.hpp`, `.hh`, `.hxx` |
+| C# | `.cs` |
+| Swift | `.swift` |
+| Kotlin | `.kt`, `.kts` |
+| Scala | `.scala`, `.sc` |
+| Groovy | `.groovy`, `.gvy` |
+| Elixir | `.ex`, `.exs` |
+| Erlang | `.erl`, `.hrl` |
+| Haskell | `.hs`, `.lhs` |
+| Lua | `.lua` |
+| R | `.r`, `.R` |
+| Julia | `.jl` |
+| Dart | `.dart` |
+| Perl | `.pl`, `.pm` |
+| Shell | `.sh`, `.bash`, `.zsh`, `.fish` |
+| PowerShell | `.ps1`, `.psm1`, `.psd1` |
+| F# | `.fs`, `.fsi`, `.fsx` |
+| OCaml | `.ml`, `.mli` |
+| Clojure | `.clj`, `.cljs`, `.cljc` |
+| Elm | `.elm` |
+| VBA | `.vba`, `.bas`, `.cls`, `.xlsm`, `.xlsb`, `.xlam` |
 
 ---
 
@@ -186,9 +240,32 @@ CodeFlow extracts functions and analyzes dependencies for:
 
 GitHub API has rate limits:
 - **Without token:** 60 requests/hour
-- **With token:** 5,000 requests/hour
+- **With Personal Access Token:** 5,000 requests/hour
+- **With GitHub App:** 5,000 requests/hour per installation
 
-For larger repositories, we recommend using a token.
+### Authentication Methods
+
+#### Personal Access Token (PAT)
+1. Create a [GitHub Personal Access Token](https://github.com/settings/tokens) with `repo` scope
+2. Paste it in the Token field
+3. Analyze your private repos
+
+#### GitHub App Authentication
+For teams and organizations, GitHub App provides better security and higher rate limits:
+
+1. Create a [GitHub App](https://github.com/settings/apps) with repository permissions
+2. Install the app on your organization or personal account
+3. Generate an installation access token
+4. Paste the token in the Token field
+
+**Benefits of GitHub App:**
+- ✅ Fine-grained permissions control
+- ✅ Revocable access per installation
+- ✅ Higher rate limits (5,000 requests/hour)
+- ✅ Audit logging and security monitoring
+- ✅ No need to share personal credentials
+
+For larger repositories or team usage, we recommend using GitHub App authentication.
 
 ---
 
@@ -196,19 +273,19 @@ For larger repositories, we recommend using a token.
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                   CodeFlow                       │
+│                   CodeFlow                      │
 ├─────────────────────────────────────────────────┤
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
-│  │  Parser  │  │  GitHub  │  │    D3    │      │
-│  │  Module  │  │   API    │  │  Graph   │      │
-│  └──────────┘  └──────────┘  └──────────┘      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐       │
+│  │  Parser  │  │  GitHub  │  │    D3    │       │
+│  │  Module  │  │   API    │  │  Graph   │       │
+│  └──────────┘  └──────────┘  └──────────┘       │
 │        │              │              │          │
 │        └──────────────┼──────────────┘          │
 │                       │                         │
-│              ┌────────▼────────┐               │
-│              │   React App    │               │
-│              │  (Single File) │               │
-│              └─────────────────┘               │
+│              ┌────────▼────────┐                │
+│              │   React App     │                │
+│              │  (Single File)  │                │
+│              └─────────────────┘                │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -229,7 +306,7 @@ We love contributions! Here's how:
 4. Submit a PR
 
 ### Ideas for Contributions
-- [ ] Add support for more languages (Rust, C++, etc.)
+- [ ] Add support for more languages
 - [ ] Improve function extraction regex
 - [ ] Add more design pattern detection
 - [ ] Export to different formats (PNG, PDF)
@@ -246,7 +323,7 @@ We love contributions! Here's how:
 > Yes. Your code is fetched directly from GitHub to your browser. Nothing is sent to any server we control. Check the source — it's one file!
 
 **Q: Can I use it offline?**
-> Not currently, as it needs to fetch from GitHub. But you could fork it and add local file support!
+> Yes! With the new Local Files feature, you can analyze code from your computer without any internet connection. Just click the "📁 Local Files" button and select your files. All processing happens entirely in your browser.
 
 **Q: Why is analysis slow?**
 > We make individual API calls for each file to get content. With a token, you get higher rate limits and faster analysis.
