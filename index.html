@@ -2799,6 +2799,7 @@ function App(){
         if(!data||!svgRef.current)return;
         var svg=d3.select(svgRef.current);
         svg.selectAll('*').remove();
+        try{
         var w=svgRef.current.clientWidth;
         var h=svgRef.current.clientHeight;
         var filteredFiles=folderFilter?data.files.filter(function(f){return f.folder===folderFilter||f.folder.startsWith(folderFilter+'/');}):data.files;
@@ -2807,6 +2808,7 @@ function App(){
         var linkMap=new Map();
         data.connections.forEach(function(c){
             if(!fileIds.has(c.source)||!fileIds.has(c.target))return;
+            if(c.source===c.target)return;// Skip self-links
             var k=c.source+'|'+c.target;
             if(!linkMap.has(k))linkMap.set(k,{source:c.source,target:c.target,count:0});
             linkMap.get(k).count+=c.count;
@@ -2943,7 +2945,8 @@ function App(){
             if(tickCount%hullInterval===0)updateHulls();
         });
         node.selectAll('text').attr('opacity',graphConfig.showLabels?1:0);
-        return function(){sim.stop();};
+        }catch(e){console.error('Force graph error:',e);svg.selectAll('*').remove();svg.append('text').attr('x',20).attr('y',30).attr('fill','var(--t3)').text('Graph rendering error: '+e.message);}
+        return function(){if(simRef.current)simRef.current.stop();};
     },[data,colorMap,colorMode,theme,folderFilter,graphConfig]);
 
     // Treemap visualization - Interactive with zoom, pan, selection, blast radius
@@ -3171,7 +3174,13 @@ function App(){
             return;
         }
         var sankey=d3.sankey().nodeId(function(d){return d.id;}).nodeWidth(20).nodePadding(15).extent([[0,0],[w-60,h-60]]);
-        var graph=sankey({nodes:nodes.map(function(d){return Object.assign({},d);}),links:links.map(function(d){return Object.assign({},d);})});
+        var graph;
+        try{
+            graph=sankey({nodes:nodes.map(function(d){return Object.assign({},d);}),links:links.map(function(d){return Object.assign({},d);})});
+        }catch(e){
+            g.append('text').attr('x',w/2-20).attr('y',h/2).attr('fill','var(--t3)').attr('font-size','12px').attr('text-anchor','middle').text('Sankey diagram unavailable: dependency graph has circular references. Try the Force Graph view.');
+            return;
+        }
         var tooltip=container.append('div').attr('class','treemap-tooltip').style('display','none').style('position','absolute');
         g.selectAll('path.sankey-link').data(graph.links).join('path').attr('class','sankey-link')
             .attr('d',d3.sankeyLinkHorizontal()).attr('fill','none')
@@ -3220,7 +3229,7 @@ function App(){
         data.connections.forEach(function(c){
             var src=typeof c.source==='object'?c.source.id:c.source;
             var tgt=typeof c.target==='object'?c.target.id:c.target;
-            if(fileIdx[src]!==undefined&&fileIdx[tgt]!==undefined)links.push({source:src,target:tgt,count:c.count||1});
+            if(fileIdx[src]!==undefined&&fileIdx[tgt]!==undefined&&src!==tgt)links.push({source:src,target:tgt,count:c.count||1});
         });
         var sim=d3.forceSimulation(nodes)
             .force('link',d3.forceLink(links).id(function(d){return d.id;}).distance(40).strength(0.3))
@@ -3293,7 +3302,7 @@ function App(){
         data.connections.forEach(function(c){
             var src=typeof c.source==='object'?c.source.id:c.source;
             var tgt=typeof c.target==='object'?c.target.id:c.target;
-            if(nodeMap[src]&&nodeMap[tgt])links.push({source:nodeMap[src],target:nodeMap[tgt],count:c.count||1});
+            if(nodeMap[src]&&nodeMap[tgt]&&src!==tgt)links.push({source:nodeMap[src],target:nodeMap[tgt],count:c.count||1});
         });
         var link=mainG.selectAll('path.bundle-link').data(links).join('path').attr('class','bundle-link')
             .attr('d',function(d){
