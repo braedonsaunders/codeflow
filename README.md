@@ -184,6 +184,7 @@ CodeFlow extracts functions and analyzes dependencies for:
 |----------|------------|
 | JavaScript | `.js`, `.jsx` |
 | TypeScript | `.ts`, `.tsx` |
+| HTML (inline scripts) | `.html`, `.htm`, `.xhtml` |
 | Python | `.py` |
 | Java | `.java` |
 | Go | `.go` |

@@ -569,17 +569,103 @@ const Parser={
         })();
         return this._tsInitPromise;
     },
-    codeExts:['.js','.jsx','.ts','.tsx','.mjs','.cjs','.py','.pyw','.pyi','.java','.go','.rb','.php','.vue','.svelte','.rs','.c','.cpp','.cc','.h','.hpp','.cs','.swift','.kt','.kts','.scala','.clj','.ex','.exs','.erl','.hs','.lua','.r','.R','.jl','.dart','.elm','.fs','.fsx','.ml','.pl','.pm','.sh','.bash','.zsh','.fish','.ps1','.psm1','.groovy','.gradle','.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw'],
+    codeExts:['.js','.jsx','.ts','.tsx','.mjs','.cjs','.py','.pyw','.pyi','.java','.go','.rb','.php','.rs','.c','.cpp','.cc','.h','.hpp','.cs','.swift','.kt','.kts','.scala','.clj','.ex','.exs','.erl','.hs','.lua','.r','.R','.jl','.dart','.elm','.fs','.fsx','.ml','.pl','.pm','.sh','.bash','.zsh','.fish','.ps1','.psm1','.groovy','.gradle','.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw'],
+    scriptContainerExts:['.html','.htm','.xhtml','.vue','.svelte'],
     textExts:['.md','.txt','.json','.yaml','.yml','.toml','.xml','.html','.htm','.css','.scss','.sass','.less','.svg','.graphql','.gql','.sql','.prisma','.proto','.tf','.tfvars','.dockerfile','.env','.env.example','.gitignore','.eslintrc','.prettierrc','.babelrc','.editorconfig','.ini','.cfg','.conf','.properties','.lock','.csv','.rst','.tex','.makefile','.cmake','.rake','.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw'],
     binExts:['.png','.jpg','.jpeg','.gif','.ico','.webp','.bmp','.svg','.woff','.woff2','.ttf','.eot','.otf','.pdf','.zip','.tar','.gz','.rar','.7z','.exe','.dll','.so','.dylib','.bin','.dat','.db','.sqlite','.mp3','.mp4','.wav','.avi','.mov','.webm'],
-    isCode:function(n){return Parser.codeExts.some(function(e){return n.toLowerCase().endsWith(e);});},
+    isCode:function(n){
+        var lower=n.toLowerCase();
+        return Parser.codeExts.some(function(e){return lower.endsWith(e);})||
+            Parser.scriptContainerExts.some(function(e){return lower.endsWith(e);});
+    },
     isText:function(n){return Parser.textExts.some(function(e){return n.toLowerCase().endsWith(e);});},
     isBinary:function(n){return Parser.binExts.some(function(e){return n.toLowerCase().endsWith(e);});},
     isIncluded:function(n){return !Parser.isBinary(n);},
+    isScriptContainer:function(n){return Parser.scriptContainerExts.some(function(e){return n.toLowerCase().endsWith(e);});},
     isVBA:function(n){return ['.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw'].some(function(e){return n.toLowerCase().endsWith(e);});},
     isHTML:function(n){return ['.html','.htm','.xhtml'].some(function(e){return n.toLowerCase().endsWith(e);});},
     isCSS:function(n){return ['.css','.scss','.sass','.less'].some(function(e){return n.toLowerCase().endsWith(e);});},
     isJSON:function(n){return ['.json'].some(function(e){return n.toLowerCase().endsWith(e);});},
+    getScriptTagAttribute:function(attrs,name){
+        var match=attrs.match(new RegExp('\\b'+name+'\\s*=\\s*(["\'])(.*?)\\1','i'));
+        return match?match[2]:'';
+    },
+    getScriptBlockInfo:function(attrs){
+        var type=(Parser.getScriptTagAttribute(attrs,'type')||'').split(';')[0].trim().toLowerCase();
+        var lang=(Parser.getScriptTagAttribute(attrs,'lang')||'').split(';')[0].trim().toLowerCase();
+        var info={executable:false,isTS:false,sourceType:'script'};
+
+        if(!type){
+            info.executable=true;
+        }else if(type==='module'){
+            info.executable=true;
+            info.sourceType='module';
+        }else if(
+            type.match(/^(?:text|application)\/(?:x-)?(?:java|ecma)script$/)||
+            type==='text/babel'||type==='text/jsx'||type==='application/jsx'||
+            type==='application/babel'
+        ){
+            info.executable=true;
+        }else if(
+            type.match(/^(?:text|application)\/(?:x-)?typescript$/)||
+            type==='text/tsx'||type==='application/tsx'
+        ){
+            info.executable=true;
+            info.isTS=true;
+        }
+
+        if(lang==='ts'||lang==='tsx'||lang==='typescript'){
+            info.executable=true;
+            info.isTS=true;
+        }else if(lang==='js'||lang==='jsx'||lang==='javascript'||lang==='babel'){
+            info.executable=true;
+        }
+
+        return info;
+    },
+    getEmbeddedCodeBlocks:function(content,filename,options){
+        if(!content||!Parser.isScriptContainer(filename))return[];
+        var blocks=[];
+        var scriptRegex=/<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+        var match;
+        while((match=scriptRegex.exec(content))){
+            var attrs=match[1]||'';
+            var info=Parser.getScriptBlockInfo(attrs);
+            var scriptContent=match[2]||'';
+            if(!info.executable||!scriptContent.trim())continue;
+            var openTagEnd=match[0].indexOf('>');
+            if(openTagEnd<0)continue;
+            var bodyStart=match.index+openTagEnd+1;
+            blocks.push({
+                content:scriptContent,
+                offset:content.slice(0,bodyStart).split('\n').length-1,
+                isTS:info.isTS,
+                sourceType:info.sourceType,
+                kind:'script'
+            });
+        }
+
+        if(options&&options.includeHandlers&&Parser.isHTML(filename)){
+            var handlerRegex=/\bon[a-z][\w:-]*\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+            while((match=handlerRegex.exec(content))){
+                var handlerCode=match[1]!==undefined?match[1]:(match[2]!==undefined?match[2]:match[3]);
+                if(!handlerCode||!handlerCode.trim())continue;
+                var valueStart=match.index+match[0].lastIndexOf(handlerCode);
+                blocks.push({
+                    content:handlerCode,
+                    offset:content.slice(0,valueStart).split('\n').length-1,
+                    isTS:false,
+                    sourceType:'script',
+                    kind:'handler'
+                });
+            }
+        }
+
+        return blocks;
+    },
+    hasEmbeddedCode:function(content,filename){
+        return Parser.getEmbeddedCodeBlocks(content,filename,{includeHandlers:true}).length>0;
+    },
     detectLayer:function(p){
         var l=p.toLowerCase();
         // Test files
@@ -884,8 +970,13 @@ const Parser={
         });
         return violations;
     },
-    calcComplexity:function(content){
+    calcComplexity:function(content,filename){
         if(!content)return{score:0,level:'low'};
+        if(filename&&Parser.isScriptContainer(filename)){
+            var blocks=Parser.getEmbeddedCodeBlocks(content,filename,{includeHandlers:true});
+            if(!blocks.length)return{score:0,level:'low'};
+            content=blocks.map(function(block){return block.content;}).join('\n');
+        }
         // Approximate cyclomatic complexity - supports JS, Python, and other languages
         var complexity=1;
         // JS/C-style patterns
@@ -1084,6 +1175,19 @@ const Parser={
                 seenAtLine[key]=true;
                 fns.push(fnObj);
             }
+        }
+
+        var scriptBlocks=Parser.getEmbeddedCodeBlocks(content,filename,{includeHandlers:false}).filter(function(block){
+            return block.kind==='script';
+        });
+        if(scriptBlocks.length){
+            scriptBlocks.forEach(function(block){
+                Parser.extractJSFunctions(block.content,filename,block.offset,addFn,extractCode,block.isTS);
+            });
+            return fns;
+        }
+        if(Parser.isScriptContainer(filename)){
+            return fns;
         }
 
         // Check file type
@@ -1635,6 +1739,299 @@ const Parser={
                 addFn({name:m[1],file:filename,line:lineNum,code:extractCode(lineNum),isTopLevel:true,type:'function'});
         });
     },
+    extractJSFunctions:function(content,filename,offset,addFn,extractCode,isTS){
+        if(!content||!content.trim())return;
+        if(typeof acorn!=='undefined'){
+            var parseContent=content;
+            var parseSuccess=false;
+
+            if(typeof Babel!=='undefined'){
+                try{
+                    var babelPresets=['react'];
+                    if(isTS)babelPresets.push('typescript');
+                    var babelResult=Babel.transform(parseContent,{
+                        presets:babelPresets,
+                        filename:filename||'file.js',
+                        sourceType:'module',
+                        retainLines:true
+                    });
+                    parseContent=babelResult.code;
+                }catch(babelErr){
+                    if(isTS){
+                        parseContent=Parser.stripTypeScript(content);
+                    }
+                }
+            }else if(isTS){
+                parseContent=Parser.stripTypeScript(content);
+            }
+
+            try{
+                var ast=acorn.parse(parseContent,{
+                    ecmaVersion:2022,
+                    sourceType:'module',
+                    allowHashBang:true,
+                    allowAwaitOutsideFunction:true,
+                    allowImportExportEverywhere:true,
+                    allowReturnOutsideFunction:true,
+                    locations:true
+                });
+                parseSuccess=true;
+
+                function walk(node,scope,parentIsExport){
+                    if(!node||typeof node!=='object')return;
+                    var isTopLevel=(scope===0);
+
+                    if(node.type==='FunctionDeclaration'&&node.id&&node.id.name){
+                        var line=(node.loc?node.loc.start.line:1)+offset;
+                        var endLine=(node.loc?node.loc.end.line:line)+offset;
+                        addFn({
+                            name:node.id.name,
+                            file:filename,
+                            line:line,
+                            code:extractCode(line,endLine),
+                            isTopLevel:isTopLevel,
+                            isExported:parentIsExport||false,
+                            type:'function'
+                        });
+                    }
+
+                    if(node.type==='VariableDeclaration'){
+                        node.declarations.forEach(function(decl){
+                            if(decl.id&&decl.id.type==='Identifier'&&decl.init){
+                                var init=decl.init;
+                                if(init.type==='FunctionExpression'||init.type==='ArrowFunctionExpression'){
+                                    var line=(decl.loc?decl.loc.start.line:1)+offset;
+                                    var endLine=(decl.loc?decl.loc.end.line:line)+offset;
+                                    addFn({
+                                        name:decl.id.name,
+                                        file:filename,
+                                        line:line,
+                                        code:extractCode(line,endLine),
+                                        isTopLevel:isTopLevel,
+                                        isExported:parentIsExport||false,
+                                        type:init.type==='ArrowFunctionExpression'?'arrow':'function'
+                                    });
+                                }
+                            }
+                        });
+                    }
+
+                    if(node.type==='MethodDefinition'&&node.key){
+                        var methodName=node.key.name||node.key.value;
+                        if(methodName&&methodName!=='constructor'){
+                            var methodLine=(node.loc?node.loc.start.line:1)+offset;
+                            var methodEndLine=(node.loc?node.loc.end.line:methodLine)+offset;
+                            addFn({
+                                name:methodName,
+                                file:filename,
+                                line:methodLine,
+                                code:extractCode(methodLine,methodEndLine),
+                                isTopLevel:false,
+                                isExported:false,
+                                type:'method',
+                                isClassMethod:true,
+                                isGetter:node.kind==='get',
+                                isSetter:node.kind==='set'
+                            });
+                        }
+                    }
+
+                    if(node.type==='Property'&&node.method&&node.key){
+                        var shorthandName=node.key.name||node.key.value;
+                        if(shorthandName){
+                            var shorthandLine=(node.loc?node.loc.start.line:1)+offset;
+                            var shorthandEndLine=(node.loc?node.loc.end.line:shorthandLine)+offset;
+                            addFn({
+                                name:shorthandName,
+                                file:filename,
+                                line:shorthandLine,
+                                code:extractCode(shorthandLine,shorthandEndLine),
+                                isTopLevel:false,
+                                isExported:false,
+                                type:'method'
+                            });
+                        }
+                    }
+
+                    if(node.type==='Property'&&!node.method&&node.value&&node.key){
+                        var val=node.value;
+                        if(val.type==='FunctionExpression'||val.type==='ArrowFunctionExpression'){
+                            var propName=node.key.name||node.key.value;
+                            if(propName){
+                                var propLine=(node.loc?node.loc.start.line:1)+offset;
+                                var propEndLine=(node.loc?node.loc.end.line:propLine)+offset;
+                                addFn({
+                                    name:propName,
+                                    file:filename,
+                                    line:propLine,
+                                    code:extractCode(propLine,propEndLine),
+                                    isTopLevel:false,
+                                    isExported:false,
+                                    type:'method'
+                                });
+                            }
+                        }
+                    }
+
+                    var nextIsExport=false;
+                    if(node.type==='ExportNamedDeclaration'||node.type==='ExportDefaultDeclaration'){
+                        nextIsExport=true;
+                        if(node.declaration){
+                            walk(node.declaration,scope,true);
+                            return;
+                        }
+                    }
+
+                    var newScope=scope;
+                    if(node.type==='FunctionDeclaration'||node.type==='FunctionExpression'||
+                       node.type==='ArrowFunctionExpression'||node.type==='ClassDeclaration'||
+                       node.type==='ClassExpression'){
+                        newScope=scope+1;
+                    }
+
+                    for(var key in node){
+                        if(key==='loc'||key==='range'||key==='start'||key==='end'||key==='raw')continue;
+                        var child=node[key];
+                        if(Array.isArray(child)){
+                            child.forEach(function(c){walk(c,newScope,nextIsExport);});
+                        }else if(child&&typeof child==='object'&&child.type){
+                            walk(child,newScope,nextIsExport);
+                        }
+                    }
+                }
+
+                walk(ast,0,false);
+            }catch(e){
+                parseSuccess=false;
+            }
+
+            if(!parseSuccess){
+                Parser.extractWithRegex(content,filename,offset,addFn,extractCode);
+            }
+            return;
+        }
+
+        Parser.extractWithRegex(content,filename,offset,addFn,extractCode);
+    },
+    findJSCalls:function(content,fnNames,defLines,options){
+        var calls={};
+        var refs={};
+        fnNames.forEach(function(fn){calls[fn]=0;refs[fn]=0;});
+
+        var sourceType=options&&options.sourceType==='script'?'script':'module';
+        var isTS=!!(options&&options.isTS);
+
+        if(typeof acorn!=='undefined'){
+            try{
+                var jsContent=content;
+                if(typeof Babel!=='undefined'){
+                    try{
+                        var babelPresets=['react'];
+                        if(isTS)babelPresets.push('typescript');
+                        var babelResult=Babel.transform(content,{
+                            presets:babelPresets,
+                            filename:options&&options.filename?options.filename:'file.js',
+                            sourceType:sourceType,
+                            retainLines:true
+                        });
+                        jsContent=babelResult.code;
+                    }catch(babelErr){
+                        jsContent=isTS?Parser.stripTypeScript(content):content;
+                    }
+                }else if(isTS){
+                    jsContent=Parser.stripTypeScript(content);
+                }
+
+                var ast=acorn.parse(jsContent,{
+                    ecmaVersion:2022,
+                    sourceType:sourceType,
+                    allowHashBang:true,
+                    allowAwaitOutsideFunction:true,
+                    allowImportExportEverywhere:true,
+                    allowReturnOutsideFunction:true,
+                    locations:true,
+                    tolerant:true
+                });
+                var fnSet=new Set(fnNames);
+
+                function walk(node,inDeclaration){
+                    if(!node||typeof node!=='object')return;
+                    var isDecl=node.type==='FunctionDeclaration'||node.type==='VariableDeclarator';
+
+                    if(node.type==='CallExpression'){
+                        var callee=node.callee;
+                        if(callee.type==='Identifier'&&fnSet.has(callee.name)){
+                            var line=callee.loc?callee.loc.start.line:0;
+                            if(!defLines[callee.name]||defLines[callee.name]!==line){
+                                calls[callee.name]++;
+                            }
+                        }
+                        node.arguments.forEach(function(arg){
+                            if(arg.type==='Identifier'&&fnSet.has(arg.name)){
+                                refs[arg.name]++;
+                            }
+                        });
+                    }
+
+                    if(node.type==='ArrayExpression'){
+                        node.elements.forEach(function(el){
+                            if(el&&el.type==='Identifier'&&fnSet.has(el.name)){
+                                refs[el.name]++;
+                            }
+                        });
+                    }
+                    if(node.type==='Property'&&node.value&&node.value.type==='Identifier'&&fnSet.has(node.value.name)){
+                        refs[node.value.name]++;
+                    }
+
+                    if(node.type==='Identifier'&&fnSet.has(node.name)&&!inDeclaration){
+                        // Identifier references are handled via the surrounding parent nodes.
+                    }
+
+                    for(var key in node){
+                        if(key==='loc'||key==='range'||key==='start'||key==='end')continue;
+                        var child=node[key];
+                        var nextInDecl=isDecl&&(key==='id'||key==='key');
+                        if(Array.isArray(child)){
+                            child.forEach(function(c){walk(c,nextInDecl);});
+                        }else if(child&&typeof child==='object'&&child.type){
+                            walk(child,nextInDecl);
+                        }
+                    }
+                }
+
+                walk(ast,false);
+                fnNames.forEach(function(fn){
+                    calls[fn]=calls[fn]+(refs[fn]||0);
+                });
+                return calls;
+            }catch(e){
+                // Fall back to regex below.
+            }
+        }
+
+        var wordSet=new Set(content.match(/\b[a-zA-Z_$]\w*\b/g)||[]);
+        fnNames.forEach(function(fn){
+            if(!wordSet.has(fn))return;
+            var callPattern=new RegExp('\\b'+fn+'\\s*\\(','g');
+            var m=content.match(callPattern);
+            var callCount=m?m.length:0;
+            var defPattern=new RegExp('(?:function\\s+'+fn+'\\s*\\(|(?:async\\s+)?def\\s+'+fn+'\\s*\\(|class\\s+'+fn+'\\s*\\()','g');
+            var defMatch=content.match(defPattern);
+            if(defMatch)callCount-=defMatch.length;
+            var refPattern=new RegExp('[,\\[:\\(=]\\s*'+fn+'\\s*[,\\]\\)\\};]','g');
+            var refMatch=content.match(refPattern);
+            var refCount=refMatch?refMatch.length:0;
+            var jsxTagPattern=new RegExp('<\\/?\\s*'+fn+'[\\s>\\/{]','g');
+            var jsxTagMatch=content.match(jsxTagPattern);
+            if(jsxTagMatch)refCount+=jsxTagMatch.length;
+            var jsxExprPattern=new RegExp('[{=][ \\t]*'+fn+'[ \\t]*[}(,;\\s]','g');
+            var jsxExprMatch=content.match(jsxExprPattern);
+            if(jsxExprMatch)refCount+=jsxExprMatch.length;
+            calls[fn]=Math.max(0,callCount)+refCount;
+        });
+        return calls;
+    },
 
     // AST-based call detection - finds actual function calls and references
     findCalls:function(content,fnNames,definingFile,fnDefs){
@@ -1650,6 +2047,22 @@ const Parser={
                     defLines[fn.name]=fn.line;
                 }
             });
+        }
+
+        if(Parser.isScriptContainer(definingFile)){
+            var blocks=Parser.getEmbeddedCodeBlocks(content,definingFile,{includeHandlers:true});
+            if(!blocks.length)return calls;
+            blocks.forEach(function(block){
+                var blockCalls=Parser.findJSCalls(block.content,fnNames,defLines,{
+                    filename:definingFile,
+                    isTS:block.isTS,
+                    sourceType:block.kind==='handler'?'script':block.sourceType
+                });
+                fnNames.forEach(function(fn){
+                    calls[fn]+=blockCalls[fn]||0;
+                });
+            });
+            return calls;
         }
 
         // Detect file language from defining file extension
@@ -1910,7 +2323,7 @@ const Parser={
                 if(jsxTagMatch)refCount+=jsxTagMatch.length;
                 // JSX attribute expressions: onClick={fn}, render={fn}, value={fn()}
                 // Also catches object shorthand {fn} and template expressions {fn}
-                var jsxExprPattern=new RegExp('[{=]\\s*'+fn+'\\s*[}(,;\\s]','g');
+                var jsxExprPattern=new RegExp('[{=][ \\t]*'+fn+'[ \\t]*[}(,;\\s]','g');
                 var jsxExprMatch=content.match(jsxExprPattern);
                 if(jsxExprMatch)refCount+=jsxExprMatch.length;
             }
@@ -2606,10 +3019,13 @@ function App(){
                         var content=results[0];
                         var commits=results[1];
                         if(content){
-                            var fns=Parser.extract(content,f.path);
                             var layer=Parser.detectLayer(f.path);
-                            analyzed.push({path:f.path,name:f.name,folder:f.folder,content:content,functions:fns,lines:content.split('\n').length,layer:layer,churn:Array.isArray(commits)?commits.length:0,isCode:true});
-                            fns.forEach(function(fn){allFns.push(Object.assign({},fn,{folder:f.folder,layer:layer}));});
+                            var actualIsCode=!Parser.isScriptContainer(f.path)||Parser.hasEmbeddedCode(content,f.path);
+                            var fns=actualIsCode?Parser.extract(content,f.path):[];
+                            analyzed.push({path:f.path,name:f.name,folder:f.folder,content:content,functions:fns,lines:content.split('\n').length,layer:layer,churn:Array.isArray(commits)?commits.length:0,isCode:actualIsCode});
+                            if(actualIsCode){
+                                fns.forEach(function(fn){allFns.push(Object.assign({},fn,{folder:f.folder,layer:layer}));});
+                            }
                         }
                         processFile(i+1);
                     }).catch(function(){processFile(i+1);});
@@ -2751,7 +3167,7 @@ function App(){
                 for(var ci=0;ci<analyzed.length;ci+=CALL_BATCH){
                     var cEnd=Math.min(ci+CALL_BATCH,analyzed.length);
                     for(var cj=ci;cj<cEnd;cj++){
-                        analyzed[cj].complexity=Parser.calcComplexity(analyzed[cj].content);
+                        analyzed[cj].complexity=Parser.calcComplexity(analyzed[cj].content,analyzed[cj].path);
                     }
                     if(ci+CALL_BATCH<analyzed.length)await new Promise(function(r){setTimeout(r,0);});
                 }
@@ -2895,10 +3311,13 @@ function App(){
                     var fileHandle=await currentHandle.getFileHandle(parts[parts.length-1]);
                     var fileObj=await fileHandle.getFile();
                     var content=await fileObj.text();
-                    var fns=Parser.extract(content,f.path);
                     var layer=Parser.detectLayer(f.path);
-                    analyzed.push({path:f.path,name:f.name,folder:f.folder,content:content,functions:fns,lines:content.split('\n').length,layer:layer,churn:0,isCode:true});
-                    fns.forEach(function(fn){allFns.push(Object.assign({},fn,{folder:f.folder,layer:layer}));});
+                    var actualIsCode=!Parser.isScriptContainer(f.path)||Parser.hasEmbeddedCode(content,f.path);
+                    var fns=actualIsCode?Parser.extract(content,f.path):[];
+                    analyzed.push({path:f.path,name:f.name,folder:f.folder,content:content,functions:fns,lines:content.split('\n').length,layer:layer,churn:0,isCode:actualIsCode});
+                    if(actualIsCode){
+                        fns.forEach(function(fn){allFns.push(Object.assign({},fn,{folder:f.folder,layer:layer}));});
+                    }
                     processFile(i+1);
                 }else{
                     var fileHandle=await currentHandle.getFileHandle(parts[parts.length-1]);
@@ -3030,7 +3449,7 @@ function App(){
             for(var ci=0;ci<analyzed.length;ci+=CALL_BATCH){
                 var cEnd=Math.min(ci+CALL_BATCH,analyzed.length);
                 for(var cj=ci;cj<cEnd;cj++){
-                    analyzed[cj].complexity=Parser.calcComplexity(analyzed[cj].content);
+                    analyzed[cj].complexity=Parser.calcComplexity(analyzed[cj].content,analyzed[cj].path);
                 }
                 if(ci+CALL_BATCH<analyzed.length)await new Promise(function(r){setTimeout(r,0);});
             }
