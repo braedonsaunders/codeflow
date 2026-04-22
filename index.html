@@ -11,10 +11,11 @@
     <meta property="og:title" content="CodeFlow — Visualize Your Codebase Architecture">
     <meta property="og:description" content="Turn any GitHub repo into an interactive architecture map in seconds. Zero setup, privacy-first, runs in your browser.">
     <meta property="og:type" content="website">
-    <meta property="og:image" content="https://via.placeholder.com/1200x630?text=CodeFlow">
+    <meta property="og:image" content="codeflow-social.png">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="CodeFlow — Visualize Your Codebase Architecture">
     <meta name="twitter:description" content="Turn any GitHub repo into an interactive architecture map in seconds. Zero setup, privacy-first.">
+    <meta name="twitter:image" content="codeflow-social.png">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ff9d' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M13 2 4 14h6l-1 8 9-12h-6l1-8z'/></svg>">
     <script src="vendor/react.production.min.js"></script>
     <script src="vendor/react-dom.production.min.js"></script>
@@ -2468,6 +2469,60 @@ const Parser={
     }
 };
 
+function escapeHtml(value){
+    return String(value==null?'':value)
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#39;');
+}
+
+function renderTooltipHtml(title,stats){
+    return '<div class="treemap-tooltip-title">'+escapeHtml(title)+'</div>'+stats.map(function(stat){
+        return '<div class="treemap-tooltip-stat"><span>'+escapeHtml(stat.label)+':</span><span>'+escapeHtml(stat.value)+'</span></div>';
+    }).join('');
+}
+
+function buildGitHubApiUrl(segments,query){
+    var path=segments.filter(function(segment){return segment!==undefined&&segment!==null&&segment!=='';}).map(function(segment){
+        return encodeURIComponent(String(segment));
+    }).join('/');
+    var url='https://api.github.com/'+path;
+    if(!query)return url;
+    var params=new URLSearchParams();
+    Object.keys(query).forEach(function(key){
+        var value=query[key];
+        if(value===undefined||value===null||value==='')return;
+        params.set(key,String(value));
+    });
+    var queryString=params.toString();
+    return queryString?url+'?'+queryString:url;
+}
+
+function buildRepoApiUrl(owner,repo,segments,query){
+    return buildGitHubApiUrl(['repos',owner,repo].concat(segments||[]),query);
+}
+
+function splitRepoPath(path){
+    return (path||'').split('/').filter(Boolean);
+}
+
+function decodeBase64Utf8(content){
+    var normalized=String(content||'').replace(/\s+/g,'');
+    if(!normalized)return null;
+    var binary=atob(normalized);
+    var bytes=new Uint8Array(binary.length);
+    for(var i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+    try{
+        return new TextDecoder('utf-8').decode(bytes);
+    }catch(e){
+        var text='';
+        for(var j=0;j<bytes.length;j++)text+=String.fromCharCode(bytes[j]);
+        return text;
+    }
+}
+
 var GitHub={
     token:null,
     appId:null,
@@ -2475,6 +2530,7 @@ var GitHub={
     installationToken:null,
     installationTokenExpiry:null,
     rateLimit:{remaining:60,limit:60,reset:0},
+    requestTimeoutMs:15000,
     
     // Generate JWT for GitHub App authentication
     generateJWT:function(){
@@ -2497,19 +2553,15 @@ var GitHub={
         }
     },
     
-    // Get installations for the GitHub App
-    getInstallations:function(){
+    getRepoInstallation:function(owner,repo){
         var jwt=this.generateJWT();
         if(!jwt)return Promise.reject(new Error('Failed to generate JWT'));
-        return fetch('https://api.github.com/app/installations',{
+        return this.request(buildGitHubApiUrl(['repos',owner,repo,'installation']),{
             headers:{
                 'Accept':'application/vnd.github.v3+json',
                 'Authorization':'Bearer '+jwt
             }
-        }).then(function(r){
-            if(!r.ok)throw new Error(r.status===401?'Invalid App credentials':'Error '+r.status);
-            return r.json();
-        });
+        },{401:'Invalid App credentials',404:'This GitHub App is not installed on the selected repository'});
     },
     
     // Get installation access token
@@ -2517,16 +2569,13 @@ var GitHub={
         var self=this;
         var jwt=this.generateJWT();
         if(!jwt)return Promise.reject(new Error('Failed to generate JWT'));
-        return fetch('https://api.github.com/app/installations/'+installationId+'/access_tokens',{
+        return this.request(buildGitHubApiUrl(['app','installations',String(installationId),'access_tokens']),{
             method:'POST',
             headers:{
                 'Accept':'application/vnd.github.v3+json',
                 'Authorization':'Bearer '+jwt
             }
-        }).then(function(r){
-            if(!r.ok)throw new Error(r.status===401?'Invalid App credentials':r.status===404?'Installation not found':'Error '+r.status);
-            return r.json();
-        }).then(function(data){
+        },{401:'Invalid App credentials',404:'Installation not found'}).then(function(data){
             self.installationToken=data.token;
             self.installationTokenExpiry=new Date(data.expires_at).getTime();
             self.token=data.token;// Use installation token for API calls
@@ -2542,26 +2591,22 @@ var GitHub={
             this.token=this.installationToken;
             return Promise.resolve(this.installationToken);
         }
-        // Get installations and find the one for this repo
-        return this.getInstallations().then(function(installations){
-            if(!installations||!installations.length){
-                throw new Error('No installations found for this GitHub App');
+        return this.getRepoInstallation(owner,repo).then(function(installation){
+            if(!installation||!installation.id){
+                throw new Error('No installation found for this repository');
             }
-            // Try to find installation that has access to this repo
-            // For simplicity, we'll use the first installation
-            // In production, you'd want to match by account/owner
-            var installation=installations.find(function(i){
-                return i.account&&i.account.login&&i.account.login.toLowerCase()===owner.toLowerCase();
-            })||installations[0];
             return self.getInstallationToken(installation.id);
         });
     },
     
-    fetch:function(url){
+    request:function(url,options,errorMap){
         var self=this;
-        var h={'Accept':'application/vnd.github.v3+json'};
-        if(this.token)h['Authorization']='Bearer '+this.token;
-        return fetch(url,{headers:h}).then(function(r){
+        var h=Object.assign({'Accept':'application/vnd.github.v3+json'},options&&options.headers?options.headers:{});
+        if(this.token&&!h.Authorization)h.Authorization='Bearer '+this.token;
+        var controller=new AbortController();
+        var timeoutId=setTimeout(function(){controller.abort();},this.requestTimeoutMs);
+        var requestOptions=Object.assign({},options||{},{headers:h,signal:controller.signal});
+        return fetch(url,requestOptions).then(function(r){
             // Track rate limit from headers
             var rem=r.headers.get('x-ratelimit-remaining');
             var lim=r.headers.get('x-ratelimit-limit');
@@ -2569,15 +2614,37 @@ var GitHub={
             if(rem!==null)self.rateLimit.remaining=parseInt(rem,10);
             if(lim!==null)self.rateLimit.limit=parseInt(lim,10);
             if(rst!==null)self.rateLimit.reset=parseInt(rst,10);
-            if(!r.ok)throw new Error(r.status===401?'Invalid token':r.status===403?'Rate limited - add a GitHub token for 5000 req/hour':r.status===404?'Repository not found':r.status===429?'Rate limited (429) - add a GitHub token':'Error '+r.status);
+            if(!r.ok){
+                throw new Error(
+                    errorMap&&errorMap[r.status]
+                        ? errorMap[r.status]
+                        : r.status===401
+                            ? 'Invalid token'
+                            : r.status===403
+                                ? 'Rate limited - add a GitHub token for 5000 req/hour'
+                                : r.status===404
+                                    ? 'Repository not found'
+                                    : r.status===429
+                                        ? 'Rate limited (429) - add a GitHub token'
+                                        : 'Error '+r.status
+                );
+            }
             return r.json();
+        }).catch(function(err){
+            if(err&&err.name==='AbortError'){
+                throw new Error('GitHub request timed out. Please try again.');
+            }
+            throw err;
+        }).finally(function(){
+            clearTimeout(timeoutId);
         });
+    },
+    fetch:function(url,options,errorMap){
+        return this.request(url,options,errorMap);
     },
     getRateLimit:function(){
         var self=this;
-        var h={'Accept':'application/vnd.github.v3+json'};
-        if(this.token)h['Authorization']='Bearer '+this.token;
-        return fetch('https://api.github.com/rate_limit',{headers:h}).then(function(r){return r.json();}).then(function(d){
+        return this.request(buildGitHubApiUrl(['rate_limit'])).then(function(d){
             if(d.resources&&d.resources.core){
                 self.rateLimit.remaining=d.resources.core.remaining;
                 self.rateLimit.limit=d.resources.core.limit;
@@ -2587,11 +2654,11 @@ var GitHub={
         }).catch(function(){return self.rateLimit;});
     },
     getFile:function(o,r,p){
-        return this.fetch('https://api.github.com/repos/'+o+'/'+r+'/contents/'+p).then(function(d){return d.content?atob(d.content):null;}).catch(function(){return null;});
+        return this.fetch(buildRepoApiUrl(o,r,['contents'].concat(splitRepoPath(p)))).then(function(d){return d.content?decodeBase64Utf8(d.content):null;}).catch(function(){return null;});
     },
     getCommits:function(o,r,path,limit){
         if(this.rateLimit.remaining<20&&!this.token)return Promise.resolve([]);// Skip when rate limited
-        return this.fetch('https://api.github.com/repos/'+o+'/'+r+'/commits?per_page='+(limit||30)+(path?'&path='+path:'')).catch(function(){return[];});
+        return this.fetch(buildRepoApiUrl(o,r,['commits'],{per_page:limit||30,path:path||undefined})).catch(function(){return[];});
     },
     getBlame:function(o,r,path){
         return this.getCommits(o,r,path,50).then(function(commits){
@@ -2602,8 +2669,8 @@ var GitHub={
     },
     getPR:function(o,r,prNum){
         var self=this;
-        return this.fetch('https://api.github.com/repos/'+o+'/'+r+'/pulls/'+prNum).then(function(pr){
-            return self.fetch('https://api.github.com/repos/'+o+'/'+r+'/pulls/'+prNum+'/files').then(function(files){
+        return this.fetch(buildRepoApiUrl(o,r,['pulls',String(prNum)])).then(function(pr){
+            return self.fetch(buildRepoApiUrl(o,r,['pulls',String(prNum),'files'])).then(function(files){
                 pr.files=files;return pr;
             });
         }).catch(function(){return null;});
@@ -2613,11 +2680,11 @@ var GitHub={
         var self=this;
         if(cb)cb('Fetching repository tree...');
         // First get repo info to find default branch
-        return this.fetch('https://api.github.com/repos/'+o+'/'+r).then(function(repo){
+        return this.fetch(buildRepoApiUrl(o,r)).then(function(repo){
             var branch=repo.default_branch||'main';
             if(cb)cb('Loading file tree ('+branch+')...');
             // Get full tree in one request with recursive flag
-            return self.fetch('https://api.github.com/repos/'+o+'/'+r+'/git/trees/'+branch+'?recursive=1');
+            return self.fetch(buildRepoApiUrl(o,r,['git','trees',branch],{recursive:1}));
         }).then(function(tree){
             if(!tree.tree)throw new Error('Invalid tree response');
             var f=[];
@@ -2642,7 +2709,7 @@ var GitHub={
     scanRecursive:function(o,r,cb,p,d,compiledPatterns){
         var self=this;p=p||'';d=d||0;
         if(d>10)return Promise.resolve([]);
-        return this.fetch('https://api.github.com/repos/'+o+'/'+r+'/contents/'+p).then(function(c){
+        return this.fetch(buildRepoApiUrl(o,r,['contents'].concat(splitRepoPath(p)))).then(function(c){
             var f=[];
             var promises=[];
             c.forEach(function(i){
@@ -4346,7 +4413,12 @@ function App(){
             .text(function(d){return d.data.value+' lines';});
         var tooltip=container.append('div').attr('class','treemap-tooltip').style('display','none').style('position','absolute');
         cells.on('mouseenter',function(e,d){
-            tooltip.html('<div class="treemap-tooltip-title">'+d.data.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+d.data.value+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(d.data.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Layer:</span><span>'+(d.data.layer||'—')+'</span></div><div class="treemap-tooltip-stat"><span>Folder:</span><span>'+(d.data.folder||'root')+'</span></div>')
+            tooltip.html(renderTooltipHtml(d.data.name,[
+                {label:'Lines',value:d.data.value},
+                {label:'Functions',value:d.data.fns||0},
+                {label:'Layer',value:d.data.layer||'—'},
+                {label:'Folder',value:d.data.folder||'root'}
+            ]))
                 .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
             d3.select(this).select('rect').transition().duration(150).attr('opacity',1).attr('stroke','var(--acc)').attr('stroke-width',2);
         }).on('mousemove',function(e){tooltip.style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');})
@@ -4416,7 +4488,9 @@ function App(){
             .attr('fill',function(d){return d.value>0?'rgba(0,255,157,'+Math.max(0.15,d.value/maxVal)+')':'var(--bg2)';})
             .attr('stroke','var(--bg0)').attr('stroke-width',0.5).style('cursor','pointer');
         cells.on('mouseenter',function(e,d){
-            tooltip.html('<div class="treemap-tooltip-title">'+d.source.name+' → '+d.target.name+'</div><div class="treemap-tooltip-stat"><span>Connections:</span><span>'+d.value+'</span></div>')
+            tooltip.html(renderTooltipHtml(d.source.name+' → '+d.target.name,[
+                {label:'Connections',value:d.value}
+            ]))
                 .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
             g.selectAll('rect.matrix-cell-rect').attr('opacity',function(c){return c.row===d.row||c.col===d.col?1:0.3;});
             colLabels.attr('fill',function(f,i){return i===d.col?'var(--acc)':'var(--t2)';}).attr('font-weight',function(f,i){return i===d.col?'600':'400';});
@@ -4471,7 +4545,11 @@ function App(){
             .attr('fill','var(--t2)').attr('font-size','10px').attr('font-weight','600').text(function(d){return d.data.name;});
         node.on('mouseenter',function(e,d){
             if(!d.data.path)return;
-            tooltip.html('<div class="treemap-tooltip-title">'+d.data.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+(d.data.lines||0)+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(d.data.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Layer:</span><span>'+(d.data.layer||'—')+'</span></div>')
+            tooltip.html(renderTooltipHtml(d.data.name,[
+                {label:'Lines',value:d.data.lines||0},
+                {label:'Functions',value:d.data.fns||0},
+                {label:'Layer',value:d.data.layer||'—'}
+            ]))
                 .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
             d3.select(this).select('circle').transition().duration(150).attr('r',12).attr('stroke','var(--acc)').attr('stroke-width',3);
         }).on('mousemove',function(e){tooltip.style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');})
@@ -4549,7 +4627,9 @@ function App(){
             .attr('stroke-width',function(d){return Math.max(2,d.width);}).attr('stroke-opacity',0.4)
             .on('mouseenter',function(e,d){
                 d3.select(this).attr('stroke-opacity',0.8);
-                tooltip.html('<div class="treemap-tooltip-title">'+d.source.name+' → '+d.target.name+'</div><div class="treemap-tooltip-stat"><span>Connections:</span><span>'+d.value+'</span></div>')
+                tooltip.html(renderTooltipHtml(d.source.name+' → '+d.target.name,[
+                    {label:'Connections',value:d.value}
+                ]))
                     .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
             }).on('mouseleave',function(){d3.select(this).attr('stroke-opacity',0.4);tooltip.style('display','none');});
         var node=g.selectAll('g.sankey-node').data(graph.nodes).join('g').attr('class','sankey-node').style('cursor','pointer');
@@ -4560,7 +4640,9 @@ function App(){
             .attr('dy','0.35em').attr('text-anchor',function(d){return d.x0<w/2?'start':'end';})
             .attr('fill','var(--t1)').attr('font-size','10px').attr('font-weight','500').text(function(d){return d.name+' ('+d.fileCount+')';});
         node.on('mouseenter',function(e,d){
-            tooltip.html('<div class="treemap-tooltip-title">'+d.fullPath+'</div><div class="treemap-tooltip-stat"><span>Files:</span><span>'+d.fileCount+'</span></div>')
+            tooltip.html(renderTooltipHtml(d.fullPath,[
+                {label:'Files',value:d.fileCount}
+            ]))
                 .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
             g.selectAll('path.sankey-link').attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.8:0.1;});
         }).on('mouseleave',function(){tooltip.style('display','none');g.selectAll('path.sankey-link').attr('stroke-opacity',0.4);})
@@ -4615,7 +4697,11 @@ function App(){
         node.append('circle').attr('class','disjoint-circle').attr('r',function(d){return Math.max(6,Math.min(14,4+d.fns));})
             .attr('fill',function(d){return colorMap[d.folder]||COLORS[0];}).attr('stroke','var(--bg0)').attr('stroke-width',1.5);
         node.on('mouseenter',function(e,d){
-            tooltip.html('<div class="treemap-tooltip-title">'+d.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+(d.lines||0)+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(d.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Folder:</span><span>'+d.folder+'</span></div>')
+            tooltip.html(renderTooltipHtml(d.name,[
+                {label:'Lines',value:d.lines||0},
+                {label:'Functions',value:d.fns||0},
+                {label:'Folder',value:d.folder}
+            ]))
                 .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
             link.attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.8:0.05;}).attr('stroke',function(l){return l.source.id===d.id||l.target.id===d.id?'var(--acc)':'var(--border)';});
             d3.select(this).select('circle').transition().duration(150).attr('r',14).attr('stroke','var(--acc)').attr('stroke-width',2);
@@ -4740,7 +4826,11 @@ function App(){
         }
         node.on('mouseenter',function(e,d){
             var rect=bundleRef.current.getBoundingClientRect();
-            tooltip.html('<div class="treemap-tooltip-title">'+d.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+(d.lines||0)+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(d.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Folder:</span><span>'+(d.folder||'root')+'</span></div>')
+            tooltip.html(renderTooltipHtml(d.name,[
+                {label:'Lines',value:d.lines||0},
+                {label:'Functions',value:d.fns||0},
+                {label:'Folder',value:d.folder||'root'}
+            ]))
                 .style('display','block').style('left',(e.clientX-rect.left+15)+'px').style('top',(e.clientY-rect.top+15)+'px');
             applyBundleHoverState(d.id);
         }).on('mousemove',function(e){var rect=bundleRef.current.getBoundingClientRect();tooltip.style('left',(e.clientX-rect.left+15)+'px').style('top',(e.clientY-rect.top+15)+'px');})
