@@ -16,14 +16,14 @@
     <meta name="twitter:title" content="CodeFlow — Visualize Your Codebase Architecture">
     <meta name="twitter:description" content="Turn any GitHub repo into an interactive architecture map in seconds. Zero setup, privacy-first.">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ff9d' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M13 2 4 14h6l-1 8 9-12h-6l1-8z'/></svg>">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-sankey/0.12.3/d3-sankey.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/acorn/8.11.3/acorn.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/web-tree-sitter@0.25.10/tree-sitter.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/11.1.0/jsrsasign-all-min.js"></script>
+    <script src="vendor/react.production.min.js"></script>
+    <script src="vendor/react-dom.production.min.js"></script>
+    <script src="vendor/babel.min.js"></script>
+    <script src="vendor/d3.min.js"></script>
+    <script src="vendor/d3-sankey.min.js"></script>
+    <script src="vendor/acorn.min.js"></script>
+    <script src="vendor/tree-sitter.js"></script>
+    <script src="vendor/jsrsasign-all-min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <style>
 :root{--bg0:#0a0a0c;--bg1:#0f0f12;--bg2:#161619;--bg3:#1c1c21;--bg4:#252529;--hover:#2a2a30;--border:#2d2d35;--border2:#222228;--t0:#f0f0f2;--t1:#c8c8cd;--t2:#8b8b95;--t3:#5c5c66;--acc:#00ff9d;--acc2:#00cc7d;--accbg:rgba(0,255,157,0.08);--blue:#4d9fff;--purple:#a78bfa;--orange:#ff9f43;--red:#ff5f5f;--cyan:#22d3ee;--pink:#ec4899;--green:#22c55e}
@@ -571,12 +571,12 @@ const Parser={
             try{
                 await TreeSitter.init({
                     locateFile:function(scriptName){
-                        return 'https://cdn.jsdelivr.net/npm/web-tree-sitter@0.25.10/'+scriptName;
+                        return 'vendor/'+scriptName;
                     }
                 });
                 var parser=new TreeSitter();
                 var Python=await TreeSitter.Language.load(
-                    'https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-python.wasm'
+                    'vendor/tree-sitter-python.wasm'
                 );
                 parser.setLanguage(Python);
                 this._tsParser=parser;
