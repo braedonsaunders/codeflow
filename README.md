@@ -317,7 +317,7 @@ If you're editing the markdown / wiki-link parser, Node.js unit tests live under
 node --test tests/
 ```
 
-`tests/verify-brain-vault.mjs` is an optional end-to-end script that runs the extractor pipeline against a local markdown vault (set `BRAIN_VAULT=/path/to/vault` or edit the default).
+`tests/verify-brain-vault.mjs` is an optional end-to-end script that always verifies the bundled fixtures and will also scan a real local vault when you set `BRAIN_VAULT=/path/to/vault`.
 
 ### Ideas for Contributions
 - [ ] Add support for more languages
