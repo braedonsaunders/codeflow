@@ -113,7 +113,7 @@ git clone https://github.com/braedonsaunders/codeflow.git
 open index.html
 ```
 
-No build process. No dependencies. No npm install. **It's just one HTML file.**
+No build process. No npm install. The app is served from `index.html` with vendored browser runtime assets in `vendor/`.
 
 ### Option 3: Analyze Local Files
 You can now analyze code directly from your local machine without uploading to GitHub:
@@ -295,7 +295,7 @@ For larger repositories or team usage, we recommend using GitHub App authenticat
 └─────────────────────────────────────────────────┘
 ```
 
-**Zero dependencies to install.** Everything runs from CDNs:
+**Zero build dependencies to install.** Runtime libraries are vendored in this repo:
 - React 18
 - D3.js 7
 - Babel (for JSX)
