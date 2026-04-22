@@ -1,0 +1,36 @@
+# Dependencies and build output
+node_modules/
+dist/
+build/
+.next/
+target/
+__pycache__/
+
+# Temp, coverage, and cache files
+*.log
+*.tmp
+*.pid
+.cache/
+coverage/
+.nyc_output/
+
+# OS and IDE noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/settings.json
+
+# Secrets and local credentials
+.env
+.env.*
+*.pem
+*.key
+*credentials*.json
+*adminsdk*.json
+
+# Backup and editor swap files
+*.bak
+*.orig
+*_old.*
+*_copy.*
+*.swp
