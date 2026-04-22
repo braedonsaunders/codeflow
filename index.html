@@ -184,6 +184,12 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .modal-close{background:none;border:none;color:var(--t3);font-size:18px;cursor:pointer}
 .modal-body{flex:1;overflow-y:auto;padding:16px}
 .modal-footer{padding:16px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px}
+.confirm-modal{max-width:460px}
+.confirm-content{display:flex;align-items:flex-start;gap:12px}
+.confirm-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.confirm-copy{display:flex;flex-direction:column;gap:10px;min-width:0}
+.confirm-title{font-size:14px;font-weight:600;color:var(--t0)}
+.confirm-message{font-size:11px;line-height:1.6;color:var(--t2);white-space:pre-line}
 .form-group{margin-bottom:12px}
 .form-label{display:block;font-size:10px;color:var(--t2);margin-bottom:6px}
 .form-input{width:100%;padding:8px 10px;background:var(--bg0);border:1px solid var(--border);border-radius:6px;color:var(--t0);font-family:inherit;font-size:11px}
@@ -3079,12 +3085,38 @@ function getFilePreviewIconName(filename){
     return'code';
 }
 
-function getAccentBlockStyle(borderColor,tint,extra){
-    return Object.assign({
-        background:'linear-gradient(180deg, '+tint+' 0%, var(--bg0) 55%)',
-        border:'1px solid '+borderColor,
-        borderRadius:8
-    },extra||{});
+    function getAccentBlockStyle(borderColor,tint,extra){
+        return Object.assign({
+            background:'linear-gradient(180deg, '+tint+' 0%, var(--bg0) 55%)',
+            border:'1px solid '+borderColor,
+            borderRadius:8
+        },extra||{});
+    }
+
+function buildAppUrl(repo,autoRun){
+    var url=new URL(window.location.href);
+    url.search='';
+    if(repo)url.searchParams.set('repo',repo);
+    if(autoRun&&repo)url.searchParams.set('run','1');
+    return url.toString();
+}
+
+function getDialogTone(tone){
+    if(tone==='danger')return{
+        color:'var(--red)',
+        borderColor:'rgba(255,95,95,0.34)',
+        background:'rgba(255,95,95,0.12)'
+    };
+    if(tone==='info')return{
+        color:'var(--blue)',
+        borderColor:'rgba(77,159,255,0.34)',
+        background:'rgba(77,159,255,0.12)'
+    };
+    return{
+        color:'var(--orange)',
+        borderColor:'rgba(255,159,67,0.34)',
+        background:'rgba(255,159,67,0.12)'
+    };
 }
 
 // Error boundary to prevent white screen crashes on large codebases
@@ -3183,6 +3215,7 @@ function App(){
     var _ai=useState(''),excludePatternInput=_ai[0],setExcludePatternInput=_ai[1];
     var _aj=useState(''),excludePatternDraft=_aj[0],setExcludePatternDraft=_aj[1];
     var _ak=useState(false),launchFolderAfterExcludeSave=_ak[0],setLaunchFolderAfterExcludeSave=_ak[1];
+    var _al=useState(null),confirmDialog=_al[0],setConfirmDialog=_al[1];
     var svgRef=useRef(null);
     var filePreviewRef=useRef(null);
     var treemapRef=useRef(null);
@@ -3196,17 +3229,42 @@ function App(){
     var nodesRef=useRef(null);
     var linksRef=useRef(null);
     var selectFileRef=useRef(null);
+    var confirmResolverRef=useRef(null);
     var activeExcludePatterns=useMemo(function(){return compileExcludePatterns(excludePatternInput);},[excludePatternInput]);
     var customExcludeCount=activeExcludePatterns.length;
 
     useEffect(function(){document.body.className=theme==='light'?'light':'';},[theme]);
 
     useEffect(function(){
+        return function(){
+            if(confirmResolverRef.current){
+                confirmResolverRef.current(false);
+                confirmResolverRef.current=null;
+            }
+        };
+    },[]);
+
+    useEffect(function(){
+        if(!confirmDialog)return;
+        function onKeyDown(e){
+            if(e.key==='Escape'){
+                e.preventDefault();
+                closeConfirmDialog(false);
+            }
+        }
+        document.addEventListener('keydown',onKeyDown);
+        return function(){document.removeEventListener('keydown',onKeyDown);};
+    },[confirmDialog]);
+
+    useEffect(function(){
         var params=new URLSearchParams(window.location.search);
         var repo=params.get('repo');
+        var shouldAutoRun=params.get('run')==='1';
         if(repo&&repo.length<200&&!repo.includes('{')&&/^[a-zA-Z0-9_.\/-]+$/.test(repo)){
             setRepoUrl(repo);
-            setTimeout(function(){var btn=document.getElementById('analyze-btn');if(btn)btn.click();},500);
+            if(shouldAutoRun){
+                setTimeout(function(){var btn=document.getElementById('analyze-btn');if(btn)btn.click();},500);
+            }
         }
     },[]);
 
@@ -3253,6 +3311,32 @@ function App(){
         if(shouldLaunchFolder){
             launchLocalFolderPicker(nextPatterns);
         }
+    }
+
+    function closeConfirmDialog(result){
+        setConfirmDialog(null);
+        if(confirmResolverRef.current){
+            var resolve=confirmResolverRef.current;
+            confirmResolverRef.current=null;
+            resolve(!!result);
+        }
+    }
+
+    function requestConfirm(options){
+        return new Promise(function(resolve){
+            if(confirmResolverRef.current){
+                confirmResolverRef.current(false);
+            }
+            confirmResolverRef.current=resolve;
+            setConfirmDialog(Object.assign({
+                tone:'warning',
+                icon:'warning',
+                title:'Please confirm',
+                message:'',
+                confirmLabel:'Continue',
+                cancelLabel:'Cancel'
+            },options||{}));
+        });
     }
 
     function analyze(){
@@ -3310,18 +3394,27 @@ function App(){
             // Warn if rate limit is very low and no authentication
             if(!hasAuth&&rl.remaining<estimatedRequests){
                 var resetTime=new Date(rl.reset*1000).toLocaleTimeString();
-                var proceed=window.confirm(
-                    'GitHub API Rate Limit Low\n\n'+
-                    'Remaining requests: '+rl.remaining+'/'+rl.limit+'\n'+
-                    'Resets at: '+resetTime+'\n\n'+
-                    'Without authentication, you only get 60 requests/hour.\n'+
-                    'Adding a token or GitHub App gives you 5000 requests/hour.\n\n'+
-                    'Authentication options:\n'+
-                    '• Token (PAT): GitHub Settings → Developer Settings → Personal access tokens\n'+
-                    '• GitHub App: Use App ID + Private Key for organization access\n\n'+
-                    'Continue anyway with '+rl.remaining+' requests?'
-                );
-                if(!proceed){setLoading(false);return Promise.reject('cancelled');}
+                return requestConfirm({
+                    tone:'warning',
+                    icon:'warning',
+                    title:'GitHub API rate limit is low',
+                    message:
+                        'Remaining requests: '+rl.remaining+'/'+rl.limit+'\n'+
+                        'Resets at: '+resetTime+'\n\n'+
+                        'Without authentication, you only get 60 requests per hour.\n'+
+                        'Adding a token or GitHub App raises that to 5,000 requests per hour.\n\n'+
+                        'Token (PAT): GitHub Settings -> Developer Settings -> Personal access tokens\n'+
+                        'GitHub App: use App ID + Private Key for organization access\n\n'+
+                        'Continue anyway with the remaining requests?',
+                    confirmLabel:'Continue anyway'
+                }).then(function(proceed){
+                    if(!proceed){
+                        setLoading(false);
+                        return Promise.reject('cancelled');
+                    }
+                    setProgress('Scanning repository...');
+                    return GitHub.scan(p.owner,p.repo,setProgress,currentExcludePatterns);
+                });
             }
 
             setProgress('Scanning repository...');
@@ -3330,54 +3423,52 @@ function App(){
             if(!files)return;// Cancelled
             if(!files.length)throw new Error(currentExcludePatterns.length?'No code files found after applying exclude patterns':'No code files found');
             var SOFT_LIMIT=300,HARD_LIMIT=750;
-            if(files.length>SOFT_LIMIT&&files.length<=HARD_LIMIT){
-                var proceed=window.confirm('This repository has '+files.length+' files.\n\nAnalyzing large repos may be slow and could hit GitHub API rate limits.\n\nTip: Add a GitHub token for higher rate limits (5000/hour vs 60/hour).\n\nProceed with all '+files.length+' files?');
-                if(!proceed){setLoading(false);return;}
-            }else if(files.length>HARD_LIMIT){
-                showNotification('Found '+files.length+' files. Limiting to '+HARD_LIMIT+' for performance.','warning');
-            }
-            var max=Math.min(files.length,HARD_LIMIT);
-            var analyzed=[];
-            var allFns=[];
-
-            function processFile(i){
-                if(i>=max){finishAnalysis();return;}
-                var f=files[i];
-                setProgress('Analyzing '+(i+1)+'/'+max+': '+f.name);
-                var isCodeFile=f.isCode!==false&&Parser.isCode(f.name);
-                if(isCodeFile){
-                    Promise.all([
-                        GitHub.getFile(p.owner,p.repo,f.path),
-                        GitHub.getCommits(p.owner,p.repo,f.path,10).catch(function(){return[];})
-                    ]).then(function(results){
-                        var content=results[0];
-                        var commits=results[1];
-                        if(content){
-                            var layer=Parser.detectLayer(f.path);
-                            var actualIsCode=!Parser.isScriptContainer(f.path)||Parser.hasEmbeddedCode(content,f.path);
-                            var fns=actualIsCode?Parser.extract(content,f.path):[];
-                            analyzed.push({path:f.path,name:f.name,folder:f.folder,content:content,functions:fns,lines:content.split('\n').length,layer:layer,churn:Array.isArray(commits)?commits.length:0,isCode:actualIsCode});
-                            if(actualIsCode){
-                                fns.forEach(function(fn){allFns.push(Object.assign({},fn,{folder:f.folder,layer:layer}));});
-                            }
-                        }
-                        processFile(i+1);
-                    }).catch(function(){processFile(i+1);});
-                }else{
-                    GitHub.getFile(p.owner,p.repo,f.path).then(function(content){
-                        var layer=Parser.detectLayer(f.path);
-                        var lines=content?content.split('\n').length:0;
-                        analyzed.push({path:f.path,name:f.name,folder:f.folder,content:content||'',functions:[],lines:lines,layer:layer,churn:0,isCode:false});
-                        processFile(i+1);
-                    }).catch(function(){
-                        analyzed.push({path:f.path,name:f.name,folder:f.folder,content:'',functions:[],lines:0,layer:Parser.detectLayer(f.path),churn:0,isCode:false});
-                        processFile(i+1);
-                    });
+            function beginRepoAnalysis(){
+                if(files.length>HARD_LIMIT){
+                    showNotification('Found '+files.length+' files. Limiting to '+HARD_LIMIT+' for performance.','warning');
                 }
-            }
+                var max=Math.min(files.length,HARD_LIMIT);
+                var analyzed=[];
+                var allFns=[];
 
-            async function finishAnalysis(){
-                try{
+                function processFile(i){
+                    if(i>=max){finishAnalysis();return;}
+                    var f=files[i];
+                    setProgress('Analyzing '+(i+1)+'/'+max+': '+f.name);
+                    var isCodeFile=f.isCode!==false&&Parser.isCode(f.name);
+                    if(isCodeFile){
+                        Promise.all([
+                            GitHub.getFile(p.owner,p.repo,f.path),
+                            GitHub.getCommits(p.owner,p.repo,f.path,10).catch(function(){return[];})
+                        ]).then(function(results){
+                            var content=results[0];
+                            var commits=results[1];
+                            if(content){
+                                var layer=Parser.detectLayer(f.path);
+                                var actualIsCode=!Parser.isScriptContainer(f.path)||Parser.hasEmbeddedCode(content,f.path);
+                                var fns=actualIsCode?Parser.extract(content,f.path):[];
+                                analyzed.push({path:f.path,name:f.name,folder:f.folder,content:content,functions:fns,lines:content.split('\n').length,layer:layer,churn:Array.isArray(commits)?commits.length:0,isCode:actualIsCode});
+                                if(actualIsCode){
+                                    fns.forEach(function(fn){allFns.push(Object.assign({},fn,{folder:f.folder,layer:layer}));});
+                                }
+                            }
+                            processFile(i+1);
+                        }).catch(function(){processFile(i+1);});
+                    }else{
+                        GitHub.getFile(p.owner,p.repo,f.path).then(function(content){
+                            var layer=Parser.detectLayer(f.path);
+                            var lines=content?content.split('\n').length:0;
+                            analyzed.push({path:f.path,name:f.name,folder:f.folder,content:content||'',functions:[],lines:lines,layer:layer,churn:0,isCode:false});
+                            processFile(i+1);
+                        }).catch(function(){
+                            analyzed.push({path:f.path,name:f.name,folder:f.folder,content:'',functions:[],lines:0,layer:Parser.detectLayer(f.path),churn:0,isCode:false});
+                            processFile(i+1);
+                        });
+                    }
+                }
+
+                async function finishAnalysis(){
+                    try{
                 // Initialize tree-sitter Python parser (async WASM load, runs in parallel)
                 Parser.initTreeSitter();
                 // Phase 1: Build function stats index
@@ -3553,16 +3644,38 @@ function App(){
                 dataObj.suggestions=Parser.generateSuggestions(dataObj);
                 setData(dataObj);
                 setExpandedPaths(new Set(['']));
-                var newUrl=window.location.pathname+'?repo='+encodeURIComponent(p.owner+'/'+p.repo);
-                window.history.replaceState({},'',newUrl);
+                window.history.replaceState({},'',buildAppUrl(p.owner+'/'+p.repo,false));
                 setLoading(false);
                 }catch(err){
                     setError('Analysis failed: '+(err.message||err)+'. Try a smaller repository.');
                     setLoading(false);
                 }
+                }
+
+                processFile(0);
+                return null;
             }
 
-            processFile(0);
+            if(files.length>SOFT_LIMIT&&files.length<=HARD_LIMIT){
+                return requestConfirm({
+                    tone:'warning',
+                    icon:'warning',
+                    title:'Analyze a large repository?',
+                    message:
+                        'This repository has '+files.length+' files.\n\n'+
+                        'Analyzing larger repositories can take longer and may hit GitHub API rate limits.\n\n'+
+                        'Tip: add a token or GitHub App for higher limits.',
+                    confirmLabel:'Analyze repository'
+                }).then(function(proceed){
+                    if(!proceed){
+                        setLoading(false);
+                        return Promise.reject('cancelled');
+                    }
+                    return beginRepoAnalysis();
+                });
+            }
+
+            return beginRepoAnalysis();
         }).catch(function(e){if(e!=='cancelled'){setError(e.message||e);setLoading(false);}});
     }
 
@@ -3626,7 +3739,16 @@ function App(){
         await readDirectory(dirHandle,'');
         
         if(files.length>SOFT_LIMIT&&files.length<=HARD_LIMIT){
-            var proceed=window.confirm('This folder has '+files.length+' files.\n\nAnalyzing large folders may be slow.\n\nProceed with all '+files.length+' files?');
+            var proceed=await requestConfirm({
+                tone:'warning',
+                icon:'folder',
+                title:'Analyze a large folder?',
+                message:
+                    'This folder has '+files.length+' files.\n\n'+
+                    'Analyzing larger folders can take longer.\n\n'+
+                    'Continue with all '+files.length+' files?',
+                confirmLabel:'Analyze folder'
+            });
             if(!proceed){setLoading(false);return;}
         }else if(files.length>HARD_LIMIT){
             showNotification('Found '+files.length+' files. Limiting to '+HARD_LIMIT+' for performance.','warning');
@@ -4904,7 +5026,8 @@ function App(){
             showNotification('Share links are not available for local folders','warning');
             return;
         }
-        navigator.clipboard.writeText(window.location.href).then(function(){showNotification('Link copied to clipboard!');}).catch(function(){showNotification('Failed to copy link','error');});
+        var shareUrl=buildAppUrl(repoInfo?repoInfo.owner+'/'+repoInfo.repo:repoUrl,true);
+        navigator.clipboard.writeText(shareUrl).then(function(){showNotification('Link copied to clipboard!');}).catch(function(){showNotification('Failed to copy link','error');});
     }
     function analyzePR(){if(!prUrl||!repoInfo)return;var m=prUrl.match(/\/pull\/(\d+)/);if(!m){showNotification('Invalid PR URL','error');return;}GitHub.getPR(repoInfo.owner,repoInfo.repo,m[1]).then(function(pr){if(pr)setPrData(pr);else showNotification('Could not load PR','error');});}
     function resetAnalysis(){setData(null);setSelected(null);setBlastRadius(null);setOwnership(null);setRepoInfo(null);setRepoUrl('');setPrData(null);setFolderFilter(null);setLocalDirHandle(null);window.history.replaceState({},'',window.location.pathname);}
@@ -5800,6 +5923,28 @@ function App(){
                 )
             )
         ),
+        confirmDialog&&(function(){
+            var tone=getDialogTone(confirmDialog.tone);
+            return React.createElement('div',{className:'modal-overlay',style:{zIndex:1200},onClick:function(){closeConfirmDialog(false);}},
+                React.createElement('div',{className:'modal confirm-modal',onClick:function(e){e.stopPropagation();}},
+                    React.createElement('div',{className:'modal-body'},
+                        React.createElement('div',{className:'confirm-content'},
+                            React.createElement('div',{className:'confirm-icon',style:{color:tone.color,background:tone.background,border:'1px solid '+tone.borderColor}},
+                                React.createElement(Icon,{name:confirmDialog.icon||'warning',size:'l'})
+                            ),
+                            React.createElement('div',{className:'confirm-copy'},
+                                React.createElement('div',{className:'confirm-title'},confirmDialog.title),
+                                React.createElement('div',{className:'confirm-message'},confirmDialog.message)
+                            )
+                        )
+                    ),
+                    React.createElement('div',{className:'modal-footer'},
+                        React.createElement('button',{className:'top-btn',onClick:function(){closeConfirmDialog(false);}},confirmDialog.cancelLabel||'Cancel'),
+                        React.createElement('button',{className:'top-btn primary',style:{background:tone.color,borderColor:tone.color,color:'var(--bg0)'},onClick:function(){closeConfirmDialog(true);}},confirmDialog.confirmLabel||'Continue')
+                    )
+                )
+            );
+        })(),
         toast&&React.createElement('div',{className:'toast '+(toast.type||'success'),'role':'alert'},toast.msg),
         filePreview&&React.createElement('div',{className:'file-preview-overlay',onClick:function(){setFilePreview(null);}},
             React.createElement('div',{className:'file-preview-modal',onClick:function(e){e.stopPropagation();}},
