@@ -66,7 +66,6 @@ function exportShape(analyzed, conns) {
   };
 }
 
-const DEFAULT_BRAIN_VAULT = '/Users/malcolm/Documents/Claude/Projects/Brain';
 const FIXTURE_VAULT = fileURLToPath(new URL('./fixtures/vault', import.meta.url));
 
 function resolveTargets() {
@@ -76,10 +75,6 @@ function resolveTargets() {
       throw new Error(`BRAIN_VAULT does not exist: ${process.env.BRAIN_VAULT}`);
     }
     targets.unshift({ label: 'Brain vault', path: process.env.BRAIN_VAULT });
-    return targets;
-  }
-  if (existsSync(DEFAULT_BRAIN_VAULT)) {
-    targets.unshift({ label: 'Brain vault', path: DEFAULT_BRAIN_VAULT });
   }
   return targets;
 }
