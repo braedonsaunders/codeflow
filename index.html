@@ -663,7 +663,7 @@ const Parser={
     getEmbeddedCodeBlocks:function(content,filename,options){
         if(!content||!Parser.isScriptContainer(filename))return[];
         var blocks=[];
-        var scriptRegex=/<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+        var scriptRegex=/<script\b([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi;
         var match;
         var scriptRanges=[];
         while((match=scriptRegex.exec(content))){
