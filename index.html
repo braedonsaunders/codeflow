@@ -1753,7 +1753,12 @@ const Parser={
             // Variable types: let x: Type = -> let x =
             line=line.replace(/(let|const|var)\s+(\w+)\s*:\s*[A-Za-z_$<>[\]|&\s]+\s*=/g,'$1 $2 =');
             // Generic type params: func<T>( -> func(
-            line=line.replace(/<[A-Za-z_$,\s]+>(?=\s*\()/g,'');
+            // Apply repeatedly to handle nested or multiple occurrences
+            var prevLine;
+            do{
+                prevLine=line;
+                line=line.replace(/<[A-Za-z_$,\s]+>(?=\s*\()/g,'');
+            }while(line!==prevLine);
             // As casts: x as Type -> x
             line=line.replace(/\s+as\s+[A-Za-z_$<>[\]|&\s]+(?=[,;\)\]\}]|$)/g,'');
             // Non-null assertions: x! -> x
