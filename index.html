@@ -144,8 +144,9 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .owner-avatar{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;color:white}
 .owner-name{flex:1;color:var(--t1)}
 .owner-percent{color:var(--t3)}
-.pattern-item{padding:12px;background:var(--bg0);border-radius:8px;margin-bottom:8px;border-left:3px solid var(--green)}
-.pattern-item.anti{border-color:var(--red)}
+.pattern-item{padding:12px;background:linear-gradient(180deg,rgba(34,197,94,0.08) 0%,var(--bg0) 55%);border-radius:8px;margin-bottom:8px;border:1px solid rgba(34,197,94,0.32);transition:transform 0.15s ease,border-color 0.15s ease,box-shadow 0.15s ease}
+.pattern-item:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(0,0,0,0.18)}
+.pattern-item.anti{background:linear-gradient(180deg,rgba(255,95,95,0.08) 0%,var(--bg0) 55%);border-color:rgba(255,95,95,0.34)}
 .pattern-header{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .pattern-icon{color:currentColor}
 .pattern-name{font-size:12px;color:var(--t0);font-weight:600}
@@ -156,11 +157,11 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .pattern-metric{text-align:center}
 .pattern-metric-value{font-size:14px;font-weight:600;color:var(--acc)}
 .pattern-metric-label{font-size:8px;color:var(--t3);text-transform:uppercase}
-.security-item{padding:12px;background:var(--bg0);border-radius:8px;margin-bottom:8px;border-left:3px solid;cursor:pointer}
-.security-item:hover{background:var(--hover)}
-.security-item.high{border-color:var(--red)}
-.security-item.medium{border-color:var(--orange)}
-.security-item.low{border-color:var(--blue)}
+.security-item{padding:12px;background:var(--bg0);border-radius:8px;margin-bottom:8px;border:1px solid transparent;cursor:pointer;transition:transform 0.15s ease,border-color 0.15s ease,box-shadow 0.15s ease}
+.security-item:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(0,0,0,0.18)}
+.security-item.high{background:linear-gradient(180deg,rgba(255,95,95,0.08) 0%,var(--bg0) 55%);border-color:rgba(255,95,95,0.36)}
+.security-item.medium{background:linear-gradient(180deg,rgba(255,159,67,0.08) 0%,var(--bg0) 55%);border-color:rgba(255,159,67,0.34)}
+.security-item.low{background:linear-gradient(180deg,rgba(77,159,255,0.08) 0%,var(--bg0) 55%);border-color:rgba(77,159,255,0.34)}
 .security-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .security-title{font-size:11px;color:var(--t0);font-weight:500}
 .security-desc{font-size:10px;color:var(--t2);margin-bottom:6px;line-height:1.4}
@@ -3078,6 +3079,14 @@ function getFilePreviewIconName(filename){
     return'code';
 }
 
+function getAccentBlockStyle(borderColor,tint,extra){
+    return Object.assign({
+        background:'linear-gradient(180deg, '+tint+' 0%, var(--bg0) 55%)',
+        border:'1px solid '+borderColor,
+        borderRadius:8
+    },extra||{});
+}
+
 // Error boundary to prevent white screen crashes on large codebases
 class ErrorBoundary extends React.Component{
     constructor(props){super(props);this.state={hasError:false,error:null};}
@@ -5345,7 +5354,13 @@ function App(){
                             (!data.suggestions||data.suggestions.length===0)?React.createElement('div',{style:{textAlign:'center',padding:20}},React.createElement(Icon,{name:'spark',size:'xxl',className:'empty-icon'}),React.createElement('div',{style:{color:'var(--green)',fontWeight:600}},'No issues to address!'),React.createElement('div',{style:{fontSize:10,color:'var(--t3)',marginTop:8}},'Your codebase looks healthy')):
                             React.createElement(React.Fragment,null,
                                 React.createElement('div',{style:{fontSize:9,color:'var(--t3)',marginBottom:12}},'Prioritized recommendations based on your codebase analysis'),
-                                data.suggestions.map(function(s,i){return React.createElement('div',{key:i,className:'suggestion-card',style:{background:'var(--bg0)',borderRadius:8,padding:12,marginBottom:10,borderLeft:'3px solid '+(s.priority==='critical'?'var(--red)':s.priority==='high'?'var(--orange)':'var(--acc)')}},
+                                data.suggestions.map(function(s,i){
+                                    var suggestionTone=s.priority==='critical'
+                                        ? getAccentBlockStyle('rgba(255,95,95,0.36)','rgba(255,95,95,0.08)',{padding:12,marginBottom:10})
+                                        : s.priority==='high'
+                                            ? getAccentBlockStyle('rgba(255,159,67,0.34)','rgba(255,159,67,0.08)',{padding:12,marginBottom:10})
+                                            : getAccentBlockStyle('rgba(0,255,157,0.28)','rgba(0,255,157,0.08)',{padding:12,marginBottom:10});
+                                    return React.createElement('div',{key:i,className:'suggestion-card',style:suggestionTone},
                                     React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:6}},
                                         React.createElement(Icon,{name:s.icon,size:'l'}),
                                         React.createElement('span',{style:{fontWeight:600,fontSize:11}},s.title),
@@ -5568,7 +5583,7 @@ function App(){
                             React.createElement('div',{style:{fontSize:11,color:'var(--t2)'}},drillDown.data.desc)
                         ),
                         React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:12}},'All Affected Items (',drillDown.data.items?drillDown.data.items.length:0,')'),
-                        drillDown.data.items&&drillDown.data.items.map(function(item,j){return React.createElement('div',{key:j,style:{background:'var(--bg0)',padding:12,borderRadius:8,marginBottom:8,borderLeft:'3px solid var(--acc)'}},
+                        drillDown.data.items&&drillDown.data.items.map(function(item,j){return React.createElement('div',{key:j,style:getAccentBlockStyle('rgba(0,255,157,0.28)','rgba(0,255,157,0.08)',{padding:12,marginBottom:8})},
                             React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
                                 React.createElement('div',{style:{fontWeight:600,fontSize:11}},item.name),
                                 item.file&&React.createElement('div',{style:{display:'flex',gap:6}},
@@ -5611,7 +5626,7 @@ function App(){
                             );})
                         ),
                         React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:12}},'All Files (',drillDown.data.files.length,')'),
-                        drillDown.data.files.map(function(f,j){return React.createElement('div',{key:j,style:{background:'var(--bg0)',padding:12,borderRadius:8,marginBottom:8,borderLeft:'3px solid var(--acc)'}},
+                        drillDown.data.files.map(function(f,j){return React.createElement('div',{key:j,style:getAccentBlockStyle('rgba(0,255,157,0.28)','rgba(0,255,157,0.08)',{padding:12,marginBottom:8})},
                             React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
                                 React.createElement('div',{style:{fontWeight:600,fontSize:11,cursor:'pointer'},onClick:function(){selectFile(f.path);setDrillDown(null);}},f.name),
                                 React.createElement('button',{className:'view-file-btn',onClick:function(e){e.stopPropagation();openFilePreview(f.path);}},iconLabel('eye','View'))
@@ -5623,7 +5638,11 @@ function App(){
                     ),
                     // Security drill-down
                     drillDown.type==='security'&&React.createElement(React.Fragment,null,
-                        React.createElement('div',{style:{background:drillDown.data.severity==='high'?'rgba(255,100,100,0.1)':drillDown.data.severity==='medium'?'rgba(255,180,100,0.1)':'rgba(100,180,255,0.1)',padding:12,borderRadius:8,marginBottom:16,borderLeft:'3px solid '+(drillDown.data.severity==='high'?'var(--red)':drillDown.data.severity==='medium'?'var(--orange)':'var(--blue)')}},
+                        React.createElement('div',{style:drillDown.data.severity==='high'
+                            ? getAccentBlockStyle('rgba(255,95,95,0.36)','rgba(255,95,95,0.1)',{padding:12,marginBottom:16})
+                            : drillDown.data.severity==='medium'
+                                ? getAccentBlockStyle('rgba(255,159,67,0.34)','rgba(255,180,100,0.1)',{padding:12,marginBottom:16})
+                                : getAccentBlockStyle('rgba(77,159,255,0.34)','rgba(100,180,255,0.1)',{padding:12,marginBottom:16})},
                             React.createElement('div',{style:{fontSize:11,fontWeight:600,marginBottom:4}},drillDown.data.severity.toUpperCase()+' Severity'),
                             React.createElement('div',{style:{fontSize:11,color:'var(--t2)'}},drillDown.data.desc)
                         ),
@@ -5655,7 +5674,9 @@ function App(){
                             React.createElement('div',{style:{fontSize:11,color:'var(--t2)'}},drillDown.data.suggestion)
                         ),
                         React.createElement('div',{style:{fontSize:12,fontWeight:600,marginBottom:12}},'All Locations (',drillDown.data.files.length,')'),
-                        drillDown.data.files.map(function(f,j){return React.createElement('div',{key:j,style:{background:'var(--bg0)',padding:12,borderRadius:8,marginBottom:8,borderLeft:'3px solid '+(drillDown.data.type==='code'?'var(--purple)':'var(--orange)')}},
+                        drillDown.data.files.map(function(f,j){return React.createElement('div',{key:j,style:drillDown.data.type==='code'
+                            ? getAccentBlockStyle('rgba(167,139,250,0.34)','rgba(167,139,250,0.08)',{padding:12,marginBottom:8})
+                            : getAccentBlockStyle('rgba(255,159,67,0.34)','rgba(255,159,67,0.08)',{padding:12,marginBottom:8})},
                             React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},
                                 React.createElement('div',{style:{fontWeight:600,fontSize:11,cursor:'pointer'},onClick:function(){selectFile(f.file);setDrillDown(null);}},f.name||drillDown.data.name),
                                 React.createElement('button',{className:'view-file-btn',onClick:function(e){e.stopPropagation();openFilePreview(f.file,f.line);}},iconLabel('eye','View'))
@@ -5746,7 +5767,7 @@ function App(){
                             React.createElement('div',{className:'unused-summary-label'},'Files Affected')
                         )
                     ),
-                    React.createElement('div',{style:{fontSize:10,color:'var(--t3)',marginBottom:12,padding:'8px 12px',background:'var(--bg0)',borderRadius:6,borderLeft:'3px solid var(--orange)'}},'These functions have zero calls from other files or within their own file. They are likely dead code that can be safely removed.'),
+                    React.createElement('div',{style:Object.assign(getAccentBlockStyle('rgba(255,159,67,0.34)','rgba(255,159,67,0.08)'),{fontSize:10,color:'var(--t3)',marginBottom:12,padding:'8px 12px',borderRadius:6})},'These functions have zero calls from other files or within their own file. They are likely dead code that can be safely removed.'),
                     data.deadFunctions.map(function(fn,i){
                         var isExpanded=expandedFns.has('dead-'+fn.name);
                         return React.createElement('div',{key:i,className:'unused-fn'},
