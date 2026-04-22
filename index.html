@@ -1330,13 +1330,13 @@ const Parser={
         var scriptContent=content;
         var scriptOffset=0;
         if(isVue||isSvelte){
-            var scriptMatch=content.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
+            var scriptMatch=content.match(/<script\b[^>]*>([\s\S]*?)<\/script\b[^>]*>/i);
             if(scriptMatch){
                 scriptContent=scriptMatch[1];
                 scriptOffset=content.substring(0,content.indexOf(scriptMatch[1])).split('\n').length-1;
                 isJS=true;  // Treat extracted script as JS
                 // Check if it's TypeScript
-                if(content.match(/<script[^>]*lang=["']ts["'][^>]*>/i)){
+                if(content.match(/<script\b[^>]*\blang=["']ts["'][^>]*>/i)){
                     isTS=true;
                     isJS=false;
                 }
