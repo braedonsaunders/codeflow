@@ -18,6 +18,7 @@ coverage/
 .DS_Store
 Thumbs.db
 .idea/
+.vscode/
 .vscode/settings.json
 
 # Secrets and local credentials
