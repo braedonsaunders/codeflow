@@ -11,20 +11,19 @@
     <meta property="og:title" content="CodeFlow — Visualize Your Codebase Architecture">
     <meta property="og:description" content="Turn any GitHub repo into an interactive architecture map in seconds. Zero setup, privacy-first, runs in your browser.">
     <meta property="og:type" content="website">
-    <meta property="og:image" content="codeflow-social.png">
+    <meta property="og:image" content="https://via.placeholder.com/1200x630?text=CodeFlow">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="CodeFlow — Visualize Your Codebase Architecture">
     <meta name="twitter:description" content="Turn any GitHub repo into an interactive architecture map in seconds. Zero setup, privacy-first.">
-    <meta name="twitter:image" content="codeflow-social.png">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" integrity="sha384-tMH8h3BGESGckSAVGZ82T9n90ztNXxvdwvdM6UoR56cYcf+0iGXBliJ29D+wZ/x8" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" integrity="sha384-bm7MnzvK++ykSwVJ2tynSE5TRdN+xL418osEVF2DE/L/gfWHj91J2Sphe582B1Bh" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js" integrity="sha384-1qlE7MZPM2pHD/pBZCU/yB8UCP52RYL8bge/qNdfNBCWToySp8/M+JL2waXU4hjJ" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js" integrity="sha384-su5kReKyYlIFrI62mbQRKXHzFobMa7BHp1cK6julLPbnYcCW9NIZKJiTODjLPeDh" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-sankey/0.12.3/d3-sankey.min.js" integrity="sha384-SM54CE5h+qdDI046d2Y5ym7wq1kq4uxcQ1cqGq5/+5jrE5tPLeDJSq711Q8sIska" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/acorn/8.11.3/acorn.min.js" integrity="sha384-UBJ+PIHbfQXlHY8kyExQw89exInn6mDymPpZpWLkUC+MahGs78lUVsoZHVkJK8t+" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/web-tree-sitter@0.25.10/tree-sitter.js" integrity="sha384-LfjKw5UCDh/URIW4R0LSwbzUivo6kO5rgvIuZyfttG3piadg6I20g6UQvL4eX50v" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jsrsasign@11.1.1/lib/jsrsasign-all-min.js" integrity="sha384-sMx1zfVaYRSSPMxNRfS2XV69ojCeVbHPdzV4o8lwAusXr06jd8U+LnYaIj45c5cm" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-sankey/0.12.3/d3-sankey.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/acorn/8.11.3/acorn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web-tree-sitter@0.25.10/tree-sitter.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/11.1.0/jsrsasign-all-min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <style>
 :root{--bg0:#0a0a0c;--bg1:#0f0f12;--bg2:#161619;--bg3:#1c1c21;--bg4:#252529;--hover:#2a2a30;--border:#2d2d35;--border2:#222228;--t0:#f0f0f2;--t1:#c8c8cd;--t2:#8b8b95;--t3:#5c5c66;--acc:#00ff9d;--acc2:#00cc7d;--accbg:rgba(0,255,157,0.08);--blue:#4d9fff;--purple:#a78bfa;--orange:#ff9f43;--red:#ff5f5f;--cyan:#22d3ee;--pink:#ec4899;--green:#22c55e}
@@ -232,8 +231,11 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .graph-config-title{font-size:9px;font-weight:600;color:var(--t3);text-transform:uppercase;margin-bottom:10px}
 .config-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
 .config-label{font-size:10px;color:var(--t2);min-width:60px}
-.config-slider{flex:1;height:4px;-webkit-appearance:none;background:var(--bg3);border-radius:2px;outline:none}
-.config-slider::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;background:var(--acc);border-radius:50%;cursor:pointer}
+.config-slider{flex:1;height:4px;appearance:none;-webkit-appearance:none;background:var(--bg3);border:0;border-radius:2px;cursor:pointer;outline:none}
+.config-slider:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.config-slider::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:12px;height:12px;background:var(--acc);border:0;border-radius:50%;cursor:pointer}
+.config-slider::-moz-range-track{height:4px;background:var(--bg3);border:0;border-radius:2px}
+.config-slider::-moz-range-thumb{width:12px;height:12px;background:var(--acc);border:0;border-radius:50%;cursor:pointer}
 .config-value{font-size:9px;color:var(--t3);min-width:28px;text-align:right}
 .view-toggle{display:flex;gap:4px;margin-bottom:10px}
 .view-btn{flex:1;padding:6px 8px;background:var(--bg0);border:1px solid var(--border);border-radius:4px;font-size:9px;color:var(--t2);cursor:pointer;text-align:center}
@@ -540,56 +542,6 @@ function isSanitizedPreviewRenderer(content){
     return content.includes("function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}") &&
            content.includes("var escaped=esc(line);") &&
            content.includes("dangerouslySetInnerHTML:{__html:lineHtml||' '}");
-}
-
-function escapeHtml(value){
-    return String(value===undefined||value===null?'':value)
-        .replace(/&/g,'&amp;')
-        .replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;')
-        .replace(/'/g,'&#39;');
-}
-
-function renderTooltipHtml(title,stats){
-    var html='<div class="treemap-tooltip-title">'+escapeHtml(title)+'</div>';
-    (stats||[]).forEach(function(stat){
-        html+='<div class="treemap-tooltip-stat"><span>'+escapeHtml(stat[0])+'</span><span>'+escapeHtml(stat[1])+'</span></div>';
-    });
-    return html;
-}
-
-function splitGitHubPath(path){
-    return String(path||'').split('/').filter(Boolean);
-}
-
-function decodeBase64Utf8(value){
-    if(!value)return'';
-    var normalized=String(value).replace(/\s+/g,'');
-    var binary=atob(normalized);
-    var bytes=new Uint8Array(binary.length);
-    for(var i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-    if(typeof TextDecoder!=='undefined'){
-        return new TextDecoder('utf-8').decode(bytes);
-    }
-    try{
-        var encoded='';
-        for(var j=0;j<bytes.length;j++){
-            encoded+='%'+bytes[j].toString(16).padStart(2,'0');
-        }
-        return decodeURIComponent(encoded);
-    }catch(e){
-        return binary;
-    }
-}
-
-function downloadBlob(filename,blob){
-    var url=URL.createObjectURL(blob);
-    var a=document.createElement('a');
-    a.href=url;
-    a.download=filename;
-    a.click();
-    setTimeout(function(){URL.revokeObjectURL(url);},0);
 }
 
 const Parser={
@@ -2503,49 +2455,6 @@ var GitHub={
     installationToken:null,
     installationTokenExpiry:null,
     rateLimit:{remaining:60,limit:60,reset:0},
-    requestTimeoutMs:15000,
-
-    buildRepoUrl:function(o,r,segments,query){
-        var url='https://api.github.com/repos/'+encodeURIComponent(o)+'/'+encodeURIComponent(r);
-        if(segments&&segments.length){
-            url+='/'+segments.map(function(seg){return encodeURIComponent(String(seg));}).join('/');
-        }
-        if(query){
-            var params=new URLSearchParams();
-            Object.keys(query).forEach(function(key){
-                if(query[key]!==undefined&&query[key]!==null&&query[key]!==''){
-                    params.append(key,String(query[key]));
-                }
-            });
-            var qs=params.toString();
-            if(qs)url+='?'+qs;
-        }
-        return url;
-    },
-
-    request:function(url,options){
-        var self=this;
-        var opts=options?Object.assign({},options):{};
-        var headers=opts.headers?Object.assign({},opts.headers):{};
-        if(!headers.Accept)headers.Accept='application/vnd.github.v3+json';
-        opts.headers=headers;
-        var controller=typeof AbortController!=='undefined'?new AbortController():null;
-        var timeoutId=null;
-        if(controller){
-            timeoutId=setTimeout(function(){controller.abort();},this.requestTimeoutMs);
-            opts.signal=controller.signal;
-        }
-        return fetch(url,opts).then(function(response){
-            if(timeoutId!==null)clearTimeout(timeoutId);
-            return response;
-        }).catch(function(error){
-            if(timeoutId!==null)clearTimeout(timeoutId);
-            if(error&&error.name==='AbortError'){
-                throw new Error('GitHub API request timed out after '+Math.round(self.requestTimeoutMs/1000)+' seconds');
-            }
-            throw error;
-        });
-    },
     
     // Generate JWT for GitHub App authentication
     generateJWT:function(){
@@ -2568,22 +2477,17 @@ var GitHub={
         }
     },
     
-    // Get the installation for a specific repository
-    getRepoInstallation:function(owner,repo){
+    // Get installations for the GitHub App
+    getInstallations:function(){
         var jwt=this.generateJWT();
         if(!jwt)return Promise.reject(new Error('Failed to generate JWT'));
-        return this.request(this.buildRepoUrl(owner,repo,['installation']),{
+        return fetch('https://api.github.com/app/installations',{
             headers:{
-                'Accept':'application/vnd.github+json',
+                'Accept':'application/vnd.github.v3+json',
                 'Authorization':'Bearer '+jwt
             }
         }).then(function(r){
-            if(!r.ok)throw new Error(
-                r.status===401?'Invalid App credentials':
-                r.status===404?'GitHub App is not installed on this repository':
-                r.status===403?'GitHub App does not have access to this repository':
-                'Error '+r.status
-            );
+            if(!r.ok)throw new Error(r.status===401?'Invalid App credentials':'Error '+r.status);
             return r.json();
         });
     },
@@ -2593,10 +2497,10 @@ var GitHub={
         var self=this;
         var jwt=this.generateJWT();
         if(!jwt)return Promise.reject(new Error('Failed to generate JWT'));
-        return this.request('https://api.github.com/app/installations/'+encodeURIComponent(String(installationId))+'/access_tokens',{
+        return fetch('https://api.github.com/app/installations/'+installationId+'/access_tokens',{
             method:'POST',
             headers:{
-                'Accept':'application/vnd.github+json',
+                'Accept':'application/vnd.github.v3+json',
                 'Authorization':'Bearer '+jwt
             }
         }).then(function(r){
@@ -2618,7 +2522,17 @@ var GitHub={
             this.token=this.installationToken;
             return Promise.resolve(this.installationToken);
         }
-        return this.getRepoInstallation(owner,repo).then(function(installation){
+        // Get installations and find the one for this repo
+        return this.getInstallations().then(function(installations){
+            if(!installations||!installations.length){
+                throw new Error('No installations found for this GitHub App');
+            }
+            // Try to find installation that has access to this repo
+            // For simplicity, we'll use the first installation
+            // In production, you'd want to match by account/owner
+            var installation=installations.find(function(i){
+                return i.account&&i.account.login&&i.account.login.toLowerCase()===owner.toLowerCase();
+            })||installations[0];
             return self.getInstallationToken(installation.id);
         });
     },
@@ -2627,7 +2541,7 @@ var GitHub={
         var self=this;
         var h={'Accept':'application/vnd.github.v3+json'};
         if(this.token)h['Authorization']='Bearer '+this.token;
-        return this.request(url,{headers:h}).then(function(r){
+        return fetch(url,{headers:h}).then(function(r){
             // Track rate limit from headers
             var rem=r.headers.get('x-ratelimit-remaining');
             var lim=r.headers.get('x-ratelimit-limit');
@@ -2635,13 +2549,7 @@ var GitHub={
             if(rem!==null)self.rateLimit.remaining=parseInt(rem,10);
             if(lim!==null)self.rateLimit.limit=parseInt(lim,10);
             if(rst!==null)self.rateLimit.reset=parseInt(rst,10);
-            if(!r.ok)throw new Error(
-                r.status===401?'Invalid token':
-                r.status===403?(self.rateLimit.remaining===0?'Rate limited - add a GitHub token for 5000 req/hour':'Access denied or rate limited'):
-                r.status===404?'Repository not found':
-                r.status===429?'Rate limited (429) - add a GitHub token':
-                'Error '+r.status
-            );
+            if(!r.ok)throw new Error(r.status===401?'Invalid token':r.status===403?'Rate limited - add a GitHub token for 5000 req/hour':r.status===404?'Repository not found':r.status===429?'Rate limited (429) - add a GitHub token':'Error '+r.status);
             return r.json();
         });
     },
@@ -2649,7 +2557,7 @@ var GitHub={
         var self=this;
         var h={'Accept':'application/vnd.github.v3+json'};
         if(this.token)h['Authorization']='Bearer '+this.token;
-        return this.request('https://api.github.com/rate_limit',{headers:h}).then(function(r){return r.json();}).then(function(d){
+        return fetch('https://api.github.com/rate_limit',{headers:h}).then(function(r){return r.json();}).then(function(d){
             if(d.resources&&d.resources.core){
                 self.rateLimit.remaining=d.resources.core.remaining;
                 self.rateLimit.limit=d.resources.core.limit;
@@ -2659,13 +2567,11 @@ var GitHub={
         }).catch(function(){return self.rateLimit;});
     },
     getFile:function(o,r,p){
-        return this.fetch(this.buildRepoUrl(o,r,['contents'].concat(splitGitHubPath(p)))).then(function(d){
-            return d.content?decodeBase64Utf8(d.content):null;
-        }).catch(function(){return null;});
+        return this.fetch('https://api.github.com/repos/'+o+'/'+r+'/contents/'+p).then(function(d){return d.content?atob(d.content):null;}).catch(function(){return null;});
     },
     getCommits:function(o,r,path,limit){
         if(this.rateLimit.remaining<20&&!this.token)return Promise.resolve([]);// Skip when rate limited
-        return this.fetch(this.buildRepoUrl(o,r,['commits'],{per_page:limit||30,path:path||undefined})).catch(function(){return[];});
+        return this.fetch('https://api.github.com/repos/'+o+'/'+r+'/commits?per_page='+(limit||30)+(path?'&path='+path:'')).catch(function(){return[];});
     },
     getBlame:function(o,r,path){
         return this.getCommits(o,r,path,50).then(function(commits){
@@ -2676,8 +2582,8 @@ var GitHub={
     },
     getPR:function(o,r,prNum){
         var self=this;
-        return this.fetch(this.buildRepoUrl(o,r,['pulls',String(prNum)])).then(function(pr){
-            return self.fetch(self.buildRepoUrl(o,r,['pulls',String(prNum),'files'])).then(function(files){
+        return this.fetch('https://api.github.com/repos/'+o+'/'+r+'/pulls/'+prNum).then(function(pr){
+            return self.fetch('https://api.github.com/repos/'+o+'/'+r+'/pulls/'+prNum+'/files').then(function(files){
                 pr.files=files;return pr;
             });
         }).catch(function(){return null;});
@@ -2687,11 +2593,11 @@ var GitHub={
         var self=this;
         if(cb)cb('Fetching repository tree...');
         // First get repo info to find default branch
-        return this.fetch(this.buildRepoUrl(o,r)).then(function(repo){
+        return this.fetch('https://api.github.com/repos/'+o+'/'+r).then(function(repo){
             var branch=repo.default_branch||'main';
             if(cb)cb('Loading file tree ('+branch+')...');
             // Get full tree in one request with recursive flag
-            return self.fetch(self.buildRepoUrl(o,r,['git','trees',branch],{recursive:1}));
+            return self.fetch('https://api.github.com/repos/'+o+'/'+r+'/git/trees/'+branch+'?recursive=1');
         }).then(function(tree){
             if(!tree.tree)throw new Error('Invalid tree response');
             var f=[];
@@ -2716,7 +2622,7 @@ var GitHub={
     scanRecursive:function(o,r,cb,p,d,compiledPatterns){
         var self=this;p=p||'';d=d||0;
         if(d>10)return Promise.resolve([]);
-        return this.fetch(this.buildRepoUrl(o,r,['contents'].concat(splitGitHubPath(p)))).then(function(c){
+        return this.fetch('https://api.github.com/repos/'+o+'/'+r+'/contents/'+p).then(function(c){
             var f=[];
             var promises=[];
             c.forEach(function(i){
@@ -3069,12 +2975,10 @@ function App(){
     var nodesRef=useRef(null);
     var linksRef=useRef(null);
     var selectFileRef=useRef(null);
-    var toastTimeoutRef=useRef(null);
     var activeExcludePatterns=useMemo(function(){return compileExcludePatterns(excludePatternInput);},[excludePatternInput]);
     var customExcludeCount=activeExcludePatterns.length;
 
     useEffect(function(){document.body.className=theme==='light'?'light':'';},[theme]);
-    useEffect(function(){return function(){if(toastTimeoutRef.current)clearTimeout(toastTimeoutRef.current);};},[]);
 
     useEffect(function(){
         var params=new URLSearchParams(window.location.search);
@@ -4094,7 +3998,7 @@ function App(){
             .text(function(d){return d.data.value+' lines';});
         var tooltip=container.append('div').attr('class','treemap-tooltip').style('display','none').style('position','absolute');
         cells.on('mouseenter',function(e,d){
-            tooltip.html(renderTooltipHtml(d.data.name,[['Lines',d.data.value],['Functions',d.data.fns||0],['Layer',d.data.layer||'—'],['Folder',d.data.folder||'root']]))
+            tooltip.html('<div class="treemap-tooltip-title">'+d.data.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+d.data.value+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(d.data.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Layer:</span><span>'+(d.data.layer||'—')+'</span></div><div class="treemap-tooltip-stat"><span>Folder:</span><span>'+(d.data.folder||'root')+'</span></div>')
                 .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
             d3.select(this).select('rect').transition().duration(150).attr('opacity',1).attr('stroke','var(--acc)').attr('stroke-width',2);
         }).on('mousemove',function(e){tooltip.style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');})
@@ -4164,7 +4068,7 @@ function App(){
             .attr('fill',function(d){return d.value>0?'rgba(0,255,157,'+Math.max(0.15,d.value/maxVal)+')':'var(--bg2)';})
             .attr('stroke','var(--bg0)').attr('stroke-width',0.5).style('cursor','pointer');
         cells.on('mouseenter',function(e,d){
-            tooltip.html(renderTooltipHtml(d.source.name+' → '+d.target.name,[['Connections',d.value]]))
+            tooltip.html('<div class="treemap-tooltip-title">'+d.source.name+' → '+d.target.name+'</div><div class="treemap-tooltip-stat"><span>Connections:</span><span>'+d.value+'</span></div>')
                 .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
             g.selectAll('rect.matrix-cell-rect').attr('opacity',function(c){return c.row===d.row||c.col===d.col?1:0.3;});
             colLabels.attr('fill',function(f,i){return i===d.col?'var(--acc)':'var(--t2)';}).attr('font-weight',function(f,i){return i===d.col?'600':'400';});
@@ -4219,7 +4123,7 @@ function App(){
             .attr('fill','var(--t2)').attr('font-size','10px').attr('font-weight','600').text(function(d){return d.data.name;});
         node.on('mouseenter',function(e,d){
             if(!d.data.path)return;
-            tooltip.html(renderTooltipHtml(d.data.name,[['Lines',d.data.lines||0],['Functions',d.data.fns||0],['Layer',d.data.layer||'—']]))
+            tooltip.html('<div class="treemap-tooltip-title">'+d.data.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+(d.data.lines||0)+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(d.data.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Layer:</span><span>'+(d.data.layer||'—')+'</span></div>')
                 .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
             d3.select(this).select('circle').transition().duration(150).attr('r',12).attr('stroke','var(--acc)').attr('stroke-width',3);
         }).on('mousemove',function(e){tooltip.style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');})
@@ -4297,7 +4201,7 @@ function App(){
             .attr('stroke-width',function(d){return Math.max(2,d.width);}).attr('stroke-opacity',0.4)
             .on('mouseenter',function(e,d){
                 d3.select(this).attr('stroke-opacity',0.8);
-                tooltip.html(renderTooltipHtml(d.source.name+' → '+d.target.name,[['Connections',d.value]]))
+                tooltip.html('<div class="treemap-tooltip-title">'+d.source.name+' → '+d.target.name+'</div><div class="treemap-tooltip-stat"><span>Connections:</span><span>'+d.value+'</span></div>')
                     .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
             }).on('mouseleave',function(){d3.select(this).attr('stroke-opacity',0.4);tooltip.style('display','none');});
         var node=g.selectAll('g.sankey-node').data(graph.nodes).join('g').attr('class','sankey-node').style('cursor','pointer');
@@ -4308,7 +4212,7 @@ function App(){
             .attr('dy','0.35em').attr('text-anchor',function(d){return d.x0<w/2?'start':'end';})
             .attr('fill','var(--t1)').attr('font-size','10px').attr('font-weight','500').text(function(d){return d.name+' ('+d.fileCount+')';});
         node.on('mouseenter',function(e,d){
-            tooltip.html(renderTooltipHtml(d.fullPath,[['Files',d.fileCount]]))
+            tooltip.html('<div class="treemap-tooltip-title">'+d.fullPath+'</div><div class="treemap-tooltip-stat"><span>Files:</span><span>'+d.fileCount+'</span></div>')
                 .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
             g.selectAll('path.sankey-link').attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.8:0.1;});
         }).on('mouseleave',function(){tooltip.style('display','none');g.selectAll('path.sankey-link').attr('stroke-opacity',0.4);})
@@ -4363,7 +4267,7 @@ function App(){
         node.append('circle').attr('class','disjoint-circle').attr('r',function(d){return Math.max(6,Math.min(14,4+d.fns));})
             .attr('fill',function(d){return colorMap[d.folder]||COLORS[0];}).attr('stroke','var(--bg0)').attr('stroke-width',1.5);
         node.on('mouseenter',function(e,d){
-            tooltip.html(renderTooltipHtml(d.name,[['Lines',d.lines||0],['Functions',d.fns||0],['Folder',d.folder]]))
+            tooltip.html('<div class="treemap-tooltip-title">'+d.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+(d.lines||0)+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(d.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Folder:</span><span>'+d.folder+'</span></div>')
                 .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
             link.attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.8:0.05;}).attr('stroke',function(l){return l.source.id===d.id||l.target.id===d.id?'var(--acc)':'var(--border)';});
             d3.select(this).select('circle').transition().duration(150).attr('r',14).attr('stroke','var(--acc)').attr('stroke-width',2);
@@ -4488,7 +4392,7 @@ function App(){
         }
         node.on('mouseenter',function(e,d){
             var rect=bundleRef.current.getBoundingClientRect();
-            tooltip.html(renderTooltipHtml(d.name,[['Lines',d.lines||0],['Functions',d.fns||0],['Folder',d.folder||'root']]))
+            tooltip.html('<div class="treemap-tooltip-title">'+d.name+'</div><div class="treemap-tooltip-stat"><span>Lines:</span><span>'+(d.lines||0)+'</span></div><div class="treemap-tooltip-stat"><span>Functions:</span><span>'+(d.fns||0)+'</span></div><div class="treemap-tooltip-stat"><span>Folder:</span><span>'+(d.folder||'root')+'</span></div>')
                 .style('display','block').style('left',(e.clientX-rect.left+15)+'px').style('top',(e.clientY-rect.top+15)+'px');
             applyBundleHoverState(d.id);
         }).on('mousemove',function(e){var rect=bundleRef.current.getBoundingClientRect();tooltip.style('left',(e.clientX-rect.left+15)+'px').style('top',(e.clientY-rect.top+15)+'px');})
@@ -4546,8 +4450,8 @@ function App(){
         var scale=0.8/Math.max((maxX-minX+100)/w,(maxY-minY+100)/h);
         d3.select(svgRef.current).transition().duration(400).call(zoomRef.current.transform,d3.zoomIdentity.translate(w/2-scale*(minX+maxX)/2,h/2-scale*(minY+maxY)/2).scale(Math.min(scale,2)));
     }
-    function exportSVG(){if(!svgRef.current)return;var svgClone=svgRef.current.cloneNode(true);svgClone.setAttribute('xmlns','http://www.w3.org/2000/svg');svgClone.setAttribute('width',svgRef.current.clientWidth);svgClone.setAttribute('height',svgRef.current.clientHeight);var style=document.createElementNS('http://www.w3.org/2000/svg','style');style.textContent='text{font-family:JetBrains Mono,monospace;pointer-events:none}';svgClone.insertBefore(style,svgClone.firstChild);downloadBlob('codeflow-'+Date.now()+'.svg',new Blob([new XMLSerializer().serializeToString(svgClone)],{type:'image/svg+xml'}));}
-    function exportJSON(){if(!data)return;downloadBlob('codeflow-analysis.json',new Blob([JSON.stringify({stats:data.stats,files:data.files.map(function(f){return{path:f.path,fns:f.functions.length,layer:f.layer,lines:f.lines,dependencies:f.dependencies||[]};}),connections:data.connections,issues:data.issues,patterns:data.patterns,security:data.securityIssues},null,2)],{type:'application/json'}));}
+    function exportSVG(){if(!svgRef.current)return;var svgClone=svgRef.current.cloneNode(true);svgClone.setAttribute('xmlns','http://www.w3.org/2000/svg');svgClone.setAttribute('width',svgRef.current.clientWidth);svgClone.setAttribute('height',svgRef.current.clientHeight);var style=document.createElementNS('http://www.w3.org/2000/svg','style');style.textContent='text{font-family:JetBrains Mono,monospace;pointer-events:none}';svgClone.insertBefore(style,svgClone.firstChild);var blob=new Blob([new XMLSerializer().serializeToString(svgClone)],{type:'image/svg+xml'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow-'+Date.now()+'.svg';a.click();URL.revokeObjectURL(url);}
+    function exportJSON(){if(!data)return;var blob=new Blob([JSON.stringify({stats:data.stats,files:data.files.map(function(f){return{path:f.path,fns:f.functions.length,layer:f.layer,lines:f.lines,dependencies:f.dependencies||[]};}),connections:data.connections,issues:data.issues,patterns:data.patterns,security:data.securityIssues},null,2)],{type:'application/json'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow-analysis.json';a.click();}
     function generateReport(format){
         if(!data)return;
         var repo=repoInfo?(localDirHandle?'Local Folder':repoInfo.owner+'/'+repoInfo.repo):'Unknown Repository';
@@ -4634,7 +4538,8 @@ function App(){
             })
         };
         if(format==='json'){
-            downloadBlob('codeflow-report.json',new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));
+            var blob=new Blob([JSON.stringify(report,null,2)],{type:'application/json'});
+            var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow-report.json';a.click();URL.revokeObjectURL(url);
         }else if(format==='md'){
             var md='# CodeFlow Analysis Report\n\n';
             md+='**Repository:** '+repo+'\n';
@@ -4703,7 +4608,8 @@ function App(){
                 md+='| `'+f.name+'` | '+f.folder+' | '+f.layer+' | '+f.lines+' | '+f.functions.length+' |\n';
             });
             if(data.files.length>100)md+='\n*...and '+(data.files.length-100)+' more files*\n';
-            downloadBlob('codeflow-report.md',new Blob([md],{type:'text/markdown'}));
+            var blob=new Blob([md],{type:'text/markdown'});
+            var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow-report.md';a.click();URL.revokeObjectURL(url);
         }else if(format==='txt'){
             var txt='CODEFLOW ANALYSIS REPORT\n';
             txt+='========================\n\n';
@@ -4766,18 +4672,12 @@ function App(){
                 txt+=src.split('/').pop()+' -> '+tgt.split('/').pop()+' ('+c.fn+': '+c.count+' calls)\n';
             });
             if(data.connections.length>100)txt+='\n...and '+(data.connections.length-100)+' more dependencies\n';
-            downloadBlob('codeflow-report.txt',new Blob([txt],{type:'text/plain'}));
+            var blob=new Blob([txt],{type:'text/plain'});
+            var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow-report.txt';a.click();URL.revokeObjectURL(url);
         }
         showNotification('Report exported as '+format.toUpperCase(),'success');
     }
-    function showNotification(msg,type){
-        if(toastTimeoutRef.current)clearTimeout(toastTimeoutRef.current);
-        setToast({msg:msg,type:type||'success'});
-        toastTimeoutRef.current=setTimeout(function(){
-            setToast(null);
-            toastTimeoutRef.current=null;
-        },3000);
-    }
+    function showNotification(msg,type){setToast({msg:msg,type:type||'success'});setTimeout(function(){setToast(null);},3000);}
     function copyLink(){
         if(localDirHandle){
             showNotification('Share links are not available for local folders','warning');
