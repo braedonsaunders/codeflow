@@ -2,8 +2,9 @@
 // index.html, against the real Brain vault, and emit the same export shape
 // that exportJSON produces. Proves the parser works on the real-world fixture.
 
-import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { extractMarkdownLinks, resolveMarkdownLink } from './md-extractors.mjs';
 
 const IGNORE = new Set(['node_modules', '.git', '.obsidian', '__pycache__', '.DS_Store']);
@@ -65,10 +66,25 @@ function exportShape(analyzed, conns) {
   };
 }
 
-const targets = [
-  { label: 'Brain vault', path: process.env.BRAIN_VAULT || '/Users/malcolm/Documents/Claude/Projects/Brain' },
-  { label: 'Test fixtures', path: new URL('./fixtures/vault', import.meta.url).pathname },
-];
+const DEFAULT_BRAIN_VAULT = '/Users/malcolm/Documents/Claude/Projects/Brain';
+const FIXTURE_VAULT = fileURLToPath(new URL('./fixtures/vault', import.meta.url));
+
+function resolveTargets() {
+  const targets = [{ label: 'Test fixtures', path: FIXTURE_VAULT }];
+  if (process.env.BRAIN_VAULT) {
+    if (!existsSync(process.env.BRAIN_VAULT)) {
+      throw new Error(`BRAIN_VAULT does not exist: ${process.env.BRAIN_VAULT}`);
+    }
+    targets.unshift({ label: 'Brain vault', path: process.env.BRAIN_VAULT });
+    return targets;
+  }
+  if (existsSync(DEFAULT_BRAIN_VAULT)) {
+    targets.unshift({ label: 'Brain vault', path: DEFAULT_BRAIN_VAULT });
+  }
+  return targets;
+}
+
+const targets = resolveTargets();
 
 let outPath = process.env.OUT || '/tmp/codeflow-verify.json';
 const results = {};
