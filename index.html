@@ -29,9 +29,9 @@
 :root{--bg0:#0a0a0c;--bg1:#0f0f12;--bg2:#161619;--bg3:#1c1c21;--bg4:#252529;--hover:#2a2a30;--border:#2d2d35;--border2:#222228;--t0:#f0f0f2;--t1:#c8c8cd;--t2:#8b8b95;--t3:#5c5c66;--acc:#00ff9d;--acc2:#00cc7d;--accbg:rgba(0,255,157,0.08);--blue:#4d9fff;--purple:#a78bfa;--orange:#ff9f43;--red:#ff5f5f;--cyan:#22d3ee;--pink:#ec4899;--green:#22c55e}
 .light{--bg0:#fff;--bg1:#f8f9fa;--bg2:#f1f3f4;--bg3:#e8eaed;--bg4:#dadce0;--hover:#e2e4e8;--border:#dadce0;--border2:#e8eaed;--t0:#1a1a1a;--t1:#3c3c3c;--t2:#6c6c6c;--t3:#9c9c9c;--acc:#00a86b;--acc2:#008f5b;--accbg:rgba(0,168,107,0.08)}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0);height:100vh;overflow:hidden}
-.app{display:flex;height:100vh;flex-direction:column}
-.topbar{height:48px;background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:16px;flex-shrink:0}
+body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0);height:100vh;height:100dvh;min-height:100vh;min-height:100dvh;overflow:hidden}
+.app{display:flex;height:100vh;height:100dvh;min-height:100vh;min-height:100dvh;flex-direction:column}
+.topbar{min-height:48px;background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:16px;flex-shrink:0;position:relative;z-index:120}
 .logo{display:flex;align-items:center;gap:10px;cursor:pointer}
 .logo-mark{width:28px;height:28px;background:linear-gradient(135deg,var(--acc),var(--cyan));border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--bg0)}
 .logo-text{font-size:14px;font-weight:700;color:var(--acc)}
@@ -43,17 +43,18 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .icon-xl{width:20px;height:20px}
 .icon-xxl{width:48px;height:48px}
 .status-dot{display:inline-block;width:8px;height:8px;border-radius:999px;flex-shrink:0}
-.repo-input-group{display:flex;gap:8px;flex:1;max-width:500px}
-.repo-input{flex:1;padding:6px 12px;background:var(--bg0);border:1px solid var(--border);border-radius:6px;color:var(--t0);font-family:inherit;font-size:11px}
+.repo-input-group{display:flex;gap:8px;flex:1;max-width:500px;min-width:0}
+.repo-input-group>*{min-width:0}
+.repo-input{flex:1;padding:6px 12px;background:var(--bg0);border:1px solid var(--border);border-radius:6px;color:var(--t0);font-family:inherit;font-size:11px;min-width:0}
 .repo-input:focus{outline:none;border-color:var(--acc)}
-.topbar-actions{display:flex;gap:6px;margin-left:auto}
-.top-btn{padding:6px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-family:inherit;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap}
+.topbar-actions{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.top-btn{padding:6px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-family:inherit;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;min-height:32px;touch-action:manipulation}
 .top-btn:hover{background:var(--bg4);border-color:var(--acc);color:var(--acc)}
 .top-btn.primary{background:var(--acc);color:var(--bg0);border-color:var(--acc)}
 .top-btn.primary:hover{background:var(--acc2)}
 .top-btn:disabled{opacity:0.5;cursor:not-allowed}
-.main{display:flex;flex:1;overflow:hidden}
-.sidebar{width:260px;min-width:180px;max-width:400px;background:var(--bg1);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;position:relative}
+.main{display:flex;flex:1;overflow:hidden;min-height:0;position:relative}
+.sidebar{width:260px;min-width:180px;max-width:400px;background:var(--bg1);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;position:relative;min-height:0}
 .resize-handle{position:absolute;top:0;right:-4px;width:8px;height:100%;cursor:col-resize;z-index:10}
 .resize-handle:hover{background:var(--acc);opacity:0.3}
 .sidebar-section{padding:12px;border-bottom:1px solid var(--border)}
@@ -90,13 +91,13 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .tree-file{display:flex;align-items:center;gap:6px;padding:4px 8px;margin-left:18px;border-radius:4px;cursor:pointer;font-size:10px;color:var(--t2)}
 .tree-file:hover{background:var(--hover);color:var(--t0)}
 .tree-file.active{background:var(--accbg);color:var(--acc)}
-.canvas-area{flex:1;position:relative;background:var(--bg0);overflow:hidden}
+.canvas-area{flex:1;position:relative;background:var(--bg0);overflow:hidden;min-width:0}
 .canvas-area svg{width:100%;height:100%;display:block}
 .canvas-toolbar{position:absolute;top:12px;left:12px;display:flex;gap:4px;z-index:50}
 .canvas-info{position:absolute;bottom:12px;left:12px;display:flex;gap:8px;z-index:50}
 .info-chip{padding:6px 10px;background:var(--bg1);border:1px solid var(--border);border-radius:6px;font-size:10px;color:var(--t2)}
 .info-chip strong{color:var(--acc)}
-.tool-btn{width:32px;height:32px;background:var(--bg1);border:1px solid var(--border);border-radius:6px;color:var(--t2);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.tool-btn{width:32px;height:32px;background:var(--bg1);border:1px solid var(--border);border-radius:6px;color:var(--t2);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;touch-action:manipulation}
 .tool-btn:hover{background:var(--bg2);color:var(--t0);border-color:var(--acc)}
 .legend{position:absolute;top:12px;right:12px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;z-index:50;min-width:140px;max-height:300px;overflow-y:auto;transition:all 0.2s}
 .legend.collapsed{padding:8px;min-width:auto;max-height:none;overflow:hidden}
@@ -113,7 +114,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .legend-item:hover{background:var(--hover)}
 .legend-item.active{background:var(--accbg);color:var(--acc)}
 .legend-color{width:12px;height:12px;border-radius:3px;flex-shrink:0}
-.right-panel{width:360px;min-width:280px;max-width:500px;background:var(--bg1);border-left:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;position:relative}
+.right-panel{width:360px;min-width:280px;max-width:500px;background:var(--bg1);border-left:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;position:relative;min-height:0}
 .right-panel .resize-handle{right:auto;left:-4px}
 .panel-tabs{display:flex;border-bottom:1px solid var(--border);background:var(--bg2)}
 .panel-tab{flex:1;padding:8px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--t3);font-family:inherit;font-size:9px;font-weight:600;cursor:pointer}
@@ -448,6 +449,84 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .exclude-textarea{min-height:180px;font-family:'JetBrains Mono',monospace;font-size:10px;resize:vertical}
 .exclude-help{font-size:9px;color:var(--t3);line-height:1.5;margin-top:8px}
 .exclude-count{font-size:9px;color:var(--t3);margin-left:auto}
+.mobile-panel-actions{display:none}
+.mobile-panel-actions .top-btn.active{background:var(--accbg);border-color:var(--acc);color:var(--acc)}
+.mobile-panel-backdrop{display:none}
+.mobile-panel-header{display:none}
+.mobile-panel-meta{min-width:0}
+.mobile-panel-title{font-size:12px;font-weight:600;color:var(--t0)}
+.mobile-panel-subtitle{font-size:10px;color:var(--t3);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mobile-panel-close{width:36px;height:36px;background:var(--bg0);border:1px solid var(--border);border-radius:8px;color:var(--t2);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;touch-action:manipulation}
+.mobile-panel-close:hover{border-color:var(--acc);color:var(--acc)}
+@media (max-width:980px){
+body{height:100dvh;min-height:100dvh}
+.topbar{height:auto;padding:calc(10px + env(safe-area-inset-top)) 12px 12px;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.topbar>*{min-width:0}
+.logo{min-height:40px}
+.logo-mark{width:32px;height:32px}
+.logo-text{font-size:15px}
+.repo-input-group{order:2;flex:1 1 100%;max-width:none;flex-wrap:wrap}
+.repo-input-group>.repo-input:first-child{flex:1 1 100%}
+.repo-input,.auth-select,.private-key-btn,.top-btn,.refresh-btn,.reset-btn,.view-file-btn{min-height:40px;font-size:11px}
+.auth-select{flex:1 1 150px}
+.auth-inputs{display:flex;gap:8px;align-items:stretch;flex:1 1 100%;flex-wrap:wrap}
+.auth-inputs .repo-input{flex:1 1 180px}
+.private-key-btn{flex:1 1 160px;justify-content:center}
+.repo-input-group .top-btn,.repo-input-group .refresh-btn,.repo-input-group .reset-btn{flex:1 1 calc(50% - 4px);justify-content:center}
+.mobile-panel-actions{display:flex;order:3;gap:8px;flex:1 1 100%}
+.mobile-panel-actions .top-btn{flex:1 1 0;justify-content:center}
+.topbar-actions{order:4;width:100%;margin-left:0;justify-content:flex-start}
+.topbar-actions .top-btn{flex:1 1 calc(50% - 4px);justify-content:center}
+.mobile-panel-backdrop{position:fixed;inset:var(--topbar-height,0) 0 0 0;background:rgba(0,0,0,0.45);border:0;padding:0;display:block;z-index:89;opacity:0;pointer-events:none;transition:opacity 0.2s ease}
+.mobile-panel-backdrop.visible{opacity:1;pointer-events:auto}
+.sidebar,.right-panel{position:fixed;top:var(--topbar-height,0);bottom:0;max-width:calc(100vw - 12px);box-shadow:0 18px 40px rgba(0,0,0,0.45);z-index:90;transition:transform 0.24s ease;overflow:hidden}
+.sidebar{left:0;transform:translateX(-105%)}
+.right-panel{right:0;transform:translateX(105%)}
+.sidebar.mobile-visible,.right-panel.mobile-visible{transform:translateX(0)}
+.resize-handle{display:none}
+.mobile-panel-header{display:flex;align-items:center;justify-content:space-between;padding:12px;border-bottom:1px solid var(--border);background:var(--bg2)}
+.sidebar-scroll,.panel-content{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+.viz-selector{top:12px;left:12px;right:12px;transform:none;overflow-x:auto;justify-content:flex-start;padding:6px}
+.viz-selector-btn{flex:0 0 auto;min-height:34px;font-size:10px}
+.canvas-toolbar{top:68px;left:12px;right:12px;gap:8px;overflow-x:auto;padding-bottom:2px}
+.tool-btn{width:40px;height:40px;font-size:15px;flex:0 0 auto}
+.graph-config{top:120px;left:12px;right:12px;width:auto;max-width:none}
+.legend{top:auto;bottom:68px;right:12px;max-width:calc(100vw - 24px)}
+.canvas-info{left:12px;right:12px;bottom:12px;overflow-x:auto;padding-bottom:calc(2px + env(safe-area-inset-bottom))}
+.info-chip{white-space:nowrap;flex:0 0 auto}
+.export-options,.pr-grid,.pr-impact-grid,.unused-summary{grid-template-columns:1fr}
+.pr-risk{flex-direction:column;align-items:flex-start}
+.file-preview-modal{width:calc(100vw - 12px);height:min(88dvh,760px)}
+.file-preview-header{flex-wrap:wrap;align-items:flex-start;gap:10px}
+.file-preview-actions{width:100%;justify-content:space-between}
+.file-preview-path{margin-left:0;display:block}
+.file-preview-code{font-size:11px}
+.file-preview-linenum{min-width:42px;padding:0 10px}
+.file-preview-text{padding:0 12px}
+.modal{width:calc(100vw - 20px);max-height:min(88dvh,800px)}
+.modal-footer{flex-wrap:wrap}
+.modal-footer .top-btn{flex:1 1 calc(50% - 4px);justify-content:center}
+.confirm-content{flex-direction:column}
+.confirm-icon{width:36px;height:36px}
+.tooltip{max-width:min(240px,calc(100vw - 24px))}
+.toast{width:calc(100vw - 24px);padding:12px 16px}
+}
+@media (max-width:640px){
+.topbar{padding-left:10px;padding-right:10px}
+.repo-input-group .top-btn,.repo-input-group .refresh-btn,.repo-input-group .reset-btn,.topbar-actions .top-btn{flex:1 1 calc(50% - 4px)}
+.repo-input-group .top-btn.primary{flex:1 1 100%}
+.health-score{align-items:flex-start}
+.canvas-toolbar{top:64px}
+.graph-config{top:116px}
+.legend{bottom:72px;right:12px}
+.panel-tabs{position:sticky;top:0;z-index:2}
+.file-preview-modal{width:100vw;height:100dvh;border-radius:0;border:none}
+.file-preview-header{border-radius:0;padding:12px}
+.file-preview-content{padding-bottom:env(safe-area-inset-bottom)}
+.file-preview-text{font-size:10px}
+.modal,.pr-modal{width:100vw;max-width:none;max-height:100dvh;border-radius:0}
+.modal-header,.modal-body,.modal-footer{padding-left:14px;padding-right:14px}
+}
     </style>
 </head>
 <body>
@@ -3287,7 +3366,12 @@ function App(){
     var _aj=useState(''),excludePatternDraft=_aj[0],setExcludePatternDraft=_aj[1];
     var _ak=useState(false),launchFolderAfterExcludeSave=_ak[0],setLaunchFolderAfterExcludeSave=_ak[1];
     var _al=useState(null),confirmDialog=_al[0],setConfirmDialog=_al[1];
+    var _am=useState(window.innerWidth),viewportWidth=_am[0],setViewportWidth=_am[1];
+    var _an=useState(null),mobilePanel=_an[0],setMobilePanel=_an[1];
+    var _ao=useState(48),topbarHeight=_ao[0],setTopbarHeight=_ao[1];
+    var isMobile=viewportWidth<=980;
     var svgRef=useRef(null);
+    var topbarRef=useRef(null);
     var filePreviewRef=useRef(null);
     var treemapRef=useRef(null);
     var matrixRef=useRef(null);
@@ -3305,6 +3389,45 @@ function App(){
     var customExcludeCount=activeExcludePatterns.length;
 
     useEffect(function(){document.body.className=theme==='light'?'light':'';},[theme]);
+
+    useEffect(function(){
+        function onResize(){setViewportWidth(window.innerWidth);}
+        window.addEventListener('resize',onResize);
+        onResize();
+        return function(){window.removeEventListener('resize',onResize);};
+    },[]);
+
+    useEffect(function(){
+        if(!topbarRef.current)return;
+        function measureTopbar(){
+            if(topbarRef.current){
+                setTopbarHeight(topbarRef.current.offsetHeight||48);
+            }
+        }
+        measureTopbar();
+        if(typeof ResizeObserver==='undefined'){
+            window.addEventListener('resize',measureTopbar);
+            return function(){window.removeEventListener('resize',measureTopbar);};
+        }
+        var observer=new ResizeObserver(measureTopbar);
+        observer.observe(topbarRef.current);
+        return function(){observer.disconnect();};
+    },[]);
+
+    useEffect(function(){
+        if(!isMobile){
+            setMobilePanel(null);
+            return;
+        }
+        setLegendCollapsed(true);
+        setShowGraphConfig(false);
+    },[isMobile]);
+
+    useEffect(function(){
+        if(!data){
+            setMobilePanel(null);
+        }
+    },[data]);
 
     useEffect(function(){
         return function(){
@@ -3359,6 +3482,8 @@ function App(){
         setFolderFilter(null);
         setPrData(null);
         setFilePreview(null);
+        setMobilePanel(null);
+        setShowGraphConfig(false);
     }
 
     function openExcludeModal(continueToFolder){
@@ -3408,6 +3533,10 @@ function App(){
                 cancelLabel:'Cancel'
             },options||{}));
         });
+    }
+
+    function toggleMobilePanel(panel){
+        setMobilePanel(function(prev){return prev===panel?null:panel;});
     }
 
     function analyze(){
@@ -4062,6 +4191,10 @@ function App(){
         if(file){
             setSelected(file);
             setRightTab('details');
+            if(isMobile){
+                setMobilePanel('details');
+                setLegendCollapsed(true);
+            }
             var blast=calcBlast(path,data.connections,data.files);
             setBlastRadius(blast);
             setOwnership(null);
@@ -4075,7 +4208,7 @@ function App(){
             }
             updateGraphHighlight(path,blast);
         }
-    },[data,repoInfo,localDirHandle]);
+    },[data,repoInfo,localDirHandle,isMobile]);
     selectFileRef.current=selectFile;
 
     function updateGraphHighlight(path,blast){
@@ -5119,9 +5252,11 @@ function App(){
     function resetAnalysis(){setData(null);setSelected(null);setBlastRadius(null);setOwnership(null);setRepoInfo(null);setRepoUrl('');setPrData(null);setFolderFilter(null);setLocalDirHandle(null);window.history.replaceState({},'',window.location.pathname);}
     function filterByFolder(path){setFolderFilter(function(prev){return prev===path?null:path;});}
     var health=useMemo(function(){return calcHealth(data);},[data]);
+    var mobileSidebarWidth=Math.min(Math.max(viewportWidth-16,240),380);
+    var mobileRightPanelWidth=Math.min(Math.max(viewportWidth-16,240),460);
 
-    return React.createElement('div',{className:'app'},
-        React.createElement('div',{className:'topbar'},
+    return React.createElement('div',{className:'app',style:{'--topbar-height':topbarHeight+'px'}},
+        React.createElement('div',{className:'topbar',ref:topbarRef},
             React.createElement('div',{className:'logo',onClick:function(){setShowPrivacy(true);}},
                 React.createElement('div',{className:'logo-mark'},React.createElement(Icon,{name:'logo',size:'l'})),
                 React.createElement('span',{className:'logo-text'},'CODEFLOW')
@@ -5165,6 +5300,16 @@ function App(){
                     ' Reset'
                 )
             ),
+            isMobile&&React.createElement('div',{className:'mobile-panel-actions'},
+                React.createElement('button',{className:'top-btn'+(mobilePanel==='explorer'?' active':''),'aria-label':'Toggle explorer panel',onClick:function(){toggleMobilePanel('explorer');},type:'button'},
+                    React.createElement(Icon,{name:'folder',size:'m'}),
+                    'Explorer'
+                ),
+                React.createElement('button',{className:'top-btn'+(mobilePanel==='details'?' active':''),'aria-label':'Toggle details panel',onClick:function(){toggleMobilePanel('details');},disabled:!data,type:'button'},
+                    React.createElement(Icon,{name:selected?'file':'layout',size:'m'}),
+                    selected?'Inspector':'Insights'
+                )
+            ),
             React.createElement('div',{className:'topbar-actions'},
                 React.createElement('button',{className:'top-btn','aria-label':'Analyze Pull Request',onClick:function(){setShowPR(true);},disabled:!data||localDirHandle},React.createElement(Icon,{name:'pull-request',size:'m'}),'PR'),
                 React.createElement('button',{className:'top-btn','aria-label':'Export analysis',onClick:function(){setShowExport(true);},disabled:!data},React.createElement(Icon,{name:'export',size:'m'}),'Export'),
@@ -5173,7 +5318,17 @@ function App(){
             )
         ),
         React.createElement('div',{className:'main'},
-            React.createElement('div',{className:'sidebar',style:{width:sidebarWidth}},
+            isMobile&&React.createElement('button',{type:'button',className:'mobile-panel-backdrop'+(mobilePanel?' visible':''),'aria-label':'Close mobile panel',onClick:function(){setMobilePanel(null);}}),
+            React.createElement('div',{className:'sidebar'+(isMobile&&mobilePanel==='explorer'?' mobile-visible':''),style:{width:isMobile?mobileSidebarWidth:sidebarWidth}},
+                isMobile&&React.createElement('div',{className:'mobile-panel-header'},
+                    React.createElement('div',{className:'mobile-panel-meta'},
+                        React.createElement('div',{className:'mobile-panel-title'},'Explorer'),
+                        React.createElement('div',{className:'mobile-panel-subtitle'},data?(folderFilter?'Filtered by '+folderFilter:data.files.length+' files ready to browse'):'Analyze a repo or open a folder')
+                    ),
+                    React.createElement('button',{className:'mobile-panel-close',type:'button','aria-label':'Close explorer panel',onClick:function(){setMobilePanel(null);}},
+                        React.createElement(Icon,{name:'close',size:'m'})
+                    )
+                ),
                 React.createElement('div',{className:'resize-handle',onMouseDown:function(e){
                     e.preventDefault();
                     var startX=e.clientX,startW=sidebarWidth;
@@ -5332,7 +5487,16 @@ function App(){
                     tooltip&&React.createElement('div',{className:'tooltip',style:{left:tooltip.x,top:tooltip.y}},React.createElement('div',{className:'tooltip-title'},tooltip.title),React.createElement('div',{className:'tooltip-content'},tooltip.content))
                 )
             ),
-            React.createElement('div',{className:'right-panel',style:{width:rightPanelWidth}},
+            React.createElement('div',{className:'right-panel'+(isMobile&&mobilePanel==='details'?' mobile-visible':''),style:{width:isMobile?mobileRightPanelWidth:rightPanelWidth}},
+                isMobile&&React.createElement('div',{className:'mobile-panel-header'},
+                    React.createElement('div',{className:'mobile-panel-meta'},
+                        React.createElement('div',{className:'mobile-panel-title'},selected?selected.name:'Insights'),
+                        React.createElement('div',{className:'mobile-panel-subtitle'},selected?selected.path:(data?'Browse issues, patterns, and security findings':'Select a file to inspect it'))
+                    ),
+                    React.createElement('button',{className:'mobile-panel-close',type:'button','aria-label':'Close details panel',onClick:function(){setMobilePanel(null);}},
+                        React.createElement(Icon,{name:'close',size:'m'})
+                    )
+                ),
                 React.createElement('div',{className:'resize-handle',onMouseDown:function(e){
                     e.preventDefault();
                     var startX=e.clientX,startW=rightPanelWidth;
