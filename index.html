@@ -19,11 +19,11 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ff9d' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M13 2 4 14h6l-1 8 9-12h-6l1-8z'/></svg>">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" integrity="sha512-8Q6Y9XnTbOE+JNvjBQwJ2H8S+UV4uA6hiRykhdtIyDYZ2TprdNmWOUaKdGzOhyr4dCyk287OejbPvwl7lrfqrQ==" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" integrity="sha512-MOCpqoRoisCTwJ8vQQiciZv0qcpROCidek3GTFS6KTk2+y7munJIlKCVkFCYY+p3ErYFXCjmFjnfTTRSC1OHWQ==" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js" integrity="sha512-9/DBzqmxH9p1YcT+G+l3FRzK/OSB8f0ZQeYf3NL0PHEqPLW5S3/+qJqTlYQlEqZBLCKapqYxq+0ZAf+BqPQ5Aw==" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js" integrity="sha512-BfcEFQ1SddlO+7JRhcagE5aEc/jc+KUtCsMGjzwkM4WHPgdHmGaYQPmW9snfgfU73cGW7+9sjdk70YErPPVi0w==" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js" integrity="sha512-M7nHCiNUOwFt6Us3r8alutZLm9qMt4s9951uo8jqO4UwJ1hziseL6O3ndFyigx6+LREfZqnhHxYjKRJ8ZQ69DQ==" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-sankey/0.12.3/d3-sankey.min.js" integrity="sha512-KK1bkbLDo84axnLjMoHZvXD/bP+MgTVTLM8m1bqJlqVFRXdNvHMJqVDlqN5n0p1NVNVOgO+doLx7L0+XGVGQBA==" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/acorn/8.11.3/acorn.min.js" integrity="sha512-9gvJLxBsK6TDJlN/lHjFxoLZJJZ0WcYJJYlBuKXQNFsKXNqpCisfxz+WzEfqXe0KsJSZM7SXoLhLvJV+hOhgYg==" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/11.1.0/jsrsasign-all-min.js" integrity="sha512-JUyqPIuBVhT0O0c8iFMoZW1hzQFv0J0FKLuP0bjJGD+vpZxPKgtMuIhw+tRmKMVKPKxvCMVTLyxg10Lw6d6OHw==" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-sankey/0.12.3/d3-sankey.min.js" integrity="sha512-KK15oKpabNDaLpWinMtNfTqy/V7pzlc2FRG174PfASes7RRx6TAsua8HJdRTKo8+BLvPBKNIkL7kXWcz5HoqqA==" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/acorn/8.11.3/acorn.min.js" integrity="sha512-qsbZzESFnMN1Zz5cujkpYFK7wysw2sDerv2/OUYiMMfEJY6h4h7o8vWytbAnPFUUpLhKfqmF+4BixPBBnbVUyg==" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/11.1.0/jsrsasign-all-min.js" integrity="sha512-Eu9j+HZBor7muHf6IDWoWZ8FKVr6nKe9eIIVR28NEte4Y4GiYRlke26XGdR/re81XE/FfLoLYYVkvNk5GY9RvQ==" crossorigin="anonymous"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <style>
 :root{--bg0:#0a0a0c;--bg1:#0f0f12;--bg2:#161619;--bg3:#1c1c21;--bg4:#252529;--hover:#2a2a30;--border:#2d2d35;--border2:#222228;--t0:#f0f0f2;--t1:#c8c8cd;--t2:#8b8b95;--t3:#5c5c66;--acc:#00ff9d;--acc2:#00cc7d;--accbg:rgba(0,255,157,0.08);--blue:#4d9fff;--purple:#a78bfa;--orange:#ff9f43;--red:#ff5f5f;--cyan:#22d3ee;--pink:#ec4899;--green:#22c55e}
@@ -43,9 +43,11 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .icon-xl{width:20px;height:20px}
 .icon-xxl{width:48px;height:48px}
 .status-dot{display:inline-block;width:8px;height:8px;border-radius:999px;flex-shrink:0}
-.repo-input-group{display:flex;gap:8px;flex:1;max-width:500px;min-width:0}
+.repo-input-group{display:flex;gap:8px;flex:1;max-width:860px;min-width:0}
 .repo-input-group>*{min-width:0}
 .repo-input{flex:1;padding:6px 12px;background:var(--bg0);border:1px solid var(--border);border-radius:6px;color:var(--t0);font-family:inherit;font-size:11px;min-width:0}
+.repo-input-group>.repo-input:first-child{min-width:220px}
+.repo-input-group>.top-btn,.repo-input-group>.refresh-btn,.repo-input-group>.reset-btn,.auth-select,.private-key-btn{flex-shrink:0}
 .repo-input:focus{outline:none;border-color:var(--acc)}
 .topbar-actions{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
 .top-btn{padding:6px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-family:inherit;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;min-height:32px;touch-action:manipulation}
