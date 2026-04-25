@@ -24,6 +24,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-sankey/0.12.3/d3-sankey.min.js" integrity="sha512-KK15oKpabNDaLpWinMtNfTqy/V7pzlc2FRG174PfASes7RRx6TAsua8HJdRTKo8+BLvPBKNIkL7kXWcz5HoqqA==" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/acorn/8.11.3/acorn.min.js" integrity="sha512-qsbZzESFnMN1Zz5cujkpYFK7wysw2sDerv2/OUYiMMfEJY6h4h7o8vWytbAnPFUUpLhKfqmF+4BixPBBnbVUyg==" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/11.1.0/jsrsasign-all-min.js" integrity="sha512-Eu9j+HZBor7muHf6IDWoWZ8FKVr6nKe9eIIVR28NEte4Y4GiYRlke26XGdR/re81XE/FfLoLYYVkvNk5GY9RvQ==" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web-tree-sitter@0.20.8/tree-sitter.js" integrity="sha512-HHbWn9jEdYHHREfFtaPv+eEgSfUSWj/IMe8cOuGAaQNnr9NQiD5ihxOkj1IFu3YGYHB8DHyHfxqxI7kI0b4g5A==" crossorigin="anonymous"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
     <style>
 :root{--bg0:#0a0a0c;--bg1:#0f0f12;--bg2:#161619;--bg3:#1c1c21;--bg4:#252529;--hover:#2a2a30;--border:#2d2d35;--border2:#222228;--t0:#f0f0f2;--t1:#c8c8cd;--t2:#8b8b95;--t3:#5c5c66;--acc:#00ff9d;--acc2:#00cc7d;--accbg:rgba(0,255,157,0.08);--blue:#4d9fff;--purple:#a78bfa;--orange:#ff9f43;--red:#ff5f5f;--cyan:#22d3ee;--pink:#ec4899;--green:#22c55e}
@@ -593,11 +595,26 @@ body{height:100dvh;min-height:100dvh}
 <body>
 <div id="root"></div>
 <script type="text/babel">
+/*
+ * CodeFlow is intentionally shipped as one HTML file.
+ *
+ * The file is organized in five broad sections:
+ * 1. Shared constants, exclusion helpers, and browser-yield utilities.
+ * 2. Parser and static-analysis primitives.
+ * 3. GitHub API adapter and repository scanning.
+ * 4. Shared analysis pipeline plus inline Web Worker fallback.
+ * 5. React UI, local folder/ZIP ingestion, visualization, and modals.
+ */
 const{useState,useEffect,useRef,useMemo,useCallback}=React;
 const COLORS=['#4d9fff','#a78bfa','#22d3ee','#00ff9d','#ff9f43','#ec4899','#ff5f5f','#84cc16'];
 const LAYER_COLORS={ui:'#4d9fff',components:'#22d3ee',services:'#a78bfa',utils:'#00ff9d',data:'#ff9f43',config:'#ec4899',test:'#f59e0b',modules:'#a78bfa',forms:'#22d3ee',classes:'#ff9f43',note:'#c084fc'};
-const IGNORE=new Set(['node_modules','.git','vendor','dist','build','__pycache__','.next','coverage','.venv','venv','env','.env','.tox','.mypy_cache','.pytest_cache','.ruff_cache','__pypackages__','.eggs']);
+const IGNORE=new Set(['node_modules','.git','vendor','dist','build','__pycache__','.next','coverage','.venv','venv','env','.env','.tox','.mypy_cache','.pytest_cache','.ruff_cache','__pypackages__','.eggs','__macosx']);
 const DEFAULT_EXCLUDE_CHIPS=['.git','node_modules','dist','build','coverage','__pycache__','.next','.venv','venv','.tox'];
+const ANALYSIS_LIMITS={repoSoft:300,repoMax:750,localSoft:500};
+
+// ---------------------------------------------------------------------------
+// Shared Helpers
+// ---------------------------------------------------------------------------
 
 function normalizeExcludePath(value){
     return (value||'').replace(/\\/g,'/').replace(/^\/+/,'').replace(/\/{2,}/g,'/');
@@ -682,6 +699,24 @@ function shouldExcludeFile(path,name,compiledPatterns){
     return !Parser.isIncluded(name)||matchesExcludePattern(compiledPatterns,path,name);
 }
 
+function getArchiveRootPrefix(paths){
+    var splitPaths=(paths||[]).map(function(path){return normalizeExcludePath(path).split('/').filter(Boolean);}).filter(function(parts){return parts.length>0;});
+    if(!splitPaths.length)return'';
+    var firstSegment=splitPaths[0][0];
+    var hasSingleRoot=splitPaths.every(function(parts){return parts.length>1&&parts[0]===firstSegment;});
+    return hasSingleRoot?firstSegment+'/':'';
+}
+
+function shouldSkipArchivePath(path,compiledPatterns){
+    var segments=normalizeExcludePath(path).split('/').filter(Boolean);
+    var current='';
+    for(var i=0;i<segments.length-1;i++){
+        current=current?current+'/'+segments[i]:segments[i];
+        if(shouldIgnoreDirectory(current,segments[i],compiledPatterns))return true;
+    }
+    return false;
+}
+
 function getSecurityScanContent(file){
     var content=file&&file.content?file.content:'';
     if(file&&file.name==='index.html'&&content.includes('detectSecurity:function(files){')&&content.includes('calcComplexity:function')){
@@ -699,46 +734,141 @@ function isSanitizedPreviewRenderer(content){
            content.includes("dangerouslySetInnerHTML:{__html:lineHtml||' '}");
 }
 
+function yieldToBrowser(){
+    if(typeof scheduler!=='undefined'&&scheduler.yield){
+        return scheduler.yield();
+    }
+    if(typeof MessageChannel!=='undefined'){
+        return new Promise(function(resolve){
+            var channel=new MessageChannel();
+            channel.port1.onmessage=function(){
+                channel.port1.close();
+                channel.port2.close();
+                resolve();
+            };
+            channel.port2.postMessage(null);
+        });
+    }
+    return new Promise(function(resolve){setTimeout(resolve,0);});
+}
+
+// ---------------------------------------------------------------------------
+// Parser And Static Analysis
+// ---------------------------------------------------------------------------
+
 const Parser={
-    // tree-sitter Python parser (real AST parser, loaded async via WASM)
-    _tsParser:null,
-    _tsInitPromise:null,
+    // Tree-sitter parsers are loaded lazily from CDN and used when a language has
+    // a stable grammar path. Regex remains an explicit fallback, not a silent lie.
+    _tsRuntimePromise:null,
+    _tsLanguagePromises:Object.create(null),
+    _tsLanguages:Object.create(null),
+    _tsParsers:Object.create(null),
+    _callCandidateThreshold:250,
+    treeSitterWasmBase:'https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/',
+    treeSitterGrammars:{
+        python:{grammar:'python',exts:['.py','.pyw','.pyi'],coverage:'calls'},
+        javascript:{grammar:'javascript',exts:['.js','.jsx','.mjs','.cjs'],coverage:'available'},
+        typescript:{grammar:'typescript',exts:['.ts'],coverage:'available'},
+        tsx:{grammar:'tsx',exts:['.tsx'],coverage:'available'},
+        go:{grammar:'go',exts:['.go'],coverage:'available'},
+        rust:{grammar:'rust',exts:['.rs'],coverage:'available'},
+        java:{grammar:'java',exts:['.java'],coverage:'available'},
+        ruby:{grammar:'ruby',exts:['.rb'],coverage:'available'},
+        php:{grammar:'php',exts:['.php'],coverage:'available'},
+        c:{grammar:'c',exts:['.c','.h'],coverage:'available'},
+        cpp:{grammar:'cpp',exts:['.cpp','.cc','.hpp'],coverage:'available'},
+        csharp:{grammar:'c_sharp',exts:['.cs'],coverage:'available'},
+        swift:{grammar:'swift',exts:['.swift'],coverage:'available'},
+        kotlin:{grammar:'kotlin',exts:['.kt','.kts'],coverage:'available'},
+        scala:{grammar:'scala',exts:['.scala'],coverage:'available'},
+        elixir:{grammar:'elixir',exts:['.ex','.exs'],coverage:'available'},
+        lua:{grammar:'lua',exts:['.lua'],coverage:'available'},
+        bash:{grammar:'bash',exts:['.sh','.bash','.zsh','.fish'],coverage:'available'}
+    },
     initTreeSitter:async function(){
-        if(this._tsParser)return this._tsParser;
-        if(this._tsInitPromise)return this._tsInitPromise;
-        this._tsInitPromise=(async()=>{
+        if(this._tsRuntimePromise)return this._tsRuntimePromise;
+        this._tsRuntimePromise=(async()=>{
             if(typeof TreeSitter==='undefined')return null;
             try{
                 await TreeSitter.init({
                     locateFile:function(scriptName){
-                        return 'https://cdn.jsdelivr.net/npm/web-tree-sitter@0.25.10/'+scriptName;
+                        return 'https://cdn.jsdelivr.net/npm/web-tree-sitter@0.20.8/'+scriptName;
                     }
                 });
-                var parser=new TreeSitter();
-                var Python=await TreeSitter.Language.load(
-                    'https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-python.wasm'
-                );
-                parser.setLanguage(Python);
-                this._tsParser=parser;
-                return parser;
+                return TreeSitter;
             }catch(e){
                 return null;
             }
         })();
-        return this._tsInitPromise;
+        return this._tsRuntimePromise;
+    },
+    getTreeSitterConfig:function(filename){
+        var lower=(filename||'').toLowerCase();
+        var configs=Object.values(Parser.treeSitterGrammars);
+        for(var i=0;i<configs.length;i++){
+            if(configs[i].exts.some(function(ext){return lower.endsWith(ext);})){
+                return configs[i];
+            }
+        }
+        return null;
+    },
+    loadTreeSitterLanguage:async function(config){
+        if(!config)return null;
+        if(this._tsLanguages[config.grammar])return this._tsLanguages[config.grammar];
+        if(this._tsLanguagePromises[config.grammar])return this._tsLanguagePromises[config.grammar];
+        this._tsLanguagePromises[config.grammar]=(async()=>{
+            var runtime=await Parser.initTreeSitter();
+            if(!runtime)return null;
+            try{
+                var lang=await runtime.Language.load(Parser.treeSitterWasmBase+'tree-sitter-'+config.grammar+'.wasm');
+                var parser=new runtime();
+                parser.setLanguage(lang);
+                Parser._tsLanguages[config.grammar]=lang;
+                Parser._tsParsers[config.grammar]=parser;
+                return lang;
+            }catch(e){
+                return null;
+            }
+        })();
+        return this._tsLanguagePromises[config.grammar];
+    },
+    prepareTreeSitter:async function(files){
+        var configs=new Map();
+        (files||[]).forEach(function(file){
+            var cfg=Parser.getTreeSitterConfig(file.path||file.name);
+            if(cfg&&cfg.coverage==='calls')configs.set(cfg.grammar,cfg);
+        });
+        await Promise.all(Array.from(configs.values()).map(function(cfg){return Parser.loadTreeSitterLanguage(cfg);}));
+    },
+    getLoadedTreeSitterParser:function(filename){
+        var cfg=Parser.getTreeSitterConfig(filename);
+        return cfg?Parser._tsParsers[cfg.grammar]||null:null;
+    },
+    getParserProvenance:function(filename){
+        var lower=(filename||'').toLowerCase();
+        var cfg=Parser.getTreeSitterConfig(filename);
+        if(cfg&&Parser._tsParsers[cfg.grammar])return cfg.coverage==='calls'?'tree-sitter:'+cfg.grammar+'-calls':'tree-sitter:'+cfg.grammar;
+        if(['.js','.jsx','.ts','.tsx','.mjs','.cjs','.vue','.svelte'].some(function(ext){return lower.endsWith(ext);})&&typeof acorn!=='undefined')return 'acorn-babel';
+        if(Parser.isMarkdown&&Parser.isMarkdown(filename))return 'markdown-link-parser';
+        if(Parser.isCode(filename))return 'heuristic-regex';
+        return 'text';
     },
     codeExts:['.js','.jsx','.ts','.tsx','.mjs','.cjs','.py','.pyw','.pyi','.java','.go','.rb','.php','.rs','.c','.cpp','.cc','.h','.hpp','.cs','.swift','.kt','.kts','.scala','.clj','.ex','.exs','.erl','.hs','.lua','.r','.R','.jl','.dart','.elm','.fs','.fsx','.ml','.pl','.pm','.sh','.bash','.zsh','.fish','.ps1','.psm1','.groovy','.gradle','.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw'],
     scriptContainerExts:['.html','.htm','.xhtml','.vue','.svelte'],
-    textExts:['.md','.txt','.json','.yaml','.yml','.toml','.xml','.html','.htm','.css','.scss','.sass','.less','.svg','.graphql','.gql','.sql','.prisma','.proto','.tf','.tfvars','.dockerfile','.env','.env.example','.gitignore','.eslintrc','.prettierrc','.babelrc','.editorconfig','.ini','.cfg','.conf','.properties','.lock','.csv','.rst','.tex','.makefile','.cmake','.rake','.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw'],
+    textExts:['.md','.markdown','.txt','.json','.jsonl','.yaml','.yml','.toml','.xml','.html','.htm','.css','.scss','.sass','.less','.svg','.graphql','.gql','.sql','.prisma','.proto','.tf','.tfvars','.env','.env.example','.gitignore','.gitattributes','.gitmodules','.eslintrc','.prettierrc','.babelrc','.editorconfig','.ini','.cfg','.conf','.properties','.lock','.csv','.tsv','.rst','.tex','.cmake','.rake','.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw','.mod','.sum'],
+    textNames:['dockerfile','containerfile','makefile','rakefile','gemfile','podfile','pipfile','procfile','brewfile','justfile','taskfile','cmakelists.txt','license','copying','notice','readme','changelog','authors','contributors','owners','codeowners','go.mod','go.sum'],
     binExts:['.png','.jpg','.jpeg','.gif','.ico','.webp','.bmp','.svg','.woff','.woff2','.ttf','.eot','.otf','.pdf','.zip','.tar','.gz','.rar','.7z','.exe','.dll','.so','.dylib','.bin','.dat','.db','.sqlite','.mp3','.mp4','.wav','.avi','.mov','.webm'],
     isCode:function(n){
         var lower=n.toLowerCase();
         return Parser.codeExts.some(function(e){return lower.endsWith(e);})||
             Parser.scriptContainerExts.some(function(e){return lower.endsWith(e);});
     },
-    isText:function(n){return Parser.textExts.some(function(e){return n.toLowerCase().endsWith(e);});},
+    isText:function(n){
+        var lower=n.toLowerCase();
+        return Parser.textExts.some(function(e){return lower.endsWith(e);})||Parser.textNames.indexOf(lower)>=0;
+    },
     isBinary:function(n){return Parser.binExts.some(function(e){return n.toLowerCase().endsWith(e);});},
-    isIncluded:function(n){return !Parser.isBinary(n);},
+    isIncluded:function(n){return !Parser.isBinary(n)&&(Parser.isCode(n)||Parser.isText(n));},
     isScriptContainer:function(n){return Parser.scriptContainerExts.some(function(e){return n.toLowerCase().endsWith(e);});},
     isVBA:function(n){return ['.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw'].some(function(e){return n.toLowerCase().endsWith(e);});},
     isHTML:function(n){return ['.html','.htm','.xhtml'].some(function(e){return n.toLowerCase().endsWith(e);});},
@@ -1050,7 +1180,7 @@ const Parser={
         ]);
 
         // Group functions by name (excluding common names)
-        var fnByName={};
+        var fnByName=Object.create(null);
         allFns.forEach(function(fn){
             // Skip common/idiomatic names
             if(commonNames.has(fn.name))return;
@@ -1095,7 +1225,7 @@ const Parser={
 
         // Find similar code blocks (improved algorithm)
         // Use structural hash that captures the essence of the code
-        var codeGroups={};
+        var codeGroups=Object.create(null);
         allFns.forEach(function(fn){
             if(!fn.code||fn.code.length<80)return;  // Skip very short functions
 
@@ -1216,9 +1346,11 @@ const Parser={
     detectLayerViolations:function(files,connections){
         var violations=[];
         var layerOrder={presentation:0,ui:0,component:0,components:0,page:0,view:0,feature:1,service:2,services:2,api:2,data:3,model:3,util:4,utils:4,helper:4,lib:4,core:4,config:5,test:6,modules:5,forms:0,classes:3};
+        var fileByPath={};
+        files.forEach(function(f){fileByPath[f.path]=f;});
         connections.forEach(function(c){
-            var srcFile=files.find(function(f){return f.path===c.source;});
-            var tgtFile=files.find(function(f){return f.path===c.target;});
+            var srcFile=fileByPath[c.source];
+            var tgtFile=fileByPath[c.target];
             if(!srcFile||!tgtFile)return;
             var srcLayer=(srcFile.layer||'').toLowerCase();
             var tgtLayer=(tgtFile.layer||'').toLowerCase();
@@ -2187,8 +2319,10 @@ const Parser={
         Parser.extractWithRegex(content,filename,offset,addFn,extractCode);
     },
     findJSCalls:function(content,fnNames,defLines,options){
+        fnNames=Parser.candidateFunctionNames(content,fnNames);
         var calls={};
         var refs={};
+        if(!fnNames.length)return calls;
         fnNames.forEach(function(fn){calls[fn]=0;refs[fn]=0;});
 
         var sourceType=options&&options.sourceType==='script'?'script':'module';
@@ -2283,38 +2417,141 @@ const Parser={
             }
         }
 
-        var wordSet=new Set(content.match(/\b[a-zA-Z_$]\w*\b/g)||[]);
+        return Parser.countCandidateCalls(content,fnNames,{isJS:true});
+    },
+
+    buildFunctionNameIndex:function(fnNames){
+        var exact=new Set();
+        var byBase=Object.create(null);
+        (fnNames||[]).forEach(function(fn){
+            exact.add(fn);
+            if(fn.indexOf('.')>=0){
+                var parts=fn.split('.');
+                var base=parts[parts.length-1];
+                if(!byBase[base])byBase[base]=[];
+                byBase[base].push(fn);
+            }
+        });
+        return{exact:exact,byBase:byBase};
+    },
+
+    buildFunctionDefLineIndex:function(fnDefs){
+        var byFile=Object.create(null);
+        (fnDefs||[]).forEach(function(fn){
+            if(!byFile[fn.file])byFile[fn.file]=Object.create(null);
+            byFile[fn.file][fn.name]=fn.line;
+        });
+        return byFile;
+    },
+
+    candidateFunctionNames:function(content,fnNames,fnIndex){
+        if(!content||!fnNames||!fnNames.length)return[];
+        if(fnNames.length<=Parser._callCandidateThreshold)return fnNames;
+        var wordSet=new Set(String(content).match(/\b[a-zA-Z_$][\w$]*\b/g)||[]);
+        if(!wordSet.size)return[];
+        var index=fnIndex||Parser.buildFunctionNameIndex(fnNames);
+        var out=[];
+        var seen=new Set();
+        wordSet.forEach(function(word){
+            if(index.exact.has(word)&&!seen.has(word)){
+                seen.add(word);
+                out.push(word);
+            }
+            var baseMatches=index.byBase[word];
+            if(baseMatches){
+                baseMatches.forEach(function(fn){
+                    if(!seen.has(fn)){
+                        seen.add(fn);
+                        out.push(fn);
+                    }
+                });
+            }
+        });
+        return out;
+    },
+
+    countCandidateCalls:function(content,fnNames,options){
+        var calls=Object.create(null);
+        var refs=Object.create(null);
+        var candidateSet=new Set(fnNames||[]);
+        var source=String(content||'');
+        var opts=options||{};
+        fnNames.forEach(function(fn){calls[fn]=0;refs[fn]=0;});
+        if(!source||!candidateSet.size)return calls;
+
+        var tokenRe=/\b[a-zA-Z_$][\w$]*\b/g;
+        var match;
+        while((match=tokenRe.exec(source))!==null){
+            var name=match[0];
+            if(!candidateSet.has(name))continue;
+            var start=match.index;
+            var end=start+name.length;
+            var prev=start-1;
+            while(prev>=0&&/\s/.test(source[prev]))prev--;
+            var next=end;
+            while(next<source.length&&/\s/.test(source[next]))next++;
+            var nextChar=source[next]||'';
+            var prevChar=prev>=0?source[prev]:'';
+            var lineStart=source.lastIndexOf('\n',start-1)+1;
+            var prefix=source.slice(lineStart,start);
+            var isDefinition=false;
+            if(/\b(function|class|def)\s*$/.test(prefix))isDefinition=true;
+            if(opts.isPython&&/\b(async\s+def|def|class)\s*$/.test(prefix))isDefinition=true;
+            if(opts.isVBA&&/\b(Sub|Function)\s+$/i.test(prefix))isDefinition=true;
+            if(nextChar==='('&&!isDefinition){
+                calls[name]++;
+            }else if(!isDefinition&&'[,[:(={'.indexOf(prevChar)>=0&&' ,])};\n\r'.indexOf(nextChar)>=0){
+                refs[name]++;
+            }else if(opts.isPython&&prevChar==='@'&&!isDefinition){
+                refs[name]++;
+            }
+        }
+
+        if(opts.isJS&&source.indexOf('<')>=0){
+            var jsxTagRe=/<\/?\s*([A-Za-z_$][\w$]*)[\s>\/{]/g;
+            while((match=jsxTagRe.exec(source))!==null){
+                if(candidateSet.has(match[1]))refs[match[1]]++;
+            }
+            var jsxExprRe=/[{=]\s*([A-Za-z_$][\w$]*)\s*[}(,;\s]/g;
+            while((match=jsxExprRe.exec(source))!==null){
+                if(candidateSet.has(match[1]))refs[match[1]]++;
+            }
+        }
+
+        if(opts.isPython){
+            var importRe=/^(?:from\s+\S+\s+import\s+(?:\([^)]+\)|[^\n]+)|import\s+[^\n]+)$/gm;
+            while((match=importRe.exec(source))!==null){
+                var importWords=match[0].match(/\b[a-zA-Z_]\w*\b/g)||[];
+                importWords.forEach(function(word){if(candidateSet.has(word))refs[word]++;});
+            }
+        }
+
+        if(opts.isVBA){
+            var vbaRunRe=/Application\.Run\s*["']([A-Za-z_]\w*)["']/gi;
+            while((match=vbaRunRe.exec(source))!==null){
+                if(candidateSet.has(match[1]))calls[match[1]]++;
+            }
+        }
+
         fnNames.forEach(function(fn){
-            if(!wordSet.has(fn))return;
-            var callPattern=new RegExp('\\b'+fn+'\\s*\\(','g');
-            var m=content.match(callPattern);
-            var callCount=m?m.length:0;
-            var defPattern=new RegExp('(?:function\\s+'+fn+'\\s*\\(|(?:async\\s+)?def\\s+'+fn+'\\s*\\(|class\\s+'+fn+'\\s*\\()','g');
-            var defMatch=content.match(defPattern);
-            if(defMatch)callCount-=defMatch.length;
-            var refPattern=new RegExp('[,\\[:\\(=]\\s*'+fn+'\\s*[,\\]\\)\\};]','g');
-            var refMatch=content.match(refPattern);
-            var refCount=refMatch?refMatch.length:0;
-            var jsxTagPattern=new RegExp('<\\/?\\s*'+fn+'[\\s>\\/{]','g');
-            var jsxTagMatch=content.match(jsxTagPattern);
-            if(jsxTagMatch)refCount+=jsxTagMatch.length;
-            var jsxExprPattern=new RegExp('[{=][ \\t]*'+fn+'[ \\t]*[}(,;\\s]','g');
-            var jsxExprMatch=content.match(jsxExprPattern);
-            if(jsxExprMatch)refCount+=jsxExprMatch.length;
-            calls[fn]=Math.max(0,callCount)+refCount;
+            calls[fn]=Math.max(0,calls[fn]||0)+(refs[fn]||0);
         });
         return calls;
     },
 
     // AST-based call detection - finds actual function calls and references
-    findCalls:function(content,fnNames,definingFile,fnDefs){
+    findCalls:function(content,fnNames,definingFile,fnDefs,fnIndex){
+        fnNames=Parser.candidateFunctionNames(content,fnNames,fnIndex);
         var calls={};
         var refs={};  // Functions used as callbacks/references without ()
+        if(!fnNames.length)return calls;
         fnNames.forEach(function(fn){calls[fn]=0;refs[fn]=0;});
 
         // Build a set of definition lines to exclude
         var defLines={};
-        if(fnDefs){
+        if(fnDefs&&!Array.isArray(fnDefs)){
+            defLines=fnDefs[definingFile]||{};
+        }else if(fnDefs){
             fnDefs.forEach(function(fn){
                 if(fn.file===definingFile){
                     defLines[fn.name]=fn.line;
@@ -2346,9 +2583,10 @@ const Parser={
 
         // Python: use tree-sitter real parser (WASM) for accurate AST-based detection
         if(isPython){
-            if(Parser._tsParser){
+            var tsParser=Parser.getLoadedTreeSitterParser(definingFile);
+            if(tsParser){
                 try{
-                    var tree=Parser._tsParser.parse(content);
+                    var tree=tsParser.parse(content);
                     var root=tree.rootNode;
                     var fnSet=new Set(fnNames);
 
@@ -2397,39 +2635,7 @@ const Parser={
 
             // Fallback: token-level analysis with string/comment stripping
             var cleanContent=Parser.stripPythonNonCode(content);
-            var wordSet=new Set(cleanContent.match(/\b[a-zA-Z_]\w*\b/g)||[]);
-            var importText='';
-            var multiImports=cleanContent.match(/from\s+\S+\s+import\s*\([\s\S]*?\)/g)||[];
-            multiImports.forEach(function(imp){importText+=imp+'\n';});
-            var singleImports=cleanContent.match(/^(?:from\s+\S+\s+import\s+[^(\n].+|import\s+.+)$/gm)||[];
-            singleImports.forEach(function(imp){importText+=imp+'\n';});
-            fnNames.forEach(function(fn){
-                if(!wordSet.has(fn))return;
-                if(importText.match(new RegExp('\\b'+fn+'\\b'))){calls[fn]++;}
-            });
-            fnNames.forEach(function(fn){
-                if(!wordSet.has(fn))return;
-                var callPattern=new RegExp('\\b'+fn+'\\s*\\(','g');
-                var m=cleanContent.match(callPattern);
-                var callCount=m?m.length:0;
-                var defPattern=new RegExp('(?:(?:async\\s+)?def|class)\\s+'+fn+'\\s*[\\(:]','g');
-                var defMatch=cleanContent.match(defPattern);
-                if(defMatch)callCount-=defMatch.length;
-                var decPattern=new RegExp('@'+fn+'\\b','g');
-                var decMatch=cleanContent.match(decPattern);
-                if(decMatch)callCount=Math.max(0,callCount)+(decMatch.length);
-                var methodPattern=new RegExp('\\w+\\.'+fn+'\\s*\\(','g');
-                var methodMatch=cleanContent.match(methodPattern);
-                if(methodMatch)callCount+=methodMatch.length;
-                var refPattern=new RegExp('[,\\[\\(=:\\{]\\s*'+fn+'\\s*[,\\]\\)\\n\\r}]','g');
-                var refMatch=cleanContent.match(refPattern);
-                var refCount=refMatch?refMatch.length:0;
-                var retPattern=new RegExp('(?:return|yield)\\s+'+fn+'\\s*$','gm');
-                var retMatch=cleanContent.match(retPattern);
-                if(retMatch)refCount+=retMatch.length;
-                calls[fn]=Math.max(0,callCount)+refCount;
-            });
-            return calls;
+            return Parser.countCandidateCalls(cleanContent,fnNames,{isPython:true});
         }
 
         if(isJS&&typeof acorn!=='undefined'){
@@ -2555,56 +2761,7 @@ const Parser={
         }
 
         // Fallback: regex-based but more careful
-        // Build word set for fast pre-filtering (avoids creating regex for every function name)
-        var wordSet=new Set(content.match(/\b[a-zA-Z_$]\w*\b/g)||[]);
-        // Count actual calls (fn() pattern) and references (fn without parens in specific contexts)
-        fnNames.forEach(function(fn){
-            // Fast check: skip if function name doesn't appear anywhere in the file
-            if(!wordSet.has(fn))return;
-            // Count calls: word boundary + name + optional whitespace + (
-            var callPattern=new RegExp('\\b'+fn+'\\s*\\(','g');
-            var m=content.match(callPattern);
-            var callCount=m?m.length:0;
-
-            // Subtract definitions that also match callPattern (fn() in definition context)
-            // ONLY subtract patterns where the definition itself produces a fn( match:
-            //   function fn(  →  matches callPattern, subtract
-            //   def fn(       →  matches callPattern, subtract
-            //   class fn(     →  matches callPattern, subtract
-            // DO NOT subtract const/let/var fn = because arrow functions (const fn = () =>)
-            // do NOT produce a fn( match, so subtracting would zero out real calls
-            var defPattern=new RegExp('(?:function\\s+'+fn+'\\s*\\(|(?:async\\s+)?def\\s+'+fn+'\\s*\\(|class\\s+'+fn+'\\s*\\()','g');
-            var defMatch=content.match(defPattern);
-            if(defMatch)callCount-=defMatch.length;
-
-            // Count references (callbacks): , fn) or , fn] or : fn} or [fn,
-            var refPattern=new RegExp('[,\\[:\\(]\\s*'+fn+'\\s*[,\\]\\)\\}]','g');
-            var refMatch=content.match(refPattern);
-            var refCount=refMatch?refMatch.length:0;
-
-            // VBA-specific: Call Name() or Application.Run "Name"
-            var vbaCallPattern=new RegExp('(?:Call\\s+|Application\\.Run\\s*["\'])'+fn+'(?:["\'])?\\s*\\(','gi');
-            var vbaMatch=content.match(vbaCallPattern);
-            if(vbaMatch)callCount+=vbaMatch.length;
-
-            // JSX element and expression detection for React/Vue/Svelte files
-            // Acorn can't parse JSX, so these patterns are critical for .tsx/.jsx files
-            if(isJS){
-                // JSX elements: <ComponentName>, <ComponentName />, </ComponentName>
-                var jsxTagPattern=new RegExp('<\\/?\\s*'+fn+'[\\s>\\/{]','g');
-                var jsxTagMatch=content.match(jsxTagPattern);
-                if(jsxTagMatch)refCount+=jsxTagMatch.length;
-                // JSX attribute expressions: onClick={fn}, render={fn}, value={fn()}
-                // Also catches object shorthand {fn} and template expressions {fn}
-                var jsxExprPattern=new RegExp('[{=][ \\t]*'+fn+'[ \\t]*[}(,;\\s]','g');
-                var jsxExprMatch=content.match(jsxExprPattern);
-                if(jsxExprMatch)refCount+=jsxExprMatch.length;
-            }
-
-            calls[fn]=Math.max(0,callCount)+refCount;
-        });
-
-        return calls;
+        return Parser.countCandidateCalls(content,fnNames,{isJS:isJS,isVBA:isVBA});
     }
 };
 
@@ -2622,6 +2779,10 @@ function renderTooltipHtml(title,stats){
         return '<div class="treemap-tooltip-stat"><span>'+escapeHtml(stat.label)+':</span><span>'+escapeHtml(stat.value)+'</span></div>';
     }).join('');
 }
+
+// ---------------------------------------------------------------------------
+// GitHub API Adapter
+// ---------------------------------------------------------------------------
 
 function buildGitHubApiUrl(segments,query){
     var path=segments.filter(function(segment){return segment!==undefined&&segment!==null&&segment!=='';}).map(function(segment){
@@ -2875,6 +3036,10 @@ var GitHub={
     }
 };
 
+// ---------------------------------------------------------------------------
+// Shared Analysis Pipeline
+// ---------------------------------------------------------------------------
+
 function buildTree(files){
     var root={name:'root',path:'',children:{},files:[]};
     files.forEach(function(f){
@@ -2891,6 +3056,286 @@ function buildTree(files){
 }
 
 function countFiles(n){return n.files.length+Object.values(n.children).reduce(function(s,c){return s+countFiles(c);},0);}
+
+async function buildAnalysisData(options){
+    var analyzed=options.analyzed||[];
+    var allFns=options.allFns||[];
+    var excludePatterns=options.excludePatterns||[];
+    var progress=typeof options.progress==='function'?options.progress:function(){};
+    var yieldFn=options.yieldFn||yieldToBrowser;
+    var CALL_BATCH=30;
+
+    progress('Building dependency graph (1/5)...');
+    await yieldFn();
+    await Parser.prepareTreeSitter(analyzed);
+    var fnNames=[...new Set(allFns.map(function(f){return f.name;}))];
+    var fnNameIndex=Parser.buildFunctionNameIndex(fnNames);
+    var fnDefLineIndex=Parser.buildFunctionDefLineIndex(allFns);
+    var conns=[];
+    var fnStats=Object.create(null);
+
+    allFns.forEach(function(fn){
+        if(!fnStats[fn.name]){
+            fnStats[fn.name]={
+                internal:0,
+                external:0,
+                callers:new Map(),
+                file:fn.file,
+                folder:fn.folder,
+                line:fn.line,
+                code:fn.code,
+                isTopLevel:fn.isTopLevel!==false,
+                isExported:fn.isExported||false,
+                isClassMethod:fn.isClassMethod||false,
+                type:fn.type||'function',
+                decorators:fn.decorators||null,
+                className:fn.className||null
+            };
+        }
+    });
+
+    for(var bi=0;bi<analyzed.length;bi+=CALL_BATCH){
+        var batchEnd=Math.min(bi+CALL_BATCH,analyzed.length);
+        progress('Analyzing dependencies (2/5)... '+batchEnd+'/'+analyzed.length+' files');
+        for(var fi=bi;fi<batchEnd;fi++){
+            var file=analyzed[fi];
+            if(!file.content)continue;
+            var calls=Parser.findCalls(file.content,fnNames,file.path,fnDefLineIndex,fnNameIndex);
+            Object.entries(calls).forEach(function(entry){
+                var fn=entry[0],cnt=entry[1];
+                if(cnt<=0)return;
+                var def=fnStats[fn]?fnStats[fn].file:null;
+                if(!def)return;
+                if(def===file.path){
+                    fnStats[fn].internal+=cnt;
+                }else{
+                    conns.push({source:def,target:file.path,fn:fn,count:cnt});
+                    var ex=fnStats[fn].callers.get(file.path);
+                    if(ex)ex.count+=cnt;
+                    else fnStats[fn].callers.set(file.path,{file:file.path,name:file.name,count:cnt});
+                    fnStats[fn].external+=cnt;
+                }
+            });
+        }
+        await yieldFn();
+    }
+    Object.values(fnStats).forEach(function(s){s.callers=Array.from(s.callers.values());s.count=s.internal+s.external;});
+
+    progress('Resolving markdown links...');
+    await yieldFn();
+    var mdAllPaths=analyzed.map(function(f){return f.path;});
+    analyzed.forEach(function(file){
+        if(!Parser.isMarkdown(file.name))return;
+        file.layer='note';
+        if(!file.content)return;
+        var links=Parser.extractMarkdownLinks(file.content);
+        var deps=[];
+        links.forEach(function(link){
+            var resolved=Parser.resolveMarkdownLink(link.target,file.path,mdAllPaths,link.kind);
+            deps.push({kind:link.kind,raw:link.raw,target:link.target,resolved:resolved});
+            if(resolved&&resolved!==file.path){
+                conns.push({source:file.path,target:resolved,fn:link.raw,count:1,kind:link.kind});
+            }
+        });
+        file.dependencies=deps;
+    });
+    analyzed.forEach(function(f){if(!f.dependencies)f.dependencies=[];});
+
+    var issues=[];
+    var deadFns=Object.entries(fnStats).filter(function(x){
+        var name=x[0],stats=x[1];
+        if(stats.internal>0||stats.external>0)return false;
+        if(stats.isClassMethod)return false;
+        if(!stats.isTopLevel)return false;
+        if(stats.decorators&&stats.decorators.length>0)return false;
+        if(stats.type==='class'||stats.type==='dataclass'||stats.type==='abstract_class')return false;
+        var baseName=name.includes('.')?name.split('.').pop():name;
+        if(baseName.startsWith('__')&&baseName.endsWith('__'))return false;
+        if(baseName.startsWith('test_')||baseName==='setUp'||baseName==='tearDown'||baseName==='setUpClass'||baseName==='tearDownClass')return false;
+        if(stats.file&&(stats.file.includes('test_')||stats.file.includes('_test.')||stats.file.includes('/tests/')))return false;
+        if((baseName==='upgrade'||baseName==='downgrade')&&stats.file&&(stats.file.includes('migration')||stats.file.includes('alembic')||stats.file.includes('versions')))return false;
+        if(['main','create_app','make_app','get_app','setup','configure','register','on_startup','on_shutdown','lifespan'].indexOf(baseName)>=0)return false;
+        if(stats.isExported&&stats.file&&/\.[jt]sx?$/.test(stats.file))return false;
+        if(stats.file&&(/\.(?:spec|test)\.[jt]sx?$/.test(stats.file)||stats.file.includes('__tests__')))return false;
+        return true;
+    });
+    if(deadFns.length)issues.push({type:'warning',title:deadFns.length+' Unused Functions',desc:'Functions not called from other files',items:deadFns.map(function(x){return{name:x[0],file:x[1].file,line:x[1].line,code:x[1].code};})});
+
+    var godFiles=analyzed.filter(function(f){return f.functions.length>15;});
+    if(godFiles.length)issues.push({type:'critical',title:godFiles.length+' Large Files',desc:'Files with 15+ functions',items:godFiles.map(function(f){return{name:f.name+' ('+f.functions.length+' fns)',file:f.path,fns:f.functions.length,lines:f.lines};})});
+
+    var coupling=Object.create(null);
+    conns.forEach(function(c){coupling[c.target]=(coupling[c.target]||0)+1;});
+    var highCoup=Object.entries(coupling).filter(function(x){return x[1]>8;}).sort(function(a,b){return b[1]-a[1];});
+    if(highCoup.length)issues.push({type:'warning',title:highCoup.length+' Highly Coupled',desc:'Files imported by 8+ others',items:highCoup.map(function(x){return{name:x[0].split('/').pop()+' ('+x[1]+' imports)',file:x[0],imports:x[1]};})});
+
+    var connSet=new Set(conns.map(function(c){return c.source+'|'+c.target;}));
+    var circular=[];
+    conns.forEach(function(c){
+        if(connSet.has(c.target+'|'+c.source)){
+            var key=[c.source,c.target].sort().join('|');
+            if(!circular.includes(key))circular.push(key);
+        }
+    });
+    if(circular.length)issues.push({type:'critical',title:circular.length+' Circular Dependencies',desc:'Files that import each other',items:circular.map(function(p){var parts=p.split('|');return{name:parts.map(function(x){return x.split('/').pop();}).join(' ↔ '),files:parts};})});
+
+    progress('Detecting patterns (3/5)...');
+    await yieldFn();
+    var patterns=Parser.detectPatterns(analyzed);
+    var securityIssues=Parser.detectSecurity(analyzed);
+
+    progress('Analyzing code quality (4/5)...');
+    await yieldFn();
+    var duplicates=Parser.detectDuplicates(analyzed,allFns);
+    var layerViolations=Parser.detectLayerViolations(analyzed,conns);
+    for(var ci=0;ci<analyzed.length;ci+=CALL_BATCH){
+        var cEnd=Math.min(ci+CALL_BATCH,analyzed.length);
+        for(var cj=ci;cj<cEnd;cj++){
+            analyzed[cj].complexity=analyzed[cj].isCode!==false?Parser.calcComplexity(analyzed[cj].content,analyzed[cj].path):{score:0,level:'low'};
+        }
+        if(ci+CALL_BATCH<analyzed.length)await yieldFn();
+    }
+
+    progress('Finalizing (5/5)...');
+    await yieldFn();
+    analyzed.forEach(function(f){f.content=null;});
+
+    var folders=[...new Set(analyzed.map(function(f){return f.folder;}))].sort();
+    var tree=buildTree(analyzed);
+    var totalLoc=analyzed.reduce(function(s,f){return s+f.lines;},0);
+    var langStats=Object.create(null);
+    var parserStats=Object.create(null);
+    analyzed.forEach(function(f){
+        var ext=f.name.split('.').pop().toLowerCase();
+        langStats[ext]=(langStats[ext]||0)+f.lines;
+        var provenance=f.parserProvenance||Parser.getParserProvenance(f.path||f.name);
+        f.parserProvenance=provenance;
+        parserStats[provenance]=(parserStats[provenance]||0)+1;
+    });
+    var langArray=Object.entries(langStats).sort(function(a,b){return b[1]-a[1];}).map(function(e){return{ext:e[0],lines:e[1],pct:totalLoc?Math.round(e[1]/totalLoc*100):0};});
+    var parserArray=Object.entries(parserStats).sort(function(a,b){return b[1]-a[1];}).map(function(e){return{mode:e[0],files:e[1]};});
+
+    if(duplicates.length>0){
+        var nameDups=duplicates.filter(function(d){return d.type==='name';});
+        var codeDups=duplicates.filter(function(d){return d.type==='code';});
+        if(nameDups.length)issues.push({type:'warning',title:nameDups.length+' Duplicate Function Names',desc:'Same function name in multiple files',items:nameDups.map(function(d){return{name:d.name+' ('+d.count+' files)',suggestion:d.suggestion,files:d.files,count:d.count};})});
+        if(codeDups.length)issues.push({type:'warning',title:codeDups.length+' Similar Code Blocks',desc:'Copy-paste code detected',items:codeDups.map(function(d){return{name:d.name,suggestion:d.suggestion,files:d.files};})});
+    }
+    if(layerViolations.length>0){
+        issues.push({type:'critical',title:layerViolations.length+' Architecture Violations',desc:'Lower layers importing from higher layers',items:layerViolations.map(function(v){return{name:v.fromLayer+' → '+v.toLayer,file:v.from,toFile:v.to,fn:v.fn,suggestion:v.suggestion};})});
+    }
+    var highComplexity=analyzed.filter(function(f){return f.complexity&&f.complexity.level==='critical';}).sort(function(a,b){return b.complexity.score-a.complexity.score;});
+    if(highComplexity.length)issues.push({type:'warning',title:highComplexity.length+' High Complexity Files',desc:'Files with complexity score >30',items:highComplexity.map(function(f){return{name:f.name+' ('+f.complexity.score+')',file:f.path,score:f.complexity.score,lines:f.lines};})});
+
+    var dataObj={
+        files:analyzed,
+        functions:allFns,
+        connections:conns,
+        fnStats:fnStats,
+        folders:folders,
+        tree:tree,
+        issues:issues,
+        patterns:patterns,
+        securityIssues:securityIssues,
+        duplicates:duplicates,
+        layerViolations:layerViolations,
+        deadFunctions:deadFns.map(function(x){var codeLines=x[1].code?x[1].code.split('\n').length:0;return{name:x[0],file:x[1].file,folder:x[1].folder,line:x[1].line,code:x[1].code,codeLines:codeLines,ext:x[1].file.split('.').pop()};}),
+        excludePatterns:excludePatterns,
+        stats:{files:analyzed.length,functions:allFns.length,connections:conns.length,dead:deadFns.length,patterns:patterns.length,security:securityIssues.filter(function(i){return i.severity==='high';}).length,duplicates:duplicates.length,violations:layerViolations.length,loc:totalLoc,languages:langArray,parserModes:parserArray}
+    };
+    dataObj.suggestions=Parser.generateSuggestions(dataObj);
+    return dataObj;
+}
+
+// ---------------------------------------------------------------------------
+// Inline Worker Runtime
+// ---------------------------------------------------------------------------
+
+var analysisWorkerSourcePromise=null;
+
+function createAnalysisWorkerSource(){
+    if(analysisWorkerSourcePromise)return analysisWorkerSourcePromise;
+    analysisWorkerSourcePromise=fetch(window.location.href,{cache:'no-store'}).then(function(response){
+        if(!response.ok)throw new Error('Unable to load analyzer source');
+        return response.text();
+    }).then(function(html){
+        var parserStart=html.indexOf('const Parser={');
+        var parserEnd=html.indexOf('\nfunction calcBlast',parserStart);
+        if(parserStart<0||parserEnd<0)throw new Error('Analyzer source markers missing');
+        var analyzerSource=html.slice(parserStart,parserEnd);
+        return [
+            'self.window=self;',
+            'function getSecurityScanContent(file){return file&&file.content?file.content:\"\";}',
+            'function isSanitizedPreviewRenderer(){return false;}',
+            'function yieldToBrowser(){return Promise.resolve();}',
+            'try{importScripts(\"https://cdnjs.cloudflare.com/ajax/libs/acorn/8.11.3/acorn.min.js\");}catch(e){}',
+            'try{importScripts(\"https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js\");}catch(e){}',
+            'try{importScripts(\"https://cdn.jsdelivr.net/npm/web-tree-sitter@0.20.8/tree-sitter.js\");}catch(e){}',
+            analyzerSource,
+            'self.onmessage=async function(event){',
+            '  var payload=event.data||{};',
+            '  try{',
+            '    var data=await buildAnalysisData({',
+            '      analyzed:payload.analyzed||[],',
+            '      allFns:payload.allFns||[],',
+            '      excludePatterns:payload.excludePatterns||[],',
+            '      progress:function(message){self.postMessage({type:\"progress\",message:message});},',
+            '      yieldFn:function(){return Promise.resolve();}',
+            '    });',
+            '    self.postMessage({type:\"done\",data:data});',
+            '  }catch(error){',
+            '    self.postMessage({type:\"error\",message:error&&error.message?error.message:String(error)});',
+            '  }',
+            '};'
+        ].join('\n');
+    });
+    return analysisWorkerSourcePromise;
+}
+
+function runAnalysisData(options){
+    if(typeof Worker==='undefined'||typeof Blob==='undefined'||typeof URL==='undefined'){
+        return buildAnalysisData(options);
+    }
+    return createAnalysisWorkerSource().then(function(workerSource){
+        return new Promise(function(resolve,reject){
+            var workerUrl=URL.createObjectURL(new Blob([workerSource],{type:'text/javascript'}));
+            var worker=new Worker(workerUrl);
+            var settled=false;
+            function cleanup(){
+                worker.terminate();
+                URL.revokeObjectURL(workerUrl);
+            }
+            worker.onmessage=function(event){
+                var message=event.data||{};
+                if(message.type==='progress'){
+                    if(typeof options.progress==='function')options.progress(message.message);
+                    return;
+                }
+                settled=true;
+                cleanup();
+                if(message.type==='done')resolve(message.data);
+                else reject(new Error(message.message||'Worker analysis failed'));
+            };
+            worker.onerror=function(error){
+                if(settled)return;
+                settled=true;
+                cleanup();
+                reject(error&&error.message?new Error(error.message):new Error('Worker analysis failed'));
+            };
+            worker.postMessage({
+                analyzed:options.analyzed||[],
+                allFns:options.allFns||[],
+                excludePatterns:options.excludePatterns||[]
+            });
+        });
+    }).catch(function(){
+        return buildAnalysisData(options);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Visualization Helpers
+// ---------------------------------------------------------------------------
 
 function calcBlast(fileId,conns,files){
     // Comprehensive impact analysis for a file
@@ -3148,6 +3593,9 @@ function Icon(props){
         case 'box':
             children=[React.createElement('path',Object.assign({key:'p1',d:'M21 8.5 12 3 3 8.5 12 14z'},common)),React.createElement('path',Object.assign({key:'p2',d:'M3 8.5V16l9 5 9-5V8.5'},common)),React.createElement('path',Object.assign({key:'p3',d:'M12 14v7'},common))];
             break;
+        case 'archive':
+            children=[React.createElement('rect',Object.assign({key:'r1',x:'3',y:'3',width:'18',height:'5',rx:'1'},common)),React.createElement('path',Object.assign({key:'p1',d:'M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8'},common)),React.createElement('path',Object.assign({key:'p2',d:'M10 12h4'},common))];
+            break;
         case 'building':
             children=[React.createElement('path',Object.assign({key:'p1',d:'M4 21h16'},common)),React.createElement('path',Object.assign({key:'p2',d:'M7 21V8l5-5 5 5v13'},common)),React.createElement('path',Object.assign({key:'p3',d:'M9 12h.01M12 12h.01M15 12h.01M9 16h.01M12 16h.01M15 16h.01'},common))];
             break;
@@ -3383,6 +3831,10 @@ function HealthRing(props){
     );
 }
 
+// ---------------------------------------------------------------------------
+// React Application
+// ---------------------------------------------------------------------------
+
 function App(){
     var _a=useState(window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'),theme=_a[0],setTheme=_a[1];
     var _b=useState(''),repoUrl=_b[0],setRepoUrl=_b[1];
@@ -3422,6 +3874,7 @@ function App(){
     var _ae=useState(true),legendCollapsed=_ae[0],setLegendCollapsed=_ae[1];
     var _af=useState(null),filePreview=_af[0],setFilePreview=_af[1];// {path, content, line, filename, loading, error}
     var _ag=useState(null),localDirHandle=_ag[0],setLocalDirHandle=_ag[1];
+    var _ap=useState(null),localSourceKind=_ap[0],setLocalSourceKind=_ap[1];// null | 'folder' | 'zip'
     var _ah=useState(false),showExcludeModal=_ah[0],setShowExcludeModal=_ah[1];
     var _ai=useState(''),excludePatternInput=_ai[0],setExcludePatternInput=_ai[1];
     var _aj=useState(''),excludePatternDraft=_aj[0],setExcludePatternDraft=_aj[1];
@@ -3445,6 +3898,9 @@ function App(){
     var nodesRef=useRef(null);
     var linksRef=useRef(null);
     var selectFileRef=useRef(null);
+    var zipInputRef=useRef(null);
+    var zipArchiveRef=useRef(null);
+    var zipFileRef=useRef(null);
     var confirmResolverRef=useRef(null);
     var activeExcludePatterns=useMemo(function(){return compileExcludePatterns(excludePatternInput);},[excludePatternInput]);
     var customExcludeCount=activeExcludePatterns.length;
@@ -3616,6 +4072,9 @@ function App(){
         
         resetAnalysisState();
         setLocalDirHandle(null);
+        setLocalSourceKind(null);
+        zipArchiveRef.current=null;
+        zipFileRef.current=null;
         setLoading(true);
         setProgress('Initializing...');
         
@@ -3646,6 +4105,9 @@ function App(){
         }
         
         authPromise.then(function(){
+            setProgress('Loading language parsers...');
+            return Parser.initTreeSitter().catch(function(){return null;});
+        }).then(function(){
             setProgress('Checking rate limit...');
             return GitHub.getRateLimit();
         }).then(function(rl){
@@ -3683,10 +4145,10 @@ function App(){
         }).then(function(files){
             if(!files)return;// Cancelled
             if(!files.length)throw new Error(currentExcludePatterns.length?'No code files found after applying exclude patterns':'No code files found');
-            var SOFT_LIMIT=300,HARD_LIMIT=750;
+            var SOFT_LIMIT=ANALYSIS_LIMITS.repoSoft,HARD_LIMIT=ANALYSIS_LIMITS.repoMax;
             function beginRepoAnalysis(){
                 if(files.length>HARD_LIMIT){
-                    showNotification('Found '+files.length+' files. Limiting to '+HARD_LIMIT+' for performance.','warning');
+                    showNotification('Found '+files.length+' files. Using a '+HARD_LIMIT+'-file API sample. Use Open ZIP for full analysis.','warning');
                 }
                 var max=Math.min(files.length,HARD_LIMIT);
                 var analyzed=[];
@@ -3730,183 +4192,21 @@ function App(){
 
                 async function finishAnalysis(){
                     try{
-                // Phase 1: Build function stats index
-                setProgress('Building dependency graph (1/5)...');
-                await new Promise(function(r){setTimeout(r,0);});
-                var fnNames=[...new Set(allFns.map(function(f){return f.name;}))];
-                var conns=[];
-                var fnStats={};
-                // Initialize fnStats with additional metadata for accurate unused detection
-                allFns.forEach(function(fn){
-                    if(!fnStats[fn.name]){
-                        fnStats[fn.name]={
-                            internal:0,
-                            external:0,
-                            callers:new Map(),
-                            file:fn.file,
-                            folder:fn.folder,
-                            line:fn.line,
-                            code:fn.code,
-                            isTopLevel:fn.isTopLevel!==false,  // Default to true for backward compat
-                            isExported:fn.isExported||false,
-                            isClassMethod:fn.isClassMethod||false,
-                            type:fn.type||'function',
-                            decorators:fn.decorators||null,
-                            className:fn.className||null
-                        };
-                    }
-                });
-
-                // Phase 2: Find calls in batches with yielding to prevent UI freeze
-                var CALL_BATCH=30;
-                for(var bi=0;bi<analyzed.length;bi+=CALL_BATCH){
-                    var batchEnd=Math.min(bi+CALL_BATCH,analyzed.length);
-                    setProgress('Analyzing dependencies (2/5)... '+batchEnd+'/'+analyzed.length+' files');
-                    for(var fi=bi;fi<batchEnd;fi++){
-                        var file=analyzed[fi];
-                        if(!file.content)continue;
-                        // Pass file path and all function defs for accurate call detection
-                        var calls=Parser.findCalls(file.content,fnNames,file.path,allFns);
-                        Object.entries(calls).forEach(function(entry){
-                            var fn=entry[0],cnt=entry[1];
-                            // Only process if there are actual calls (cnt > 0)
-                            if(cnt<=0)return;
-                            var def=fnStats[fn]?fnStats[fn].file:null;
-                            if(def){
-                                if(def===file.path){
-                                    fnStats[fn].internal+=cnt;
-                                }else{
-                                    conns.push({source:def,target:file.path,fn:fn,count:cnt});
-                                    var ex=fnStats[fn].callers.get(file.path);
-                                    if(ex)ex.count+=cnt;else fnStats[fn].callers.set(file.path,{file:file.path,name:file.name,count:cnt});
-                                    fnStats[fn].external+=cnt;
-                                }
-                            }
+                        var dataObj=await runAnalysisData({
+                            analyzed:analyzed,
+                            allFns:allFns,
+                            excludePatterns:currentExcludePatterns.map(function(x){return x.raw;}),
+                            progress:setProgress,
+                            yieldFn:yieldToBrowser
                         });
+                        setData(dataObj);
+                        setExpandedPaths(new Set(['']));
+                        window.history.replaceState({},'',buildAppUrl(p.owner+'/'+p.repo,false));
+                        setLoading(false);
+                    }catch(err){
+                        setError('Analysis failed: '+(err.message||err)+'. Try a smaller repository.');
+                        setLoading(false);
                     }
-                    // Yield to browser between batches
-                    await new Promise(function(r){setTimeout(r,0);});
-                }
-                Object.values(fnStats).forEach(function(s){s.callers=Array.from(s.callers.values());s.count=s.internal+s.external;});
-                // Phase 2.5: Resolve markdown/wiki links into graph edges
-                setProgress('Resolving markdown links...');
-                await new Promise(function(r){setTimeout(r,0);});
-                var mdAllPaths=analyzed.map(function(f){return f.path;});
-                analyzed.forEach(function(file){
-                    if(!Parser.isMarkdown(file.name))return;
-                    file.layer='note';
-                    if(!file.content)return;
-                    var links=Parser.extractMarkdownLinks(file.content);
-                    var deps=[];
-                    links.forEach(function(link){
-                        var resolved=Parser.resolveMarkdownLink(link.target,file.path,mdAllPaths,link.kind);
-                        deps.push({kind:link.kind,raw:link.raw,target:link.target,resolved:resolved});
-                        if(resolved&&resolved!==file.path){
-                            conns.push({source:file.path,target:resolved,fn:link.raw,count:1,kind:link.kind});
-                        }
-                    });
-                    file.dependencies=deps;
-                });
-                analyzed.forEach(function(f){if(!f.dependencies)f.dependencies=[];});
-                var issues=[];
-                // Only flag truly unused functions with language-aware filtering
-                // Understands Python decorators, framework conventions, magic methods, etc.
-                var deadFns=Object.entries(fnStats).filter(function(x){
-                    var name=x[0],stats=x[1];
-                    // Skip if has any calls (internal or external)
-                    if(stats.internal>0||stats.external>0)return false;
-                    // Skip class methods - they're called via instance
-                    if(stats.isClassMethod)return false;
-                    // Skip nested functions - they're private to their scope
-                    if(!stats.isTopLevel)return false;
-                    // Python-aware: skip decorated functions (framework-registered: routes, signals, etc.)
-                    if(stats.decorators&&stats.decorators.length>0)return false;
-                    // Python-aware: skip classes (instantiated dynamically, registered by frameworks)
-                    if(stats.type==='class'||stats.type==='dataclass'||stats.type==='abstract_class')return false;
-                    // Python-aware: skip dunder/magic methods (__init__, __str__, __enter__, etc.)
-                    var baseName=name.includes('.')?name.split('.').pop():name;
-                    if(baseName.startsWith('__')&&baseName.endsWith('__'))return false;
-                    // Python-aware: skip test functions (discovered by pytest/unittest)
-                    if(baseName.startsWith('test_')||baseName==='setUp'||baseName==='tearDown'||baseName==='setUpClass'||baseName==='tearDownClass')return false;
-                    if(stats.file&&(stats.file.includes('test_')||stats.file.includes('_test.')||stats.file.includes('/tests/')))return false;
-                    // Python-aware: skip migration functions (Alembic upgrade/downgrade)
-                    if((baseName==='upgrade'||baseName==='downgrade')&&stats.file&&(stats.file.includes('migration')||stats.file.includes('alembic')||stats.file.includes('versions')))return false;
-                    // Python-aware: skip common framework entry points and hooks
-                    if(['main','create_app','make_app','get_app','setup','configure','register','on_startup','on_shutdown','lifespan'].indexOf(baseName)>=0)return false;
-                    // JS/TS: skip explicitly exported functions (module exports are meant for external consumption)
-                    // The export keyword is an explicit declaration of public API - if call detection
-                    // can't find usage, it's a detection gap, not genuinely dead code
-                    if(stats.isExported&&stats.file&&/\.[jt]sx?$/.test(stats.file))return false;
-                    // Skip functions in test/spec files (broader pattern)
-                    if(stats.file&&(/\.(?:spec|test)\.[jt]sx?$/.test(stats.file)||stats.file.includes('__tests__')))return false;
-                    // This is a top-level function with zero calls and no framework registration
-                    return true;
-                });
-                if(deadFns.length)issues.push({type:'warning',title:deadFns.length+' Unused Functions',desc:'Functions not called from other files',items:deadFns.map(function(x){return{name:x[0],file:x[1].file,line:x[1].line,code:x[1].code};})});
-                var godFiles=analyzed.filter(function(f){return f.functions.length>15;});
-                if(godFiles.length)issues.push({type:'critical',title:godFiles.length+' Large Files',desc:'Files with 15+ functions',items:godFiles.map(function(f){return{name:f.name+' ('+f.functions.length+' fns)',file:f.path,fns:f.functions.length,lines:f.lines};})});
-                var coupling={};
-                conns.forEach(function(c){coupling[c.target]=(coupling[c.target]||0)+1;});
-                var highCoup=Object.entries(coupling).filter(function(x){return x[1]>8;}).sort(function(a,b){return b[1]-a[1];});
-                if(highCoup.length)issues.push({type:'warning',title:highCoup.length+' Highly Coupled',desc:'Files imported by 8+ others',items:highCoup.map(function(x){return{name:x[0].split('/').pop()+' ('+x[1]+' imports)',file:x[0],imports:x[1]};})});
-                var connSet=new Set(conns.map(function(c){return c.source+'|'+c.target;}));
-                var circular=[];
-                conns.forEach(function(c){if(connSet.has(c.target+'|'+c.source)){var key=[c.source,c.target].sort().join('|');if(!circular.includes(key))circular.push(key);}});
-                if(circular.length)issues.push({type:'critical',title:circular.length+' Circular Dependencies',desc:'Files that import each other',items:circular.map(function(p){var parts=p.split('|');return{name:parts.map(function(x){return x.split('/').pop();}).join(' ↔ '),files:parts};})});
-
-                // Phase 3: Pattern and security detection with yielding
-                setProgress('Detecting patterns (3/5)...');
-                await new Promise(function(r){setTimeout(r,0);});
-                var patterns=Parser.detectPatterns(analyzed);
-                var securityIssues=Parser.detectSecurity(analyzed);
-
-                // Phase 4: Duplicate detection and complexity
-                setProgress('Analyzing code quality (4/5)...');
-                await new Promise(function(r){setTimeout(r,0);});
-                var duplicates=Parser.detectDuplicates(analyzed,allFns);
-                var layerViolations=Parser.detectLayerViolations(analyzed,conns);
-                // Add complexity to each file in batches
-                for(var ci=0;ci<analyzed.length;ci+=CALL_BATCH){
-                    var cEnd=Math.min(ci+CALL_BATCH,analyzed.length);
-                    for(var cj=ci;cj<cEnd;cj++){
-                        analyzed[cj].complexity=Parser.calcComplexity(analyzed[cj].content,analyzed[cj].path);
-                    }
-                    if(ci+CALL_BATCH<analyzed.length)await new Promise(function(r){setTimeout(r,0);});
-                }
-
-                // Phase 5: Free file content from memory (can be re-fetched for preview)
-                setProgress('Finalizing (5/5)...');
-                await new Promise(function(r){setTimeout(r,0);});
-                analyzed.forEach(function(f){f.content=null;});
-
-                var folders=[...new Set(analyzed.map(function(f){return f.folder;}))].sort();
-                var tree=buildTree(analyzed);
-                var totalLoc=analyzed.reduce(function(s,f){return s+f.lines;},0);
-                var langStats={};
-                analyzed.forEach(function(f){var ext=f.name.split('.').pop().toLowerCase();langStats[ext]=(langStats[ext]||0)+f.lines;});
-                var langArray=Object.entries(langStats).sort(function(a,b){return b[1]-a[1];}).map(function(e){return{ext:e[0],lines:e[1],pct:Math.round(e[1]/totalLoc*100)};});
-                // Add duplicate issues - include ALL items
-                if(duplicates.length>0){
-                    var nameDups=duplicates.filter(function(d){return d.type==='name';});
-                    var codeDups=duplicates.filter(function(d){return d.type==='code';});
-                    if(nameDups.length)issues.push({type:'warning',title:nameDups.length+' Duplicate Function Names',desc:'Same function name in multiple files',items:nameDups.map(function(d){return{name:d.name+' ('+d.count+' files)',suggestion:d.suggestion,files:d.files,count:d.count};})});
-                    if(codeDups.length)issues.push({type:'warning',title:codeDups.length+' Similar Code Blocks',desc:'Copy-paste code detected',items:codeDups.map(function(d){return{name:d.name,suggestion:d.suggestion,files:d.files};})});
-                }
-                if(layerViolations.length>0){
-                    issues.push({type:'critical',title:layerViolations.length+' Architecture Violations',desc:'Lower layers importing from higher layers',items:layerViolations.map(function(v){return{name:v.fromLayer+' → '+v.toLayer,file:v.from,toFile:v.to,fn:v.fn,suggestion:v.suggestion};})});
-                }
-                var highComplexity=analyzed.filter(function(f){return f.complexity&&f.complexity.level==='critical';}).sort(function(a,b){return b.complexity.score-a.complexity.score;});
-                if(highComplexity.length)issues.push({type:'warning',title:highComplexity.length+' High Complexity Files',desc:'Files with complexity score >30',items:highComplexity.map(function(f){return{name:f.name+' ('+f.complexity.score+')',file:f.path,score:f.complexity.score,lines:f.lines};})});
-                var dataObj={files:analyzed,functions:allFns,connections:conns,fnStats:fnStats,folders:folders,tree:tree,issues:issues,patterns:patterns,securityIssues:securityIssues,duplicates:duplicates,layerViolations:layerViolations,deadFunctions:deadFns.map(function(x){var codeLines=x[1].code?x[1].code.split('\n').length:0;return{name:x[0],file:x[1].file,folder:x[1].folder,line:x[1].line,code:x[1].code,codeLines:codeLines,ext:x[1].file.split('.').pop()};}),excludePatterns:currentExcludePatterns.map(function(x){return x.raw;}),stats:{files:analyzed.length,functions:allFns.length,connections:conns.length,dead:deadFns.length,patterns:patterns.length,security:securityIssues.filter(function(i){return i.severity==='high';}).length,duplicates:duplicates.length,violations:layerViolations.length,loc:totalLoc,languages:langArray}};
-                dataObj.suggestions=Parser.generateSuggestions(dataObj);
-                setData(dataObj);
-                setExpandedPaths(new Set(['']));
-                window.history.replaceState({},'',buildAppUrl(p.owner+'/'+p.repo,false));
-                setLoading(false);
-                }catch(err){
-                    setError('Analysis failed: '+(err.message||err)+'. Try a smaller repository.');
-                    setLoading(false);
-                }
                 }
 
                 processFile(0);
@@ -3932,6 +4232,26 @@ function App(){
                 });
             }
 
+            if(files.length>HARD_LIMIT){
+                return requestConfirm({
+                    tone:'warning',
+                    icon:'archive',
+                    title:'Analyze a GitHub API sample?',
+                    message:
+                        'This GitHub repository has '+files.length+' analyzable files.\n\n'+
+                        'The browser cannot read GitHub zipball archives directly because GitHub redirects archive downloads to a CORS-restricted host.\n\n'+
+                        'For full analysis: download the repository ZIP from GitHub, then use Open ZIP in CodeFlow.\n\n'+
+                        'Continue now with a '+HARD_LIMIT+'-file API sample?',
+                    confirmLabel:'Analyze sample'
+                }).then(function(proceed){
+                    if(!proceed){
+                        setLoading(false);
+                        return Promise.reject('cancelled');
+                    }
+                    return beginRepoAnalysis();
+                });
+            }
+
             return beginRepoAnalysis();
         }).catch(function(e){if(e!=='cancelled'){setError(e.message||e);setLoading(false);}});
     }
@@ -3942,8 +4262,12 @@ function App(){
             return;
         }
         window.showDirectoryPicker().then(function(dirHandle){
-            setLocalDirHandle(dirHandle);
             resetAnalysisState();
+            setRepoInfo(null);
+            setLocalDirHandle(dirHandle);
+            setLocalSourceKind('folder');
+            zipArchiveRef.current=null;
+            zipFileRef.current=null;
             setLoading(true);
             setProgress('Reading local folder...');
             readLocalFolder(dirHandle,compiledPatterns||activeExcludePatterns);
@@ -3958,12 +4282,51 @@ function App(){
         openExcludeModal(true);
     }
 
+    function openLocalZip(){
+        if(!window.JSZip){
+            setError('ZIP support failed to load. Check your network connection and try again.');
+            return;
+        }
+        if(zipInputRef.current){
+            zipInputRef.current.value='';
+            zipInputRef.current.click();
+        }
+    }
+
+    function handleZipSelected(e){
+        var file=e.target.files&&e.target.files[0];
+        if(!file)return;
+        resetAnalysisState();
+        setRepoInfo(null);
+        setLocalDirHandle(null);
+        setLocalSourceKind('zip');
+        zipArchiveRef.current=null;
+        zipFileRef.current=file;
+        setLoading(true);
+        setProgress('Reading ZIP archive...');
+        readZipArchive(file,activeExcludePatterns);
+    }
+
     function refreshAnalysis(){
-        if(localDirHandle){
+        if(localSourceKind==='folder'&&localDirHandle){
             resetAnalysisState();
             setLoading(true);
             setProgress('Reading local folder...');
             readLocalFolder(localDirHandle,activeExcludePatterns);
+            return;
+        }
+        if(localSourceKind==='zip'){
+            if(!zipFileRef.current){
+                showNotification('ZIP archive is no longer available. Load it again to refresh.','warning');
+                return;
+            }
+            resetAnalysisState();
+            setLocalDirHandle(null);
+            setLocalSourceKind('zip');
+            zipArchiveRef.current=null;
+            setLoading(true);
+            setProgress('Reading ZIP archive...');
+            readZipArchive(zipFileRef.current,activeExcludePatterns);
             return;
         }
         analyze();
@@ -3971,12 +4334,14 @@ function App(){
 
     async function readLocalFolder(dirHandle, compiledPatterns, path=''){
         var files=[];
-        var SOFT_LIMIT=500,HARD_LIMIT=2000;
+        var SOFT_LIMIT=ANALYSIS_LIMITS.localSoft;
         var fileCount=0;
+        setProgress('Loading language parsers...');
+        await Parser.initTreeSitter().catch(function(){return null;});
+        setProgress('Scanning local folder...');
 
         async function readDirectory(handle, currentPath){
             for await (const entry of handle.values()){
-                if(fileCount>=HARD_LIMIT)break;
                 var entryPath=currentPath?currentPath+'/'+entry.name:entry.name;
                 if(entry.kind==='directory'){
                     if(!shouldIgnoreDirectory(entryPath,entry.name,compiledPatterns)){
@@ -3986,31 +4351,31 @@ function App(){
                     var name=entry.name;
                     if(shouldExcludeFile(entryPath,name,compiledPatterns))continue;
                     var folder=currentPath||'root';
-                    files.push({path:entryPath,name:name,folder:folder,size:0,isCode:Parser.isCode(name)});
                     fileCount++;
-                    if(fileCount%50===0)setProgress('Scanning files... '+fileCount+' found');
+                    files.push({path:entryPath,name:name,folder:folder,size:0,isCode:Parser.isCode(name),handle:entry});
+                    if(fileCount%50===0){
+                        setProgress('Scanning files... '+fileCount+' found');
+                    }
                 }
             }
         }
 
         await readDirectory(dirHandle,'');
         
-        if(files.length>SOFT_LIMIT&&files.length<=HARD_LIMIT){
+        if(fileCount>SOFT_LIMIT){
             var proceed=await requestConfirm({
                 tone:'warning',
                 icon:'folder',
-                title:'Analyze a large folder?',
+                title:'Analyze '+fileCount+' files?',
                 message:
-                    'This folder has '+files.length+' files.\n\n'+
-                    'Analyzing larger folders can take longer.\n\n'+
-                    'Continue with all '+files.length+' files?',
-                confirmLabel:'Analyze folder'
+                    'This folder has '+fileCount+' analyzable files.\n\n'+
+                    'CodeFlow will analyze every eligible file. Large folders can take minutes and use significant browser memory.\n\n'+
+                    'Continue with all '+fileCount+' files?',
+                confirmLabel:'Analyze all files'
             });
             if(!proceed){setLoading(false);return;}
-        }else if(files.length>HARD_LIMIT){
-            showNotification('Found '+files.length+' files. Limiting to '+HARD_LIMIT+' for performance.','warning');
         }
-        var max=Math.min(files.length,HARD_LIMIT);
+        var max=files.length;
         var analyzed=[];
         var allFns=[];
 
@@ -4018,30 +4383,13 @@ function App(){
             if(i>=max){await finishAnalysis();return;}
             var f=files[i];
             // Yield to browser every 50 files to keep UI responsive
-            if(i>0&&i%50===0)await new Promise(function(r){setTimeout(r,0);});
+            if(i>0&&i%50===0)await yieldToBrowser();
             setProgress('Analyzing '+(i+1)+'/'+max+': '+f.name);
             var isCodeFile=f.isCode!==false&&Parser.isCode(f.name);
             
-            // Get file handle from path
-            var parts=f.path.split('/');
-            var currentHandle=dirHandle;
-            for(var j=0;j<parts.length-1;j++){
-                if(currentHandle.values){
-                    var found=false;
-                    for await (const entry of currentHandle.values()){
-                        if(entry.name===parts[j]&&entry.kind==='directory'){
-                            currentHandle=entry;
-                            found=true;
-                            break;
-                        }
-                    }
-                    if(!found)break;
-                }
-            }
-            
             try{
+                var fileHandle=f.handle;
                 if(isCodeFile){
-                    var fileHandle=await currentHandle.getFileHandle(parts[parts.length-1]);
                     var fileObj=await fileHandle.getFile();
                     var content=await fileObj.text();
                     var layer=Parser.detectLayer(f.path);
@@ -4053,7 +4401,6 @@ function App(){
                     }
                     processFile(i+1);
                 }else{
-                    var fileHandle=await currentHandle.getFileHandle(parts[parts.length-1]);
                     var fileObj=await fileHandle.getFile();
                     var content=await fileObj.text();
                     var layer=Parser.detectLayer(f.path);
@@ -4069,168 +4416,17 @@ function App(){
 
         async function finishAnalysis(){
             try{
-            // Phase 1: Build function stats index
-            setProgress('Building dependency graph (1/5)...');
-            await new Promise(function(r){setTimeout(r,0);});
-            var fnNames=[...new Set(allFns.map(function(f){return f.name;}))];
-            var conns=[];
-            var fnStats={};
-            allFns.forEach(function(fn){
-                if(!fnStats[fn.name]){
-                    fnStats[fn.name]={
-                        internal:0,
-                        external:0,
-                        callers:new Map(),
-                        file:fn.file,
-                        folder:fn.folder,
-                        line:fn.line,
-                        code:fn.code,
-                        isTopLevel:fn.isTopLevel!==false,
-                        isExported:fn.isExported||false,
-                        isClassMethod:fn.isClassMethod||false,
-                        type:fn.type||'function',
-                        decorators:fn.decorators||null,
-                        className:fn.className||null
-                    };
-                }
-            });
-
-            // Phase 2: Find calls in batches with yielding to prevent UI freeze
-            var CALL_BATCH=30;
-            for(var bi=0;bi<analyzed.length;bi+=CALL_BATCH){
-                var batchEnd=Math.min(bi+CALL_BATCH,analyzed.length);
-                setProgress('Analyzing dependencies (2/5)... '+batchEnd+'/'+analyzed.length+' files');
-                for(var fi=bi;fi<batchEnd;fi++){
-                    var file=analyzed[fi];
-                    if(!file.content)continue;
-                    var calls=Parser.findCalls(file.content,fnNames,file.path,allFns);
-                    Object.entries(calls).forEach(function(entry){
-                        var fn=entry[0],cnt=entry[1];
-                        if(cnt<=0)return;
-                        var def=fnStats[fn]?fnStats[fn].file:null;
-                        if(def){
-                            if(def===file.path){
-                                fnStats[fn].internal+=cnt;
-                            }else{
-                                conns.push({source:def,target:file.path,fn:fn,count:cnt});
-                                var ex=fnStats[fn].callers.get(file.path);
-                                if(ex)ex.count+=cnt;else fnStats[fn].callers.set(file.path,{file:file.path,name:file.name,count:cnt});
-                                fnStats[fn].external+=cnt;
-                            }
-                        }
-                    });
-                }
-                // Yield to browser between batches
-                await new Promise(function(r){setTimeout(r,0);});
-            }
-            Object.values(fnStats).forEach(function(s){s.callers=Array.from(s.callers.values());s.count=s.internal+s.external;});
-            // Phase 2.5: Resolve markdown/wiki links into graph edges
-            setProgress('Resolving markdown links...');
-            await new Promise(function(r){setTimeout(r,0);});
-            var mdAllPaths=analyzed.map(function(f){return f.path;});
-            analyzed.forEach(function(file){
-                if(!Parser.isMarkdown(file.name))return;
-                file.layer='note';
-                if(!file.content)return;
-                var links=Parser.extractMarkdownLinks(file.content);
-                var deps=[];
-                links.forEach(function(link){
-                    var resolved=Parser.resolveMarkdownLink(link.target,file.path,mdAllPaths,link.kind);
-                    deps.push({kind:link.kind,raw:link.raw,target:link.target,resolved:resolved});
-                    if(resolved&&resolved!==file.path){
-                        conns.push({source:file.path,target:resolved,fn:link.raw,count:1,kind:link.kind});
-                    }
+                var dataObj=await runAnalysisData({
+                    analyzed:analyzed,
+                    allFns:allFns,
+                    excludePatterns:(compiledPatterns||[]).map(function(x){return x.raw;}),
+                    progress:setProgress,
+                    yieldFn:yieldToBrowser
                 });
-                file.dependencies=deps;
-            });
-            analyzed.forEach(function(f){if(!f.dependencies)f.dependencies=[];});
-            var issues=[];
-            var deadFns=Object.entries(fnStats).filter(function(x){
-                var name=x[0],stats=x[1];
-                if(stats.internal>0||stats.external>0)return false;
-                if(stats.isClassMethod)return false;
-                if(!stats.isTopLevel)return false;
-                // Python-aware: skip decorated functions (framework-registered: routes, signals, etc.)
-                if(stats.decorators&&stats.decorators.length>0)return false;
-                // Python-aware: skip classes
-                if(stats.type==='class'||stats.type==='dataclass'||stats.type==='abstract_class')return false;
-                // Python-aware: skip dunder/magic methods
-                var baseName=name.includes('.')?name.split('.').pop():name;
-                if(baseName.startsWith('__')&&baseName.endsWith('__'))return false;
-                // Python-aware: skip test functions
-                if(baseName.startsWith('test_')||baseName==='setUp'||baseName==='tearDown'||baseName==='setUpClass'||baseName==='tearDownClass')return false;
-                if(stats.file&&(stats.file.includes('test_')||stats.file.includes('_test.')||stats.file.includes('/tests/')))return false;
-                // Python-aware: skip migration functions (Alembic)
-                if((baseName==='upgrade'||baseName==='downgrade')&&stats.file&&(stats.file.includes('migration')||stats.file.includes('alembic')||stats.file.includes('versions')))return false;
-                // Python-aware: skip common framework entry points
-                if(['main','create_app','make_app','get_app','setup','configure','register','on_startup','on_shutdown','lifespan'].indexOf(baseName)>=0)return false;
-                // JS/TS: skip explicitly exported functions (module exports are meant for external consumption)
-                if(stats.isExported&&stats.file&&/\.[jt]sx?$/.test(stats.file))return false;
-                // Skip functions in test/spec files (broader pattern)
-                if(stats.file&&(/\.(?:spec|test)\.[jt]sx?$/.test(stats.file)||stats.file.includes('__tests__')))return false;
-                return true;
-            });
-            if(deadFns.length)issues.push({type:'warning',title:deadFns.length+' Unused Functions',desc:'Functions not called from other files',items:deadFns.map(function(x){return{name:x[0],file:x[1].file,line:x[1].line,code:x[1].code};})});
-            var godFiles=analyzed.filter(function(f){return f.functions.length>15;});
-            if(godFiles.length)issues.push({type:'critical',title:godFiles.length+' Large Files',desc:'Files with 15+ functions',items:godFiles.map(function(f){return{name:f.name+' ('+f.functions.length+' fns)',file:f.path,fns:f.functions.length,lines:f.lines};})});
-            var coupling={};
-            conns.forEach(function(c){coupling[c.target]=(coupling[c.target]||0)+1;});
-            var highCoup=Object.entries(coupling).filter(function(x){return x[1]>8;}).sort(function(a,b){return b[1]-a[1];});
-            if(highCoup.length)issues.push({type:'warning',title:highCoup.length+' Highly Coupled',desc:'Files imported by 8+ others',items:highCoup.map(function(x){return{name:x[0].split('/').pop()+' ('+x[1]+' imports)',file:x[0],imports:x[1]};})});
-            var connSet=new Set(conns.map(function(c){return c.source+'|'+c.target;}));
-            var circular=[];
-            conns.forEach(function(c){if(connSet.has(c.target+'|'+c.source)){var key=[c.source,c.target].sort().join('|');if(!circular.includes(key))circular.push(key);}});
-            if(circular.length)issues.push({type:'critical',title:circular.length+' Circular Dependencies',desc:'Files that import each other',items:circular.map(function(p){var parts=p.split('|');return{name:parts.map(function(x){return x.split('/').pop();}).join(' ↔ '),files:parts};})});
-
-            // Phase 3: Pattern and security detection with yielding
-            setProgress('Detecting patterns (3/5)...');
-            await new Promise(function(r){setTimeout(r,0);});
-            var patterns=Parser.detectPatterns(analyzed);
-            var securityIssues=Parser.detectSecurity(analyzed);
-
-            // Phase 4: Duplicate detection and complexity (most expensive)
-            setProgress('Analyzing code quality (4/5)...');
-            await new Promise(function(r){setTimeout(r,0);});
-            var duplicates=Parser.detectDuplicates(analyzed,allFns);
-            var layerViolations=Parser.detectLayerViolations(analyzed,conns);
-
-            // Calculate complexity in batches
-            for(var ci=0;ci<analyzed.length;ci+=CALL_BATCH){
-                var cEnd=Math.min(ci+CALL_BATCH,analyzed.length);
-                for(var cj=ci;cj<cEnd;cj++){
-                    analyzed[cj].complexity=Parser.calcComplexity(analyzed[cj].content,analyzed[cj].path);
-                }
-                if(ci+CALL_BATCH<analyzed.length)await new Promise(function(r){setTimeout(r,0);});
-            }
-
-            // Phase 5: Free file content from memory (can be lazy-loaded for preview)
-            setProgress('Finalizing (5/5)...');
-            await new Promise(function(r){setTimeout(r,0);});
-            analyzed.forEach(function(f){f.content=null;});
-
-            var folders=[...new Set(analyzed.map(function(f){return f.folder;}))].sort();
-            var tree=buildTree(analyzed);
-            var totalLoc=analyzed.reduce(function(s,f){return s+f.lines;},0);
-            var langStats={};
-            analyzed.forEach(function(f){var ext=f.name.split('.').pop().toLowerCase();langStats[ext]=(langStats[ext]||0)+f.lines;});
-            var langArray=Object.entries(langStats).sort(function(a,b){return b[1]-a[1];}).map(function(e){return{ext:e[0],lines:e[1],pct:Math.round(e[1]/totalLoc*100)};});
-            if(duplicates.length>0){
-                var nameDups=duplicates.filter(function(d){return d.type==='name';});
-                var codeDups=duplicates.filter(function(d){return d.type==='code';});
-                if(nameDups.length)issues.push({type:'warning',title:nameDups.length+' Duplicate Function Names',desc:'Same function name in multiple files',items:nameDups.map(function(d){return{name:d.name+' ('+d.count+' files)',suggestion:d.suggestion,files:d.files,count:d.count};})});
-                if(codeDups.length)issues.push({type:'warning',title:codeDups.length+' Similar Code Blocks',desc:'Copy-paste code detected',items:codeDups.map(function(d){return{name:d.name,suggestion:d.suggestion,files:d.files};})});
-            }
-            if(layerViolations.length>0){
-                issues.push({type:'critical',title:layerViolations.length+' Architecture Violations',desc:'Lower layers importing from higher layers',items:layerViolations.map(function(v){return{name:v.fromLayer+' → '+v.toLayer,file:v.from,toFile:v.to,fn:v.fn,suggestion:v.suggestion};})});
-            }
-            var highComplexity=analyzed.filter(function(f){return f.complexity&&f.complexity.level==='critical';}).sort(function(a,b){return b.complexity.score-a.complexity.score;});
-            if(highComplexity.length)issues.push({type:'warning',title:highComplexity.length+' High Complexity Files',desc:'Files with complexity score >30',items:highComplexity.map(function(f){return{name:f.name+' ('+f.complexity.score+')',file:f.path,score:f.complexity.score,lines:f.lines};})});
-            var dataObj={files:analyzed,functions:allFns,connections:conns,fnStats:fnStats,folders:folders,tree:tree,issues:issues,patterns:patterns,securityIssues:securityIssues,duplicates:duplicates,layerViolations:layerViolations,deadFunctions:deadFns.map(function(x){var codeLines=x[1].code?x[1].code.split('\n').length:0;return{name:x[0],file:x[1].file,folder:x[1].folder,line:x[1].line,code:x[1].code,codeLines:codeLines,ext:x[1].file.split('.').pop()};}),excludePatterns:(compiledPatterns||[]).map(function(x){return x.raw;}),stats:{files:analyzed.length,functions:allFns.length,connections:conns.length,dead:deadFns.length,patterns:patterns.length,security:securityIssues.filter(function(i){return i.severity==='high';}).length,duplicates:duplicates.length,violations:layerViolations.length,loc:totalLoc,languages:langArray}};
-            dataObj.suggestions=Parser.generateSuggestions(dataObj);
-            setData(dataObj);
-            setExpandedPaths(new Set(['']));
-            setRepoInfo({owner:'local',repo:'folder',name:'Local Folder'});
-            setLoading(false);
+                setData(dataObj);
+                setExpandedPaths(new Set(['']));
+                setRepoInfo({owner:'local',repo:'folder',name:'Local Folder'});
+                setLoading(false);
             }catch(err){
                 setError('Analysis failed: '+(err.message||err)+'. Try a smaller folder or subfolder.');
                 setLoading(false);
@@ -4244,6 +4440,106 @@ function App(){
         }
 
         processFile(0);
+    }
+
+    async function readZipArchive(zipFile,compiledPatterns){
+        var patterns=compiledPatterns||activeExcludePatterns;
+        var SOFT_LIMIT=ANALYSIS_LIMITS.localSoft;
+        try{
+            if(!window.JSZip)throw new Error('ZIP support failed to load');
+            setProgress('Loading language parsers...');
+            await Parser.initTreeSitter().catch(function(){return null;});
+            setProgress('Reading ZIP archive...');
+            var zip=await JSZip.loadAsync(zipFile);
+            var rawEntries=Object.keys(zip.files).sort().map(function(name){return zip.files[name];}).filter(function(entry){return entry&&!entry.dir;});
+            var rootPrefix=getArchiveRootPrefix(rawEntries.map(function(entry){return entry.name;}));
+            var files=[];
+            var entriesByPath=Object.create(null);
+            var fileCount=0;
+
+            rawEntries.forEach(function(entry){
+                var rawPath=normalizeExcludePath(entry.name);
+                if(!rawPath||rawPath.endsWith('/'))return;
+                var entryPath=rootPrefix&&rawPath.indexOf(rootPrefix)===0?rawPath.slice(rootPrefix.length):rawPath;
+                entryPath=normalizeExcludePath(entryPath);
+                if(!entryPath||shouldSkipArchivePath(entryPath,patterns))return;
+                var parts=entryPath.split('/').filter(Boolean);
+                var name=parts[parts.length-1]||'';
+                if(!name||name==='.DS_Store'||shouldExcludeFile(entryPath,name,patterns))return;
+                var folder=parts.length>1?parts.slice(0,-1).join('/'):'root';
+                fileCount++;
+                files.push({path:entryPath,name:name,folder:folder,size:entry._data&&entry._data.uncompressedSize?entry._data.uncompressedSize:0,isCode:Parser.isCode(name),entry:entry});
+                entriesByPath[entryPath]=entry;
+            });
+
+            if(fileCount===0){
+                setError(patterns&&patterns.length?'No code files found in the ZIP archive after applying exclude patterns':'No code files found in the ZIP archive');
+                setLoading(false);
+                return;
+            }
+
+            if(fileCount>SOFT_LIMIT){
+                var proceed=await requestConfirm({
+                    tone:'warning',
+                    icon:'archive',
+                    title:'Analyze '+fileCount+' files?',
+                    message:
+                        'This ZIP archive has '+fileCount+' analyzable files.\n\n'+
+                        'CodeFlow will analyze every eligible file. Large archives can take minutes and use significant browser memory.\n\n'+
+                        'Continue with all '+fileCount+' files?',
+                    confirmLabel:'Analyze all files'
+                });
+                if(!proceed){setLocalSourceKind(null);zipFileRef.current=null;setLoading(false);return;}
+            }
+
+            zipArchiveRef.current={zip:zip,entriesByPath:entriesByPath,name:zipFile.name};
+            zipFileRef.current=zipFile;
+            setLocalDirHandle(null);
+            setLocalSourceKind('zip');
+
+            var max=files.length;
+            var analyzed=[];
+            var allFns=[];
+            for(var i=0;i<max;i++){
+                var f=files[i];
+                if(i>0&&i%50===0)await yieldToBrowser();
+                setProgress('Analyzing '+(i+1)+'/'+max+': '+f.name);
+                var isCodeFile=f.isCode!==false&&Parser.isCode(f.name);
+                try{
+                    var content=await f.entry.async('string');
+                    var layer=Parser.detectLayer(f.path);
+                    if(isCodeFile){
+                        var actualIsCode=!Parser.isScriptContainer(f.path)||Parser.hasEmbeddedCode(content,f.path);
+                        var fns=actualIsCode?Parser.extract(content,f.path):[];
+                        analyzed.push({path:f.path,name:f.name,folder:f.folder,content:content,functions:fns,lines:content.split('\n').length,layer:layer,churn:0,isCode:actualIsCode});
+                        if(actualIsCode){
+                            fns.forEach(function(fn){allFns.push(Object.assign({},fn,{folder:f.folder,layer:layer}));});
+                        }
+                    }else{
+                        analyzed.push({path:f.path,name:f.name,folder:f.folder,content:content||'',functions:[],lines:content?content.split('\n').length:0,layer:layer,churn:0,isCode:false});
+                    }
+                }catch(e){
+                    analyzed.push({path:f.path,name:f.name,folder:f.folder,content:'',functions:[],lines:0,layer:Parser.detectLayer(f.path),churn:0,isCode:false});
+                }
+            }
+
+            var dataObj=await runAnalysisData({
+                analyzed:analyzed,
+                allFns:allFns,
+                excludePatterns:(patterns||[]).map(function(x){return x.raw;}),
+                progress:setProgress,
+                yieldFn:yieldToBrowser
+            });
+            setData(dataObj);
+            setExpandedPaths(new Set(['']));
+            setRepoInfo({owner:'local',repo:'zip',name:zipFile.name});
+            setLoading(false);
+        }catch(err){
+            setLocalSourceKind(null);
+            zipArchiveRef.current=null;
+            setError('Failed to analyze ZIP archive: '+(err.message||err));
+            setLoading(false);
+        }
     }
 
     var selectFile=useCallback(function(path){
@@ -4260,16 +4556,16 @@ function App(){
             setBlastRadius(blast);
             setOwnership(null);
             setExpandedFns(new Set());
-            if(repoInfo&&!localDirHandle){
+            if(repoInfo&&!localSourceKind){
                 setOwnerLoading(true);
                 GitHub.getBlame(repoInfo.owner,repoInfo.repo,path).then(function(owners){setOwnership(owners);setOwnerLoading(false);}).catch(function(){setOwnerLoading(false);});
-            }else if(localDirHandle){
+            }else if(localSourceKind){
                 setOwnerLoading(false);
                 setOwnership([]);
             }
             updateGraphHighlight(path,blast);
         }
-    },[data,repoInfo,localDirHandle,isMobile]);
+    },[data,repoInfo,localSourceKind,isMobile]);
     selectFileRef.current=selectFile;
 
     function updateGraphHighlight(path,blast){
@@ -4354,9 +4650,9 @@ function App(){
                 return;
             }
         }
-        // Fetch from GitHub or local directory
-        if(localDirHandle){
-            // Read from local directory using async traversal
+        // Fetch from GitHub, local directory, or ZIP archive
+        if(localSourceKind==='folder'&&localDirHandle){
+            // Read from a local directory using async traversal
             (async function(){
                 try{
                     var parts=path.split('/');
@@ -4370,6 +4666,18 @@ function App(){
                     setFilePreview({path:path,filename:filename,content:content,line:line||null,loading:false,error:null});
                 }catch(e){
                     setFilePreview({path:path,filename:filename,content:null,line:line||null,loading:false,error:e.message||'Failed to load file'});
+                }
+            })();
+        }else if(localSourceKind==='zip'){
+            (async function(){
+                try{
+                    var archive=zipArchiveRef.current;
+                    var entry=archive&&archive.entriesByPath?archive.entriesByPath[path]:null;
+                    if(!entry)throw new Error('File is not available in the loaded ZIP archive');
+                    var content=await entry.async('string');
+                    setFilePreview({path:path,filename:filename,content:content,line:line||null,loading:false,error:null});
+                }catch(e){
+                    setFilePreview({path:path,filename:filename,content:null,line:line||null,loading:false,error:e.message||'Failed to load ZIP file'});
                 }
             })();
         }else{
@@ -5075,9 +5383,14 @@ function App(){
     }
     function exportSVG(){if(!svgRef.current)return;var svgClone=svgRef.current.cloneNode(true);svgClone.setAttribute('xmlns','http://www.w3.org/2000/svg');svgClone.setAttribute('width',svgRef.current.clientWidth);svgClone.setAttribute('height',svgRef.current.clientHeight);var style=document.createElementNS('http://www.w3.org/2000/svg','style');style.textContent='text{font-family:JetBrains Mono,monospace;pointer-events:none}';svgClone.insertBefore(style,svgClone.firstChild);var blob=new Blob([new XMLSerializer().serializeToString(svgClone)],{type:'image/svg+xml'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow-'+Date.now()+'.svg';a.click();URL.revokeObjectURL(url);}
     function exportJSON(){if(!data)return;var blob=new Blob([JSON.stringify({stats:data.stats,files:data.files.map(function(f){return{path:f.path,fns:f.functions.length,layer:f.layer,lines:f.lines,dependencies:f.dependencies||[]};}),connections:data.connections,issues:data.issues,patterns:data.patterns,security:data.securityIssues},null,2)],{type:'application/json'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow-analysis.json';a.click();}
+    function getAnalysisSourceLabel(){
+        if(localSourceKind==='folder')return'Local Folder';
+        if(localSourceKind==='zip')return repoInfo&&repoInfo.name?repoInfo.name:'ZIP Archive';
+        return repoInfo?repoInfo.owner+'/'+repoInfo.repo:'Unknown Repository';
+    }
     function generateReport(format){
         if(!data)return;
-        var repo=repoInfo?(localDirHandle?'Local Folder':repoInfo.owner+'/'+repoInfo.repo):'Unknown Repository';
+        var repo=getAnalysisSourceLabel();
         var h=calcHealth(data);
         var report={
             repository:repo,
@@ -5302,18 +5615,19 @@ function App(){
     }
     function showNotification(msg,type){setToast({msg:msg,type:type||'success'});setTimeout(function(){setToast(null);},3000);}
     function copyLink(){
-        if(localDirHandle){
-            showNotification('Share links are not available for local folders','warning');
+        if(localSourceKind){
+            showNotification('Share links are not available for local sources','warning');
             return;
         }
         var shareUrl=buildAppUrl(repoInfo?repoInfo.owner+'/'+repoInfo.repo:repoUrl,true);
         navigator.clipboard.writeText(shareUrl).then(function(){showNotification('Link copied to clipboard!');}).catch(function(){showNotification('Failed to copy link','error');});
     }
     function analyzePR(){if(!prUrl||!repoInfo)return;var m=prUrl.match(/\/pull\/(\d+)/);if(!m){showNotification('Invalid PR URL','error');return;}GitHub.getPR(repoInfo.owner,repoInfo.repo,m[1]).then(function(pr){if(pr)setPrData(pr);else showNotification('Could not load PR','error');});}
-    function resetAnalysis(){setData(null);setSelected(null);setBlastRadius(null);setOwnership(null);setRepoInfo(null);setRepoUrl('');setPrData(null);setFolderFilter(null);setLocalDirHandle(null);window.history.replaceState({},'',window.location.pathname);}
+    function resetAnalysis(){setData(null);setSelected(null);setBlastRadius(null);setOwnership(null);setRepoInfo(null);setRepoUrl('');setPrData(null);setFolderFilter(null);setLocalDirHandle(null);setLocalSourceKind(null);zipArchiveRef.current=null;zipFileRef.current=null;window.history.replaceState({},'',window.location.pathname);}
     function filterByFolder(path){setFolderFilter(function(prev){return prev===path?null:path;});}
     var health=useMemo(function(){return calcHealth(data);},[data]);
     return React.createElement('div',{className:'app',style:{'--topbar-height':topbarHeight+'px'}},
+        React.createElement('input',{ref:zipInputRef,type:'file',accept:'.zip,application/zip,application/x-zip-compressed',style:{display:'none'},onChange:handleZipSelected}),
         React.createElement('div',{className:'topbar',ref:topbarRef},
             isMobile&&React.createElement(React.Fragment,null,
                 React.createElement('div',{className:'mobile-brand-row'},
@@ -5322,9 +5636,9 @@ function App(){
                         React.createElement('span',{className:'logo-text'},'CODEFLOW')
                     ),
                     React.createElement('div',{className:'mobile-action-stack'},
-                        data&&!localDirHandle&&React.createElement('button',{className:'top-btn mobile-icon-btn','aria-label':'Analyze Pull Request',title:'Pull Request',onClick:function(){setShowPR(true);},type:'button'},React.createElement(Icon,{name:'pull-request',size:'m'})),
+                        data&&!localSourceKind&&React.createElement('button',{className:'top-btn mobile-icon-btn','aria-label':'Analyze Pull Request',title:'Pull Request',onClick:function(){setShowPR(true);},type:'button'},React.createElement(Icon,{name:'pull-request',size:'m'})),
                         data&&React.createElement('button',{className:'top-btn mobile-icon-btn','aria-label':'Export analysis',title:'Export',onClick:function(){setShowExport(true);},type:'button'},React.createElement(Icon,{name:'export',size:'m'})),
-                        data&&!localDirHandle&&React.createElement('button',{className:'top-btn mobile-icon-btn','aria-label':'Copy share link',title:'Share',onClick:copyLink,type:'button'},React.createElement(Icon,{name:'share',size:'m'})),
+                        data&&!localSourceKind&&React.createElement('button',{className:'top-btn mobile-icon-btn','aria-label':'Copy share link',title:'Share',onClick:copyLink,type:'button'},React.createElement(Icon,{name:'share',size:'m'})),
                         React.createElement('button',{className:'top-btn mobile-icon-btn','aria-label':'Toggle theme',title:'Theme',onClick:function(){setTheme(function(t){return t==='dark'?'light':'dark';});},type:'button'},React.createElement(Icon,{name:theme==='dark'?'sun':'moon',size:'m'}))
                     )
                 ),
@@ -5359,6 +5673,10 @@ function App(){
                         React.createElement('button',{className:'top-btn','aria-label':'Open local folder',onClick:function(){openLocalFolder();},disabled:loading,type:'button'},
                             React.createElement(Icon,{name:'folder',size:'m'}),
                             'Folder'
+                        ),
+                        React.createElement('button',{className:'top-btn','aria-label':'Open ZIP archive',onClick:function(){openLocalZip();},disabled:loading,type:'button'},
+                            React.createElement(Icon,{name:'archive',size:'m'}),
+                            'ZIP'
                         ),
                         data&&React.createElement('button',{className:'refresh-btn','aria-label':'Refresh analysis',onClick:refreshAnalysis,disabled:loading,title:'Refresh Analysis',type:'button'},
                             React.createElement(Icon,{name:'refresh',size:'m'}),
@@ -5405,6 +5723,10 @@ function App(){
                     React.createElement(Icon,{name:'folder',size:'m'}),
                     'Open Folder'
                 ),
+                React.createElement('button',{className:'top-btn','aria-label':'Open ZIP archive',onClick:function(){openLocalZip();},disabled:loading},
+                    React.createElement(Icon,{name:'archive',size:'m'}),
+                    'Open ZIP'
+                ),
                 data&&React.createElement('button',{className:'refresh-btn','aria-label':'Refresh analysis',onClick:refreshAnalysis,disabled:loading,title:'Refresh Analysis'},
                     React.createElement(Icon,{name:'refresh',size:'m'}),
                     'Refresh'
@@ -5425,9 +5747,9 @@ function App(){
                 )
             ),
             React.createElement('div',{className:'topbar-actions'},
-                React.createElement('button',{className:'top-btn','aria-label':'Analyze Pull Request',onClick:function(){setShowPR(true);},disabled:!data||localDirHandle},React.createElement(Icon,{name:'pull-request',size:'m'}),'PR'),
+                React.createElement('button',{className:'top-btn','aria-label':'Analyze Pull Request',onClick:function(){setShowPR(true);},disabled:!data||!!localSourceKind},React.createElement(Icon,{name:'pull-request',size:'m'}),'PR'),
                 React.createElement('button',{className:'top-btn','aria-label':'Export analysis',onClick:function(){setShowExport(true);},disabled:!data},React.createElement(Icon,{name:'export',size:'m'}),'Export'),
-                React.createElement('button',{className:'top-btn','aria-label':'Copy share link',onClick:copyLink,disabled:!data||localDirHandle},React.createElement(Icon,{name:'share',size:'m'}),'Share'),
+                React.createElement('button',{className:'top-btn','aria-label':'Copy share link',onClick:copyLink,disabled:!data||!!localSourceKind},React.createElement(Icon,{name:'share',size:'m'}),'Share'),
                 React.createElement('button',{className:'top-btn','aria-label':'Toggle theme',onClick:function(){setTheme(function(t){return t==='dark'?'light':'dark';});}},React.createElement(Icon,{name:theme==='dark'?'sun':'moon',size:'m'}),theme==='dark'?'Light':'Dark')
             )
         ),
@@ -5503,7 +5825,7 @@ function App(){
                 ):React.createElement('div',{className:'empty-state'},
                     React.createElement(Icon,{name:'search',size:'xxl',className:'empty-icon'}),
                     React.createElement('div',{className:'empty-title'},'No Repository'),
-                    React.createElement('div',{className:'empty-desc'},'Enter a GitHub URL or click "Open Folder" to analyze a local directory')
+                    React.createElement('div',{className:'empty-desc'},'Enter a GitHub URL, open a folder, or load a ZIP archive')
                 )
             ),
             React.createElement('div',{className:'canvas-area'},
@@ -5511,7 +5833,7 @@ function App(){
                 !data?React.createElement('div',{className:'empty-state'},
                     React.createElement(Icon,{name:'logo',size:'xxl',className:'empty-icon'}),
                     React.createElement('div',{className:'empty-title'},'CodeFlow'),
-                    React.createElement('div',{className:'empty-desc'},'Visualize architecture, blast radius, ownership, patterns & security\n\nEnter a GitHub URL or click "Open Folder" to analyze a local directory')
+                    React.createElement('div',{className:'empty-desc'},'Visualize architecture, blast radius, ownership, patterns & security\n\nEnter a GitHub URL, open a folder, or load a ZIP archive')
                 ):
                 React.createElement(React.Fragment,null,
                     React.createElement('div',{className:'viz-selector'},
@@ -5873,7 +6195,7 @@ function App(){
                 ):React.createElement('div',{className:'empty-state'},
                     React.createElement(Icon,{name:'chart',size:'xxl',className:'empty-icon'}),
                     React.createElement('div',{className:'empty-title'},'Analysis'),
-                    React.createElement('div',{className:'empty-desc'},'Analyze a GitHub repo or local folder to see insights')
+                    React.createElement('div',{className:'empty-desc'},'Analyze a GitHub repo, local folder, or ZIP archive to see insights')
                 )
             )
         ),

@@ -73,6 +73,12 @@ assert.equal(hybridCalls.boot, 2, 'boot should be referenced by setupUi and the 
 assert.equal(hybridCalls.renderApp, 2, 'renderApp should be referenced by boot and the inline onclick handler');
 assert.equal(hybridCalls.setupUi, 1, 'setupUi should be referenced from renderApp');
 
+const manyFunctionNames = Array.from({ length: 1000 }, function(_, i) { return 'unusedFn' + i; });
+manyFunctionNames.push('targetCall');
+const filteredCalls = Parser.findCalls('function demo(){ targetCall(); }', manyFunctionNames, 'demo.js', []);
+assert.equal(filteredCalls.targetCall > 0, true, 'large function lists should still count names present in the file');
+assert.equal(Object.prototype.hasOwnProperty.call(filteredCalls, 'unusedFn999'), false, 'large function lists should skip names absent from the file');
+
 const dataOnlyHtml = `
 <!doctype html>
 <html>
