@@ -3901,11 +3901,22 @@ function App(){
     var zipInputRef=useRef(null);
     var zipArchiveRef=useRef(null);
     var zipFileRef=useRef(null);
+    var folderInputRef=useRef(null);
+    var localFilesRef=useRef(null);
+    var pendingExcludePatternsRef=useRef(null);
     var confirmResolverRef=useRef(null);
     var activeExcludePatterns=useMemo(function(){return compileExcludePatterns(excludePatternInput);},[excludePatternInput]);
     var customExcludeCount=activeExcludePatterns.length;
 
     useEffect(function(){document.body.className=theme==='light'?'light':'';},[theme]);
+
+    useEffect(function(){
+        var el=folderInputRef.current;
+        if(!el)return;
+        el.setAttribute('webkitdirectory','');
+        el.setAttribute('directory','');
+        el.setAttribute('mozdirectory','');
+    },[]);
 
     useEffect(function(){
         function onResize(){setViewportWidth(window.innerWidth);}
@@ -4257,8 +4268,12 @@ function App(){
     }
 
     function launchLocalFolderPicker(compiledPatterns){
+        pendingExcludePatternsRef.current=compiledPatterns||activeExcludePatterns;
         if(!window.showDirectoryPicker){
-            setError('Your browser does not support folder selection. Please use Chrome, Edge, or a Chromium-based browser.');
+            if(folderInputRef.current){
+                folderInputRef.current.value='';
+                folderInputRef.current.click();
+            }
             return;
         }
         window.showDirectoryPicker().then(function(dirHandle){
@@ -4307,12 +4322,35 @@ function App(){
         readZipArchive(file,activeExcludePatterns);
     }
 
+    function handleFolderSelected(e){
+        var fileList=e.target.files;
+        if(!fileList||fileList.length===0)return;
+        var files=Array.from(fileList);
+        localFilesRef.current=files;
+        resetAnalysisState();
+        setRepoInfo(null);
+        setLocalDirHandle(null);
+        setLocalSourceKind('folder');
+        zipArchiveRef.current=null;
+        zipFileRef.current=null;
+        setLoading(true);
+        setProgress('Reading local folder...');
+        readLocalFolderFromFiles(files,pendingExcludePatternsRef.current||activeExcludePatterns);
+    }
+
     function refreshAnalysis(){
         if(localSourceKind==='folder'&&localDirHandle){
             resetAnalysisState();
             setLoading(true);
             setProgress('Reading local folder...');
             readLocalFolder(localDirHandle,activeExcludePatterns);
+            return;
+        }
+        if(localSourceKind==='folder'&&localFilesRef.current){
+            resetAnalysisState();
+            setLoading(true);
+            setProgress('Reading local folder...');
+            readLocalFolderFromFiles(localFilesRef.current,activeExcludePatterns);
             return;
         }
         if(localSourceKind==='zip'){
@@ -4440,6 +4478,98 @@ function App(){
         }
 
         processFile(0);
+    }
+
+    async function readLocalFolderFromFiles(fileObjs,compiledPatterns){
+        var patterns=compiledPatterns||activeExcludePatterns;
+        var SOFT_LIMIT=ANALYSIS_LIMITS.localSoft;
+        try{
+            setProgress('Loading language parsers...');
+            await Parser.initTreeSitter().catch(function(){return null;});
+            setProgress('Scanning local folder...');
+            var rawPaths=fileObjs.map(function(f){return f.webkitRelativePath||f.name;});
+            var rootPrefix=getArchiveRootPrefix(rawPaths);
+            var files=[];
+            var fileCount=0;
+
+            fileObjs.forEach(function(fileObj){
+                var rawPath=normalizeExcludePath(fileObj.webkitRelativePath||fileObj.name);
+                if(!rawPath||rawPath.endsWith('/'))return;
+                var entryPath=rootPrefix&&rawPath.indexOf(rootPrefix)===0?rawPath.slice(rootPrefix.length):rawPath;
+                entryPath=normalizeExcludePath(entryPath);
+                if(!entryPath||shouldSkipArchivePath(entryPath,patterns))return;
+                var parts=entryPath.split('/').filter(Boolean);
+                var name=parts[parts.length-1]||'';
+                if(!name||name==='.DS_Store'||shouldExcludeFile(entryPath,name,patterns))return;
+                var folder=parts.length>1?parts.slice(0,-1).join('/'):'root';
+                fileCount++;
+                files.push({path:entryPath,name:name,folder:folder,size:fileObj.size||0,isCode:Parser.isCode(name),file:fileObj});
+                if(fileCount%50===0){
+                    setProgress('Scanning files... '+fileCount+' found');
+                }
+            });
+
+            if(fileCount===0){
+                setError(patterns&&patterns.length?'No code files found in the selected folder after applying exclude patterns':'No code files found in the selected folder');
+                setLoading(false);
+                return;
+            }
+
+            if(fileCount>SOFT_LIMIT){
+                var proceed=await requestConfirm({
+                    tone:'warning',
+                    icon:'folder',
+                    title:'Analyze '+fileCount+' files?',
+                    message:
+                        'This folder has '+fileCount+' analyzable files.\n\n'+
+                        'CodeFlow will analyze every eligible file. Large folders can take minutes and use significant browser memory.\n\n'+
+                        'Continue with all '+fileCount+' files?',
+                    confirmLabel:'Analyze all files'
+                });
+                if(!proceed){setLoading(false);return;}
+            }
+
+            var max=files.length;
+            var analyzed=[];
+            var allFns=[];
+            for(var i=0;i<max;i++){
+                var f=files[i];
+                if(i>0&&i%50===0)await yieldToBrowser();
+                setProgress('Analyzing '+(i+1)+'/'+max+': '+f.name);
+                var isCodeFile=f.isCode!==false&&Parser.isCode(f.name);
+                try{
+                    var content=await f.file.text();
+                    var layer=Parser.detectLayer(f.path);
+                    if(isCodeFile){
+                        var actualIsCode=!Parser.isScriptContainer(f.path)||Parser.hasEmbeddedCode(content,f.path);
+                        var fns=actualIsCode?Parser.extract(content,f.path):[];
+                        analyzed.push({path:f.path,name:f.name,folder:f.folder,content:content,functions:fns,lines:content.split('\n').length,layer:layer,churn:0,isCode:actualIsCode});
+                        if(actualIsCode){
+                            fns.forEach(function(fn){allFns.push(Object.assign({},fn,{folder:f.folder,layer:layer}));});
+                        }
+                    }else{
+                        analyzed.push({path:f.path,name:f.name,folder:f.folder,content:content||'',functions:[],lines:content?content.split('\n').length:0,layer:layer,churn:0,isCode:false});
+                    }
+                }catch(e){
+                    analyzed.push({path:f.path,name:f.name,folder:f.folder,content:'',functions:[],lines:0,layer:Parser.detectLayer(f.path),churn:0,isCode:false});
+                }
+            }
+
+            var dataObj=await runAnalysisData({
+                analyzed:analyzed,
+                allFns:allFns,
+                excludePatterns:(patterns||[]).map(function(x){return x.raw;}),
+                progress:setProgress,
+                yieldFn:yieldToBrowser
+            });
+            setData(dataObj);
+            setExpandedPaths(new Set(['']));
+            setRepoInfo({owner:'local',repo:'folder',name:'Local Folder'});
+            setLoading(false);
+        }catch(err){
+            setError('Analysis failed: '+(err.message||err)+'. Try a smaller folder or subfolder.');
+            setLoading(false);
+        }
     }
 
     async function readZipArchive(zipFile,compiledPatterns){
@@ -5628,6 +5758,7 @@ function App(){
     var health=useMemo(function(){return calcHealth(data);},[data]);
     return React.createElement('div',{className:'app',style:{'--topbar-height':topbarHeight+'px'}},
         React.createElement('input',{ref:zipInputRef,type:'file',accept:'.zip,application/zip,application/x-zip-compressed',style:{display:'none'},onChange:handleZipSelected}),
+        React.createElement('input',{ref:folderInputRef,type:'file',webkitdirectory:'',directory:'',mozdirectory:'',multiple:true,style:{display:'none'},onChange:handleFolderSelected}),
         React.createElement('div',{className:'topbar',ref:topbarRef},
             isMobile&&React.createElement(React.Fragment,null,
                 React.createElement('div',{className:'mobile-brand-row'},
