@@ -45,12 +45,44 @@ function gradeArrow(curr, prev, theme) {
   return '';
 }
 
+function autoStyleBlock(theme) {
+  // Define CSS variables on the SVG root with the dark palette by default
+  // (matches GitHub's default rendering surface), then override with the light
+  // palette when the viewer's system prefers light. The same SVG file ends up
+  // looking native in either theme.
+  function vars(palette) {
+    return [
+      '--cf-bg:' + palette.bg,
+      '--cf-bg-alt:' + palette.bgAlt,
+      '--cf-border:' + palette.border,
+      '--cf-text:' + palette.text,
+      '--cf-text-dim:' + palette.textDim,
+      '--cf-text-faint:' + palette.textFaint,
+      '--cf-accent:' + palette.accent,
+      '--cf-accent-soft:' + palette.accentSoft,
+      '--cf-green:' + palette.green,
+      '--cf-amber:' + palette.amber,
+      '--cf-red:' + palette.red,
+      '--cf-spark:' + palette.spark,
+      '--cf-spark-bg:' + palette.sparkBg,
+    ].join(';');
+  }
+  return (
+    '<style>' +
+    'svg{' + vars(theme._dark) + '}' +
+    '@media (prefers-color-scheme: light){svg{' + vars(theme._light) + '}}' +
+    '</style>'
+  );
+}
+
 function svgWrap(width, height, theme, body, opts) {
   const rounded = opts && opts.radius != null ? opts.radius : 12;
+  const style = theme && theme._auto ? autoStyleBlock(theme) : '';
   return (
     '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height +
     '" viewBox="0 0 ' + width + ' ' + height +
     '" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">' +
+    style +
     '<rect width="' + width + '" height="' + height + '" rx="' + rounded + '" fill="' + theme.bg + '" stroke="' + theme.border + '"/>' +
     body +
     '</svg>'

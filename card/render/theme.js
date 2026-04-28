@@ -72,6 +72,7 @@ function resolveAccent(value, mode) {
 }
 
 function getTheme(name, opts) {
+  if (name === 'auto') return getAutoTheme(opts);
   const base = name === 'light' ? Object.assign({}, LIGHT) : Object.assign({}, DARK);
   const accent = opts && opts.accent ? resolveAccent(opts.accent, name === 'light' ? 'light' : 'dark') : null;
   if (accent) {
@@ -81,6 +82,49 @@ function getTheme(name, opts) {
     base.sparkBg = withAlpha(accent, name === 'light' ? 0.12 : 0.18);
   }
   return base;
+}
+
+// In auto mode, every theme value resolves to a CSS `var(--cf-*)` reference.
+// styles.js detects `theme._auto` and injects a <style> block defining those
+// variables for both color schemes, so a single SVG file adapts to the
+// viewer's system theme.
+const VAR_REFS = {
+  bg:         'var(--cf-bg)',
+  bgAlt:      'var(--cf-bg-alt)',
+  border:     'var(--cf-border)',
+  text:       'var(--cf-text)',
+  textDim:    'var(--cf-text-dim)',
+  textFaint:  'var(--cf-text-faint)',
+  accent:     'var(--cf-accent)',
+  accentSoft: 'var(--cf-accent-soft)',
+  green:      'var(--cf-green)',
+  amber:      'var(--cf-amber)',
+  red:        'var(--cf-red)',
+  spark:      'var(--cf-spark)',
+  sparkBg:    'var(--cf-spark-bg)',
+};
+
+function buildAutoPalette(base, accent, mode) {
+  const out = Object.assign({}, base);
+  if (accent) {
+    const a = resolveAccent(accent, mode);
+    if (a) {
+      out.accent = a;
+      out.accentSoft = withAlpha(a, mode === 'light' ? 0.12 : 0.16);
+      out.spark = a;
+      out.sparkBg = withAlpha(a, mode === 'light' ? 0.12 : 0.18);
+    }
+  }
+  return out;
+}
+
+function getAutoTheme(opts) {
+  const accent = opts && opts.accent ? opts.accent : null;
+  const refs = Object.assign({}, VAR_REFS);
+  refs._auto = true;
+  refs._dark = buildAutoPalette(DARK, accent, 'dark');
+  refs._light = buildAutoPalette(LIGHT, accent, 'light');
+  return refs;
 }
 
 module.exports = { getTheme, DARK, LIGHT, ACCENT_PRESETS };

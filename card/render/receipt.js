@@ -35,7 +35,10 @@ function row(label, value, color, theme) {
 }
 
 function renderReceipt(opts) {
-  const theme = getTheme(opts.theme || 'dark');
+  // Receipts are PR-comment images that don't go through svgWrap, so they
+  // can't host a <style> block — collapse `auto` down to `dark`.
+  const themeName = opts.theme === 'auto' ? 'dark' : (opts.theme || 'dark');
+  const theme = getTheme(themeName);
   const snap = opts.snapshot;
   const prev = opts.previous;
   const repo = opts.repo || '';
