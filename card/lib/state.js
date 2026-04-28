@@ -67,10 +67,44 @@ function snapshotFromAnalysis(data, helpers, ctx) {
 
   const fragility = topBlasts(data, calcBlast, 3);
 
-  // Hidden costs
+  // Issues breakdown
   const issues = Array.isArray(data && data.issues) ? data.issues : [];
   const circular = issues.filter((i) => i && i.title && i.title.includes('Circular')).length;
+  const godObjects = issues.filter((i) => i && i.title && i.title.includes('Large')).length;
   const avgCoupling = stats.files > 0 ? stats.connections / stats.files : 0;
+
+  // Top folders by file count
+  let topFolders = [];
+  if (Array.isArray(data && data.files)) {
+    const counts = new Map();
+    for (const f of data.files) {
+      const top = (f.folder || 'root').split('/')[0] || 'root';
+      counts.set(top, (counts.get(top) || 0) + 1);
+    }
+    topFolders = Array.from(counts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  }
+
+  // Function size stats — derive from `code` if `lines` isn't populated.
+  const fnLines = Array.isArray(data && data.functions)
+    ? data.functions
+        .map((fn) => fn.lines || (fn.code ? fn.code.split('\n').length : 0))
+        .filter((n) => n > 0)
+    : [];
+  const avgFnLines = fnLines.length
+    ? Math.round((fnLines.reduce((a, b) => a + b, 0) / fnLines.length) * 10) / 10
+    : 0;
+  const longestFn = fnLines.length ? Math.max.apply(null, fnLines) : 0;
+
+  // Test ratio (heuristic)
+  let testFiles = 0;
+  if (Array.isArray(data && data.files)) {
+    for (const f of data.files) {
+      if (/\.(test|spec)\.|\/(tests?|specs?|__tests__)\//i.test(f.path)) testFiles += 1;
+    }
+  }
 
   const languageList = Array.isArray(stats.languages) ? stats.languages : [];
 
@@ -83,12 +117,23 @@ function snapshotFromAnalysis(data, helpers, ctx) {
     functions: stats.functions || 0,
     loc: stats.loc || 0,
     languages: languageList.length,
-    topLanguages: languageList.slice(0, 3).map((l) => ({ ext: l.ext, pct: l.pct })),
+    topLanguages: languageList.slice(0, 5).map((l) => ({ ext: l.ext, pct: l.pct, lines: l.lines })),
     dead: stats.dead || 0,
     deadPct: stats.functions ? Math.round((stats.dead / stats.functions) * 1000) / 10 : 0,
     circular,
+    godObjects,
     avgCoupling: Math.round(avgCoupling * 10) / 10,
     securityIssues: stats.security || 0,
+    patterns: stats.patterns || 0,
+    duplicates: stats.duplicates || 0,
+    layerViolations: stats.violations || 0,
+    connections: stats.connections || 0,
+    avgFnLines,
+    longestFn,
+    testFiles,
+    testRatio: stats.files ? Math.round((testFiles / stats.files) * 1000) / 10 : 0,
+    topFolders,
+    folders: topFolders.length,
     grade,
     score,
     topBlast: fragility[0] || null,

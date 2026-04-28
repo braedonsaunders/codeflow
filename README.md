@@ -376,6 +376,55 @@ node --test tests/
 
 ---
 
+## Card Style Gallery
+
+All examples below are real cards rendered by the [CodeFlow Card Action](./card/) against this very repo. Pick one and drop it on your README.
+
+### `style: compact` — default
+
+<img src="./card/examples/compact.svg" alt="compact" width="100%" />
+
+### `style: compact` with `show-grade: false, show-score: false`
+
+For public READMEs where you'd rather show data than a letter grade. The card stays informational — files, functions, LOC, languages, tests — without the judgmental bits.
+
+<img src="./card/examples/compact-private.svg" alt="compact private" width="100%" />
+
+### `accent` — any preset or CSS color
+
+The accent recolors the sparklines, links, and pin. Presets: `purple` (default), `teal`, `cyan`, `green`, `pink`, `blue`, `amber`, `red`. Or pass any CSS color (e.g. `#ff6b6b`).
+
+<img src="./card/examples/compact-teal.svg" alt="compact teal" width="100%" />
+<img src="./card/examples/compact-pink.svg" alt="compact pink" width="100%" />
+
+### `style: row` — status-bar strip
+
+<img src="./card/examples/row.svg" alt="row" width="100%" />
+
+### `style: minimal` — single text line
+
+<img src="./card/examples/minimal.svg" alt="minimal" width="100%" />
+
+### `style: hero` — splashy gradient
+
+<img src="./card/examples/hero.svg" alt="hero" width="100%" />
+
+`hero` with `show-grade: false`:
+
+<img src="./card/examples/hero-private.svg" alt="hero private" width="100%" />
+
+### `style: detailed` — information-rich
+
+Everything: grade, scale, language breakdown, composition (connections, tests, folders, function stats, patterns), top folders, fragility, hidden costs.
+
+<img src="./card/examples/detailed.svg" alt="detailed" width="100%" />
+
+`detailed` with `show-grade: false`:
+
+<img src="./card/examples/detailed-private.svg" alt="detailed private" width="100%" />
+
+---
+
 ## Star History
 
 If you find CodeFlow useful, please star the repo.

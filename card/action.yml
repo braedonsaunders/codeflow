@@ -17,10 +17,26 @@ inputs:
     description: 'Card theme: dark | light | auto.'
     required: false
     default: 'dark'
-  panels:
-    description: 'Comma-separated panel list. Available: grade, scale, fragility, hidden-costs.'
+  accent:
+    description: 'Accent color. Either a preset (purple|teal|cyan|green|pink|blue|amber|red) or any CSS color (e.g. #ff6b6b).'
     required: false
-    default: 'grade,scale,fragility,hidden-costs'
+    default: ''
+  style:
+    description: 'Card style: compact | row | minimal | hero | detailed.'
+    required: false
+    default: 'compact'
+  panels:
+    description: 'Only used when style=detailed. Comma-separated: grade, scale, languages, fragility, hidden-costs, patterns.'
+    required: false
+    default: 'grade,scale'
+  show-grade:
+    description: 'Show the letter grade. Set to false on public READMEs to keep the card informational without judgment.'
+    required: false
+    default: 'true'
+  show-score:
+    description: 'Show the numeric score. Set to false to hide the granular health number while keeping the letter.'
+    required: false
+    default: 'true'
   receipts:
     description: 'Post a thermal-receipt-style PR comment when a PR is merged.'
     required: false

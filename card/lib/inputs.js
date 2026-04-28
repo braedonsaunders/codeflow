@@ -33,7 +33,13 @@ function loadInputs() {
   const output = readInput('output', '.github/codeflow-card.svg');
   const state = readInput('state', '.github/codeflow-card.json');
   const theme = readInput('theme', 'dark');
-  const panels = asList(readInput('panels', ''), ['grade', 'scale', 'fragility', 'hidden-costs']);
+  const accent = readInput('accent', '');
+  const style = readInput('style', 'compact');
+  // panels only used when style=detailed. Empty means "show everything for the style".
+  const panels = asList(readInput('panels', ''), []);
+  // Privacy: hide judgmental metrics on a publicly displayed README.
+  const showGrade = asBool(readInput('show-grade', ''), true);
+  const showScore = asBool(readInput('show-score', ''), true);
   const receipts = asBool(readInput('receipts', ''), false);
   const sparklineWindow = asInt(readInput('sparkline-window', ''), 30);
   const pin = asBool(readInput('pin', ''), true);
@@ -48,7 +54,11 @@ function loadInputs() {
     output,
     state,
     theme,
+    accent,
+    style,
     panels,
+    showGrade,
+    showScore,
     receipts,
     sparklineWindow,
     pin,
