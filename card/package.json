@@ -1,0 +1,15 @@
+{
+  "name": "codeflow-card",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GitHub Action: auto-updating SVG card of your repo health, fragility, and structure.",
+  "main": "index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dry-run": "node index.js"
+  },
+  "license": "MIT"
+}

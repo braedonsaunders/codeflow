@@ -17,6 +17,32 @@
 
 ---
 
+## :sparkles: New: CodeFlow Card — a slick repo-stats GitHub Action
+
+Drop a self-updating SVG card on your README that shows your repo's **health grade**, **scale**, **fragility (top blast-radius files)**, and **hidden costs** — recomputed on every merge. Same analyzer as the web app; zero drift.
+
+```yaml
+# .github/workflows/codeflow-card.yml
+on: { push: { branches: [main] }, pull_request: { types: [closed] }, workflow_dispatch: {} }
+jobs:
+  card:
+    runs-on: ubuntu-latest
+    permissions: { contents: write, pull-requests: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: braedonsaunders/codeflow/card@v1
+```
+
+Then in your README:
+
+```markdown
+<img src=".github/codeflow-card.svg" alt="CodeFlow card" />
+```
+
+Optional opt-in `receipts: true` posts a thermal-receipt-style sticky comment on every merged PR, itemizing the merge: `+/- LOC`, blast-radius before/after, grade delta. See [card/README.md](./card/README.md) for full inputs.
+
+---
+
 ## Why CodeFlow?
 
 Ever opened a new codebase and felt completely lost? **CodeFlow** turns any GitHub repository or local codebase into an interactive architecture map in seconds.
@@ -70,6 +96,9 @@ Color files by commit frequency to see which parts of your codebase are most act
 
 ### PR Impact Analysis
 Paste a PR URL to see exactly which files it affects and calculate the blast radius of proposed changes.
+
+### CodeFlow Card (GitHub Action)
+Auto-updating SVG card on your README — health grade, scale, fragility, hidden costs — recomputed every merge. Optional thermal-receipt PR comments. See [card/](./card/).
 
 ### Markdown & Wiki-Link Graph
 Point CodeFlow at an Obsidian vault or any markdown directory to see notes as a connected graph. Both `[[wiki-links]]` and `[text](./relative.md)` links become edges; each note is a `note`-layer node (distinct color) with a `dependencies[]` array in the JSON export.
@@ -344,6 +373,55 @@ node --test tests/
 
 **Q: How accurate is the dependency analysis?**
 > It's based on function name matching, so it may miss some dynamic imports or renamed imports. It's designed for a quick overview, not 100% accuracy.
+
+---
+
+## Card Style Gallery
+
+All examples below are real cards rendered by the [CodeFlow Card Action](./card/) against this very repo. Pick one and drop it on your README.
+
+### `style: compact` — default
+
+<img src="./card/examples/compact.svg" alt="compact" width="100%" />
+
+### `style: compact` with `show-grade: false, show-score: false`
+
+For public READMEs where you'd rather show data than a letter grade. The card stays informational — files, functions, LOC, languages, tests — without the judgmental bits.
+
+<img src="./card/examples/compact-private.svg" alt="compact private" width="100%" />
+
+### `accent` — any preset or CSS color
+
+The accent recolors the sparklines, links, and pin. Presets: `purple` (default), `teal`, `cyan`, `green`, `pink`, `blue`, `amber`, `red`. Or pass any CSS color (e.g. `#ff6b6b`).
+
+<img src="./card/examples/compact-teal.svg" alt="compact teal" width="100%" />
+<img src="./card/examples/compact-pink.svg" alt="compact pink" width="100%" />
+
+### `style: row` — status-bar strip
+
+<img src="./card/examples/row.svg" alt="row" width="100%" />
+
+### `style: minimal` — single text line
+
+<img src="./card/examples/minimal.svg" alt="minimal" width="100%" />
+
+### `style: hero` — splashy gradient
+
+<img src="./card/examples/hero.svg" alt="hero" width="100%" />
+
+`hero` with `show-grade: false`:
+
+<img src="./card/examples/hero-private.svg" alt="hero private" width="100%" />
+
+### `style: detailed` — information-rich
+
+Everything: grade, scale, language breakdown, composition (connections, tests, folders, function stats, patterns), top folders, fragility, hidden costs.
+
+<img src="./card/examples/detailed.svg" alt="detailed" width="100%" />
+
+`detailed` with `show-grade: false`:
+
+<img src="./card/examples/detailed-private.svg" alt="detailed private" width="100%" />
 
 ---
 

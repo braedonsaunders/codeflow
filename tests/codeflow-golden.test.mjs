@@ -8,8 +8,10 @@ import vm from 'node:vm';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
 const htmlSource = await readFile(join(repoRoot, 'index.html'), 'utf8');
-const parserStart = htmlSource.indexOf('const Parser={');
-const parserEnd = htmlSource.indexOf('\nfunction calcBlast', parserStart);
+const startMarker = '// ===== CODEFLOW_ANALYZER_START =====';
+const endMarker = '// ===== CODEFLOW_ANALYZER_END =====';
+const parserStart = htmlSource.indexOf(startMarker);
+const parserEnd = htmlSource.indexOf(endMarker, parserStart);
 
 if (parserStart < 0 || parserEnd < 0) {
   throw new Error('Could not locate analyzer source in index.html');
