@@ -24,7 +24,6 @@ A one-line GitHub Action that drops a self-updating card on your README, recompu
 <p align="center">
   <img src="./card/examples/compact.svg" alt="compact style" width="100%" />
   <img src="./card/examples/hero.svg" alt="hero style" width="100%" />
-  <img src="./card/examples/detailed-private.svg" alt="detailed private style" width="100%" />
 </p>
 
 [**See all 10 style variants and full setup** ↓](#card-style-gallery)
