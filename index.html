@@ -762,6 +762,7 @@ function yieldToBrowser(){
 // Parser And Static Analysis
 // ---------------------------------------------------------------------------
 
+// ===== CODEFLOW_ANALYZER_START =====
 const Parser={
     // Tree-sitter parsers are loaded lazily from CDN and used when a language has
     // a stable grammar path. Regex remains an explicit fallback, not a silent lie.
@@ -3272,8 +3273,11 @@ function createAnalysisWorkerSource(){
         if(!response.ok)throw new Error('Unable to load analyzer source');
         return response.text();
     }).then(function(html){
-        var parserStart=html.indexOf('const Parser={');
-        var parserEnd=html.indexOf('\nfunction calcBlast',parserStart);
+        // Build markers via concatenation so they don't match themselves in the slice.
+        var startMarker='// ===== CODEFLOW_'+'ANALYZER_START =====';
+        var endMarker='// ===== CODEFLOW_'+'ANALYZER_END =====';
+        var parserStart=html.indexOf(startMarker);
+        var parserEnd=html.indexOf(endMarker,parserStart);
         if(parserStart<0||parserEnd<0)throw new Error('Analyzer source markers missing');
         var analyzerSource=html.slice(parserStart,parserEnd);
         return [
@@ -3345,11 +3349,13 @@ function runAnalysisData(options){
         return buildAnalysisData(options);
     });
 }
+// ===== CODEFLOW_ANALYZER_END =====
 
 // ---------------------------------------------------------------------------
 // Visualization Helpers
 // ---------------------------------------------------------------------------
 
+// ===== CODEFLOW_METRICS_START =====
 function calcBlast(fileId,conns,files){
     // Comprehensive impact analysis for a file
     // Connection format: {source: fileDefiningFn, target: fileCallingFn, fn: fnName, count: callCount}
@@ -3454,6 +3460,7 @@ function calcHealth(data){
     if(score>=90)grade='A';else if(score>=80)grade='B';else if(score>=70)grade='C';else if(score>=60)grade='D';
     return{score:score,grade:grade};
 }
+// ===== CODEFLOW_METRICS_END =====
 
 function calcPRRisk(prData, repoData) {
     if (!prData || !repoData) return { score: 0, level: 'low', factors: [] };

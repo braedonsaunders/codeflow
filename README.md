@@ -17,6 +17,32 @@
 
 ---
 
+## :sparkles: New: CodeFlow Card — a slick repo-stats GitHub Action
+
+Drop a self-updating SVG card on your README that shows your repo's **health grade**, **scale**, **fragility (top blast-radius files)**, and **hidden costs** — recomputed on every merge. Same analyzer as the web app; zero drift.
+
+```yaml
+# .github/workflows/codeflow-card.yml
+on: { push: { branches: [main] }, pull_request: { types: [closed] }, workflow_dispatch: {} }
+jobs:
+  card:
+    runs-on: ubuntu-latest
+    permissions: { contents: write, pull-requests: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: braedonsaunders/codeflow/card@v1
+```
+
+Then in your README:
+
+```markdown
+<img src=".github/codeflow-card.svg" alt="CodeFlow card" />
+```
+
+Optional opt-in `receipts: true` posts a thermal-receipt-style sticky comment on every merged PR, itemizing the merge: `+/- LOC`, blast-radius before/after, grade delta. See [card/README.md](./card/README.md) for full inputs.
+
+---
+
 ## Why CodeFlow?
 
 Ever opened a new codebase and felt completely lost? **CodeFlow** turns any GitHub repository or local codebase into an interactive architecture map in seconds.
@@ -70,6 +96,9 @@ Color files by commit frequency to see which parts of your codebase are most act
 
 ### PR Impact Analysis
 Paste a PR URL to see exactly which files it affects and calculate the blast radius of proposed changes.
+
+### CodeFlow Card (GitHub Action)
+Auto-updating SVG card on your README — health grade, scale, fragility, hidden costs — recomputed every merge. Optional thermal-receipt PR comments. See [card/](./card/).
 
 ### Markdown & Wiki-Link Graph
 Point CodeFlow at an Obsidian vault or any markdown directory to see notes as a connected graph. Both `[[wiki-links]]` and `[text](./relative.md)` links become edges; each note is a `note`-layer node (distinct color) with a `dependencies[]` array in the JSON export.

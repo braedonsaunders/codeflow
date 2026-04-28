@@ -1,0 +1,54 @@
+name: 'CodeFlow Card'
+description: 'Auto-updating SVG card of your repo health, fragility, and structure. Powered by codeflow.'
+author: 'braedonsaunders'
+branding:
+  icon: 'activity'
+  color: 'purple'
+inputs:
+  output:
+    description: 'Path to write the card SVG.'
+    required: false
+    default: '.github/codeflow-card.svg'
+  state:
+    description: 'Path to the JSON history file used for sparklines and deltas.'
+    required: false
+    default: '.github/codeflow-card.json'
+  theme:
+    description: 'Card theme: dark | light | auto.'
+    required: false
+    default: 'dark'
+  panels:
+    description: 'Comma-separated panel list. Available: grade, scale, fragility, hidden-costs.'
+    required: false
+    default: 'grade,scale,fragility,hidden-costs'
+  receipts:
+    description: 'Post a thermal-receipt-style PR comment when a PR is merged.'
+    required: false
+    default: 'false'
+  sparkline-window:
+    description: 'How many recent runs to keep in state for sparklines/deltas.'
+    required: false
+    default: '30'
+  pin:
+    description: 'Show "Powered by codeflow" footer link.'
+    required: false
+    default: 'true'
+  commit-message:
+    description: 'Commit message used when the SVG / state file change.'
+    required: false
+    default: 'chore: update codeflow card [skip ci]'
+  commit-author-name:
+    description: 'Git commit author name.'
+    required: false
+    default: 'codeflow-card[bot]'
+  commit-author-email:
+    description: 'Git commit author email.'
+    required: false
+    default: 'codeflow-card[bot]@users.noreply.github.com'
+  github-token:
+    description: 'Token used to commit and post receipts. Defaults to the workflow token.'
+    required: false
+    default: ${{ github.token }}
+runs:
+  using: 'node20'
+  main: 'index.js'
