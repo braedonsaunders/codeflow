@@ -17,29 +17,17 @@
 
 ---
 
-## :sparkles: New: CodeFlow Card — a slick repo-stats GitHub Action
+## :sparkles: New: CodeFlow Card — auto-updating repo stats SVG
 
-Drop a self-updating SVG card on your README that shows your repo's **health grade**, **scale**, **fragility (top blast-radius files)**, and **hidden costs** — recomputed on every merge. Same analyzer as the web app; zero drift.
+A one-line GitHub Action that drops a self-updating card on your README, recomputed on every merge by the same analyzer as the web app. Five styles, accent presets, opt-in PR receipts, and a privacy mode for public repos.
 
-```yaml
-# .github/workflows/codeflow-card.yml
-on: { push: { branches: [main] }, pull_request: { types: [closed] }, workflow_dispatch: {} }
-jobs:
-  card:
-    runs-on: ubuntu-latest
-    permissions: { contents: write, pull-requests: write }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: braedonsaunders/codeflow/card@v1
-```
+<p align="center">
+  <img src="./card/examples/compact.svg" alt="compact style" width="100%" />
+  <img src="./card/examples/hero.svg" alt="hero style" width="100%" />
+  <img src="./card/examples/detailed-private.svg" alt="detailed private style" width="100%" />
+</p>
 
-Then in your README:
-
-```markdown
-<img src=".github/codeflow-card.svg" alt="CodeFlow card" />
-```
-
-Optional opt-in `receipts: true` posts a thermal-receipt-style sticky comment on every merged PR, itemizing the merge: `+/- LOC`, blast-radius before/after, grade delta. See [card/README.md](./card/README.md) for full inputs.
+[**See all 10 style variants and full setup** ↓](#card-style-gallery)
 
 ---
 
