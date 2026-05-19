@@ -1,4 +1,4 @@
-// CodeFlow Card — GitHub Action entry point.
+// CodeFlow Card - GitHub Action entry point.
 // Reads codeflow's analyzer out of index.html, runs it on the consuming repo,
 // renders an SVG card, optionally posts a PR receipt comment, then commits the
 // updated card + history file back to the repo.
@@ -132,7 +132,7 @@ async function run() {
       log('receipt post failed: ' + (e.message || e));
     }
   } else if (inputs.receipts) {
-    log('receipts enabled, but not a merged PR — skipping');
+    log('receipts enabled, but not a merged PR - skipping');
   }
 
   // Commit changes back to the repo (skip when running outside a checkout).
@@ -151,7 +151,7 @@ async function run() {
       log('git commit failed: ' + (e.message || e));
     }
   } else {
-    log('local mode — skipping git commit');
+    log('local mode - skipping git commit');
   }
 }
 

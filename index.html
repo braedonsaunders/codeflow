@@ -3,17 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeFlow — Open Source Architecture Intelligence</title>
+    <title>CodeFlow - Open Source Architecture Intelligence</title>
     <meta name="description" content="Visualize any GitHub repository's architecture in seconds. See dependencies, blast radius, code ownership, security issues, and design patterns. No installation required.">
     <meta name="keywords" content="code visualization, architecture, github, dependency graph, blast radius, code analysis, open source">
     <meta name="author" content="CodeFlow">
     <meta name="robots" content="index, follow">
-    <meta property="og:title" content="CodeFlow — Visualize Your Codebase Architecture">
+    <meta property="og:title" content="CodeFlow - Visualize Your Codebase Architecture">
     <meta property="og:description" content="Turn any GitHub repo into an interactive architecture map in seconds. Zero setup, privacy-first, runs in your browser.">
     <meta property="og:type" content="website">
     <meta property="og:image" content="codeflow-social.png">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="CodeFlow — Visualize Your Codebase Architecture">
+    <meta name="twitter:title" content="CodeFlow - Visualize Your Codebase Architecture">
     <meta name="twitter:description" content="Turn any GitHub repo into an interactive architecture map in seconds. Zero setup, privacy-first.">
     <meta name="twitter:image" content="codeflow-social.png">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ff9d' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M13 2 4 14h6l-1 8 9-12h-6l1-8z'/></svg>">
@@ -5068,7 +5068,7 @@ function App(){
             tooltip.html(renderTooltipHtml(d.data.name,[
                 {label:'Lines',value:d.data.value},
                 {label:'Functions',value:d.data.fns||0},
-                {label:'Layer',value:d.data.layer||'—'},
+                {label:'Layer',value:d.data.layer||'-'},
                 {label:'Folder',value:d.data.folder||'root'}
             ]))
                 .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
@@ -5200,7 +5200,7 @@ function App(){
             tooltip.html(renderTooltipHtml(d.data.name,[
                 {label:'Lines',value:d.data.lines||0},
                 {label:'Functions',value:d.data.fns||0},
-                {label:'Layer',value:d.data.layer||'—'}
+                {label:'Layer',value:d.data.layer||'-'}
             ]))
                 .style('display','block').style('left',(e.offsetX+15)+'px').style('top',(e.offsetY+15)+'px');
             d3.select(this).select('circle').transition().duration(150).attr('r',12).attr('stroke','var(--acc)').attr('stroke-width',3);

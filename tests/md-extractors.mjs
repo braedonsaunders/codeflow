@@ -1,6 +1,6 @@
 // Source of truth for markdown link extraction. Mirror into index.html's
 // `Parser.extractMarkdownLinks` and `Parser.resolveMarkdownLink`. If you edit
-// one, edit the other — the copy lives inside a single-file static app.
+// one, edit the other - the copy lives inside a single-file static app.
 
 export function extractMarkdownLinks(content) {
   if (!content) return [];

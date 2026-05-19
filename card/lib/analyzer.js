@@ -1,5 +1,5 @@
 // Extract the codeflow analyzer block from index.html and run it in a Node vm
-// context. Mirrors what tests/codeflow-golden.test.mjs does — the analyzer is
+// context. Mirrors what tests/codeflow-golden.test.mjs does - the analyzer is
 // the single source of truth, lives in one file, never drifts.
 
 'use strict';

@@ -15,7 +15,7 @@ function diff(curr, prev) {
 }
 
 function fmtSigned(n, opts) {
-  if (n == null) return '—';
+  if (n == null) return '-';
   const sign = n > 0 ? '+' : '';
   const v = (opts && opts.suffix) ? sign + n + opts.suffix : sign + n;
   return v;
@@ -36,7 +36,7 @@ function row(label, value, color, theme) {
 
 function renderReceipt(opts) {
   // Receipts are PR-comment images that don't go through svgWrap, so they
-  // can't host a <style> block — collapse `auto` down to `dark`.
+  // can't host a <style> block - collapse `auto` down to `dark`.
   const themeName = opts.theme === 'auto' ? 'dark' : (opts.theme || 'dark');
   const theme = getTheme(themeName);
   const snap = opts.snapshot;

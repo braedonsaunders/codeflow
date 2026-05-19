@@ -11,7 +11,7 @@ function readState(statePath) {
     const parsed = JSON.parse(raw);
     if (parsed && Array.isArray(parsed.runs)) return parsed;
   } catch {
-    // missing or corrupt — start fresh
+    // missing or corrupt - start fresh
   }
   return { version: 1, runs: [] };
 }
@@ -87,7 +87,7 @@ function snapshotFromAnalysis(data, helpers, ctx) {
       .slice(0, 5);
   }
 
-  // Function size stats — derive from `code` if `lines` isn't populated.
+  // Function size stats - derive from `code` if `lines` isn't populated.
   const fnLines = Array.isArray(data && data.functions)
     ? data.functions
         .map((fn) => fn.lines || (fn.code ? fn.code.split('\n').length : 0))

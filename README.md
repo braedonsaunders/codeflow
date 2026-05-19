@@ -21,10 +21,10 @@
 
 Ever opened a new codebase and felt completely lost? **CodeFlow** turns any GitHub repository or local codebase into an interactive architecture map in seconds.
 
-- **No installation required** — runs entirely in your browser
-- **No data collection** — your code never leaves your machine
-- **No accounts** — just paste a URL or select local files and go
-- **Works offline** — analyze local files without internet
+- **No installation required** - runs entirely in your browser
+- **No data collection** - your code never leaves your machine
+- **No accounts** - just paste a URL or select local files and go
+- **Works offline** - analyze local files without internet
 
 ```
 Paste URL / Select Files -> See Architecture -> Make Better Decisions
@@ -38,7 +38,7 @@ Paste URL / Select Files -> See Architecture -> Make Better Decisions
 See how your files connect at a glance. Click any node to highlight its dependencies. Drag, zoom, and explore.
 
 ### Blast Radius Analysis
-*"If I change this file, what breaks?"* — CodeFlow answers this instantly. Select any file and see exactly how many files would be affected by changes.
+*"If I change this file, what breaks?"* - CodeFlow answers this instantly. Select any file and see exactly how many files would be affected by changes.
 
 ### Code Ownership
 Know who owns what. See the top contributors for any file based on git history. Perfect for code reviews and knowing who to ask.
@@ -72,7 +72,7 @@ Color files by commit frequency to see which parts of your codebase are most act
 Paste a PR URL to see exactly which files it affects and calculate the blast radius of proposed changes.
 
 ### CodeFlow Card (GitHub Action)
-Health grade, scale, fragility, and hidden costs as a self-updating SVG on your README — recomputed every merge, with optional thermal-receipt PR comments. See [card/](./card/).
+Health grade, scale, fragility, and hidden costs as a self-updating SVG on your README - recomputed every merge, with optional thermal-receipt PR comments. See [card/](./card/).
 
 ### Markdown & Wiki-Link Graph
 Point CodeFlow at an Obsidian vault or any markdown directory to see notes as a connected graph. Both `[[wiki-links]]` and `[text](./relative.md)` links become edges; each note is a `note`-layer node (distinct color) with a `dependencies[]` array in the JSON export.
@@ -93,7 +93,7 @@ Analyze code directly from your computer without uploading to GitHub:
 A GitHub Action that drops an auto-updating SVG card on your README, recomputed on every merge by the same analyzer as the web app. Five styles, accent presets, opt-in PR receipts, and a privacy mode for public repos. The card adapts to the viewer's light/dark theme automatically.
 
 <p align="center">
-  <img src="./card/examples/compact.svg" alt="CodeFlow card — compact style" width="100%" />
+  <img src="./card/examples/compact.svg" alt="CodeFlow card - compact style" width="100%" />
 </p>
 
 See [card/](./card/) for setup, or jump to the [style gallery](#card-style-gallery) below.
@@ -350,7 +350,7 @@ node --test tests/
 > CodeFlow runs entirely in your browser. It calls the GitHub API directly from your browser and processes everything client-side.
 
 **Q: Is my code safe?**
-> Yes. Your code is fetched directly from GitHub to your browser. Nothing is sent to any server we control. Check the source — it's one file!
+> Yes. Your code is fetched directly from GitHub to your browser. Nothing is sent to any server we control. Check the source - it's one file!
 
 **Q: Can I use it offline?**
 > Yes. With the local file analysis feature, you can analyze code from your computer without any internet connection. Click the "Open Folder" button and select your files. All processing happens entirely in your browser.
@@ -367,32 +367,32 @@ node --test tests/
 
 All examples below are real cards rendered by the [CodeFlow Card Action](./card/) against this very repo. Pick one and drop it on your README.
 
-### `style: compact` — default
+### `style: compact` - default
 
 <img src="./card/examples/compact.svg" alt="compact" width="100%" />
 
 ### `style: compact` with `show-grade: false, show-score: false`
 
-For public READMEs where you'd rather show data than a letter grade. The card stays informational — files, functions, LOC, languages, tests — without the judgmental bits.
+For public READMEs where you'd rather show data than a letter grade. The card stays informational - files, functions, LOC, languages, tests - without the judgmental bits.
 
 <img src="./card/examples/compact-private.svg" alt="compact private" width="100%" />
 
-### `accent` — any preset or CSS color
+### `accent` - any preset or CSS color
 
 The accent recolors the sparklines, links, and pin. Presets: `purple` (default), `teal`, `cyan`, `green`, `pink`, `blue`, `amber`, `red`. Or pass any CSS color (e.g. `#ff6b6b`).
 
 <img src="./card/examples/compact-teal.svg" alt="compact teal" width="100%" />
 <img src="./card/examples/compact-pink.svg" alt="compact pink" width="100%" />
 
-### `style: row` — status-bar strip
+### `style: row` - status-bar strip
 
 <img src="./card/examples/row.svg" alt="row" width="100%" />
 
-### `style: minimal` — single text line
+### `style: minimal` - single text line
 
 <img src="./card/examples/minimal.svg" alt="minimal" width="100%" />
 
-### `style: hero` — splashy gradient
+### `style: hero` - splashy gradient
 
 <img src="./card/examples/hero.svg" alt="hero" width="100%" />
 
@@ -400,7 +400,7 @@ The accent recolors the sparklines, links, and pin. Presets: `purple` (default),
 
 <img src="./card/examples/hero-private.svg" alt="hero private" width="100%" />
 
-### `style: detailed` — information-rich
+### `style: detailed` - information-rich
 
 Everything: grade, scale, language breakdown, composition (connections, tests, folders, function stats, patterns), top folders, fragility, hidden costs.
 
@@ -420,7 +420,7 @@ If you find CodeFlow useful, please star the repo.
 
 ## License
 
-MIT License — use it however you want.
+MIT License - use it however you want.
 
 ---
 

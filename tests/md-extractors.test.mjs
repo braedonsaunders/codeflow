@@ -54,7 +54,7 @@ test('extractMarkdownLinks ignores links inside fenced code blocks and inline co
 
 test('extractMarkdownLinks ignores external http(s), mailto, anchor-only, and image links', () => {
   const links = extractMarkdownLinks(read('note-with-external.md'));
-  // Only the real [click](./target-note.md) — not Google, not mailto, not #heading, not ![pic]
+  // Only the real [click](./target-note.md) - not Google, not mailto, not #heading, not ![pic]
   assert.equal(links.length, 1);
   assert.equal(links[0].kind, 'mdlink');
   assert.equal(links[0].target, './target-note.md');

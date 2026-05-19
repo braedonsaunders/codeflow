@@ -18,7 +18,7 @@ function escapeXml(str) {
 }
 
 function fmtNum(n) {
-  if (n == null) return '—';
+  if (n == null) return '-';
   if (typeof n !== 'number') return String(n);
   if (n >= 1_000_000) return Math.round(n / 100_000) / 10 + 'M';
   if (n >= 1_000) return Math.round(n / 100) / 10 + 'K';
@@ -102,7 +102,7 @@ function pinFooter(theme, x, y, showPin) {
 }
 
 // ============================================================================
-// Style: compact (default) — grade left, 4 scale stats right, single row
+// Style: compact (default) - grade left, 4 scale stats right, single row
 // ============================================================================
 
 function renderCompact(opts) {
@@ -181,7 +181,7 @@ function renderCompact(opts) {
 }
 
 // ============================================================================
-// Style: row — single horizontal status-bar
+// Style: row - single horizontal status-bar
 // ============================================================================
 
 function renderRow(opts) {
@@ -233,7 +233,7 @@ function renderRow(opts) {
 }
 
 // ============================================================================
-// Style: minimal — single text line, monospace
+// Style: minimal - single text line, monospace
 // ============================================================================
 
 function renderMinimal(opts) {
@@ -277,7 +277,7 @@ function renderMinimal(opts) {
 }
 
 // ============================================================================
-// Style: hero — bigger, splashier, gradient
+// Style: hero - bigger, splashier, gradient
 // ============================================================================
 
 function renderHero(opts) {
@@ -362,7 +362,7 @@ function renderHero(opts) {
 }
 
 // ============================================================================
-// Style: detailed — original 4-panel renderer
+// Style: detailed - original 4-panel renderer
 // ============================================================================
 
 function panelGradeDetailed(snap, prev, theme, x, y, width, opts) {
@@ -434,7 +434,7 @@ function panelComposition(snap, theme, x, y, width) {
     { label: 'TEST FILES', value: snap.testFiles || 0 },
     { label: 'FOLDERS', value: snap.folders || 0 },
     { label: 'AVG FN LINES', value: snap.avgFnLines || 0 },
-    { label: 'LONGEST FN', value: snap.longestFn ? snap.longestFn + 'L' : '—' },
+    { label: 'LONGEST FN', value: snap.longestFn ? snap.longestFn + 'L' : '-' },
     { label: 'PATTERNS', value: snap.patterns || 0 },
   ];
   const h = 88;

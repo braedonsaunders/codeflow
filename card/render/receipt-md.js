@@ -12,7 +12,7 @@ function diff(curr, prev) {
 }
 
 function fmtSigned(n) {
-  if (n == null) return '—';
+  if (n == null) return '-';
   return (n > 0 ? '+' : '') + n;
 }
 
@@ -20,7 +20,7 @@ function dirArrow(n, lowerIsBetter) {
   if (n == null || n === 0) return '';
   const better = lowerIsBetter ? n < 0 : n > 0;
   const sym = n < 0 ? '▼' : '▲';
-  return better ? ' :small_blue_diamond: ' + sym : ' :warning: ' + sym;
+  return ' ' + sym;
 }
 
 function gradeArrow(curr, prev) {
