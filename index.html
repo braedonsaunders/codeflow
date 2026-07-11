@@ -1207,12 +1207,17 @@ const Parser={
             // Angular lifecycle
             'ngOnInit','ngOnDestroy','ngOnChanges','ngAfterViewInit',
             // Svelte
-            'onMount','onDestroy'
+            'onMount','onDestroy',
+            // Next.js App Router route-handler & metadata exports (framework-mandated names)
+            'GET','POST','PUT','DELETE','PATCH','HEAD','OPTIONS',
+            'generateMetadata','generateStaticParams','generateImageMetadata','generateSitemaps','middleware'
         ]);
 
         // Group functions by name (excluding common names)
         var fnByName=Object.create(null);
         allFns.forEach(function(fn){
+            // Skip functions outside shipped product code (tests, fixtures, tooling, docs)
+            if(isNonProductionPath(fn.file))return;
             // Skip non-string names (e.g. numeric object-literal keys from the JS AST walker)
             if(typeof fn.name!=='string')return;
             // Skip common/idiomatic names
@@ -1260,6 +1265,7 @@ const Parser={
         // Use structural hash that captures the essence of the code
         var codeGroups=Object.create(null);
         allFns.forEach(function(fn){
+            if(isNonProductionPath(fn.file))return;
             if(!fn.code||fn.code.length<80)return;  // Skip very short functions
 
             // Create a structural fingerprint

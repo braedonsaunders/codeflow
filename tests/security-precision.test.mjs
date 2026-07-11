@@ -178,3 +178,10 @@ test('Debug Statements rule downgrades server-only code, keeps client code at lo
   assert.equal(serverIssue.severity, 'info');
   assert.equal(clientIssue.severity, 'low');
 });
+
+test('Duplicate names: Next.js POST route handlers are not flagged as a naming conflict', async () => {
+  const data = await analyzeFixture('security-precision-world');
+  const postNameDup = data.duplicates.find((d) => d.type === 'name' && d.name === 'POST');
+
+  assert.equal(postNameDup, undefined);
+});
