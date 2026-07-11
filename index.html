@@ -1481,7 +1481,7 @@ const Parser={
             if(!scanContent)return;
             var lines=scanContent.split('\n');
             lines.forEach(function(line,idx){
-                if(line.match(/(?:password|passwd|pwd|secret|api_key|apikey|token|auth)\s*[=:]\s*['"][^'"]{4,}['"]/i)&&!line.includes('process.env')&&!line.includes('config.')){
+                if(!isNonProductionPath(f.path)&&line.match(/(?:password|passwd|pwd|secret|api_key|apikey|token|auth)\s*[=:]\s*['"][^'"]{4,}['"]/i)&&!line.includes('process.env')&&!line.includes('config.')){
                     issues.push({severity:'high',title:'Hardcoded Secret',file:f.name,path:f.path,line:idx+1,desc:'Credentials should never be hardcoded. Use environment variables or a secrets manager.',code:line.trim().substring(0,80)});
                 }
             });
@@ -3288,6 +3288,18 @@ function isArchitectureTestFile(path){
 function isArchitectureFixtureFile(path){
     var p=String(path||'').toLowerCase().replace(/\\/g,'/');
     return /(^|\/)fixtures(\/|$)/.test(p)||/(^|\/)__fixtures__(\/|$)/.test(p);
+}
+
+function isNonProductionPath(path){
+    var p=String(path||'').toLowerCase().replace(/\\/g,'/');
+    if(isArchitectureTestFile(p))return true;
+    if(isArchitectureFixtureFile(p))return true;
+    if(/(^|\/)\.github(\/|$)/.test(p))return true;
+    if(/(^|\/)\.claude(\/|$)/.test(p))return true;
+    if(/(^|\/)(scripts|tools|tooling)(\/|$)/.test(p))return true;
+    if(/(^|\/)docs?(\/|$)/.test(p))return true;
+    if(/\.(md|markdown|mdx)$/.test(p))return true;
+    return false;
 }
 
 function isArchitectureBarrelIndex(path){
