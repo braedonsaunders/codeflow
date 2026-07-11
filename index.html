@@ -1512,7 +1512,7 @@ const Parser={
                 }
             }
             var isSafeStaticHtml=!hasInnerHtmlAssignment&&hasDangerousHtmlRender&&foundHtmlValue&&allHtmlValuesLiteral;
-            if((hasInnerHtmlAssignment||hasDangerousHtmlRender)&&!isSafePreviewRender&&!isSafeStaticHtml){
+            if(!isNonProductionPath(f.path)&&(hasInnerHtmlAssignment||hasDangerousHtmlRender)&&!isSafePreviewRender&&!isSafeStaticHtml){
                 issues.push({severity:'high',title:'XSS Vulnerability',file:f.name,path:f.path,desc:'Direct HTML injection can lead to XSS attacks. Sanitize user input.',code:''});
             }
             if(scanContent.includes('eval(')){
