@@ -186,12 +186,12 @@ test('Duplicate names: Next.js POST route handlers are not flagged as a naming c
   assert.equal(postNameDup, undefined);
 });
 
-test('XSS Vulnerability rule excludes dangerouslySetInnerHTML in test paths, even with variable interpolation', async () => {
+test('XSS Vulnerability rule excludes dangerouslySetInnerHTML in non-production paths, even with variable interpolation', async () => {
   const data = await analyzeFixture('security-precision-world');
   const flaggedPaths = data.securityIssues
     .filter((i) => i.title === 'XSS Vulnerability')
     .map((i) => i.path);
 
-  assert.equal(flaggedPaths.includes('test/preview.test.tsx'), false);
+  assert.equal(flaggedPaths.includes('preview-guard.md'), false);
   assert.equal(flaggedPaths.includes('app/profile-card.tsx'), true);
 });
