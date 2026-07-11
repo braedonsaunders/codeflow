@@ -1495,7 +1495,10 @@ const Parser={
             var hasInnerHtmlAssignment=scanContent.match(/innerHTML\s*=/);
             var hasDangerousHtmlRender=scanContent.match(/dangerouslySetInnerHTML/);
             var isSafePreviewRender=!hasInnerHtmlAssignment&&hasDangerousHtmlRender&&isSanitizedPreviewRenderer(f.content||'');
-            if((hasInnerHtmlAssignment||hasDangerousHtmlRender)&&!isSafePreviewRender){
+            var htmlValueMatch=scanContent.match(/dangerouslySetInnerHTML\s*[:=]\s*\{\{?\s*__html\s*:\s*([^}]+)\}/);
+            var isLiteralOnlyHtml=!!(htmlValueMatch&&/^(['"`])(?:(?!\1)[\s\S])*\1$/.test(htmlValueMatch[1].trim()));
+            var isSafeStaticHtml=!hasInnerHtmlAssignment&&hasDangerousHtmlRender&&isLiteralOnlyHtml;
+            if((hasInnerHtmlAssignment||hasDangerousHtmlRender)&&!isSafePreviewRender&&!isSafeStaticHtml){
                 issues.push({severity:'high',title:'XSS Vulnerability',file:f.name,path:f.path,desc:'Direct HTML injection can lead to XSS attacks. Sanitize user input.',code:''});
             }
             if(scanContent.includes('eval(')){

@@ -140,3 +140,13 @@ test('SQL Injection Risk rule excludes markdown prose, keeps real template injec
   assert.equal(flaggedPaths.includes('docs/decisions.md'), false);
   assert.equal(flaggedPaths.includes('lib/db.ts'), true);
 });
+
+test('XSS Vulnerability rule excludes static literals, keeps variable interpolation', async () => {
+  const data = await analyzeFixture('security-precision-world');
+  const flaggedPaths = data.securityIssues
+    .filter((i) => i.title === 'XSS Vulnerability')
+    .map((i) => i.path);
+
+  assert.equal(flaggedPaths.includes('app/page.tsx'), false);
+  assert.equal(flaggedPaths.includes('app/profile-card.tsx'), true);
+});
