@@ -1502,7 +1502,8 @@ const Parser={
             if(scanContent.includes('Function(')||scanContent.match(/new\s+Function\s*\(/)){
                 issues.push({severity:'medium',title:'Function Constructor',file:f.name,path:f.path,desc:'Function constructor is similar to eval(). Consider alternatives.',code:''});
             }
-            if(scanContent.match(/\.exec\s*\(/)||scanContent.match(/child_process/)){
+            var execMatch=scanContent.match(/(?:child_process|cp)\.\w*[Ee]xec\w*\s*\(/)||scanContent.match(/require\(\s*['"]child_process['"]\s*\)/)||scanContent.match(/from\s+['"]child_process['"]/);
+            if(!isNonProductionPath(f.path)&&execMatch){
                 issues.push({severity:'medium',title:'Command Execution',file:f.name,path:f.path,desc:'Shell command execution detected. Ensure input is sanitized to prevent injection.',code:''});
             }
             if(scanContent.match(/console\.(log|debug|info)\(/)){
@@ -1515,7 +1516,7 @@ const Parser={
             if(scanContent.match(/SendKeys\s*\(/i)){
                 issues.push({severity:'high',title:'SendKeys Usage',file:f.name,path:f.path,desc:'SendKeys can be exploited for code injection. Avoid using SendKeys.',code:''});
             }
-            if(scanContent.match(/Shell\s*\(/i)){
+            if(!isNonProductionPath(f.path)&&scanContent.match(/Shell\s*\(/i)){
                 issues.push({severity:'high',title:'Shell Command Execution',file:f.name,path:f.path,desc:'Shell() executes system commands. Ensure input is validated.',code:''});
             }
             if(scanContent.match(/CreateObject\s*\(\s*["']WScript\.Shell["']/i)){
@@ -1551,7 +1552,7 @@ const Parser={
                     issues.push({severity:'high',title:'Pickle Deserialization',file:f.name,path:f.path,desc:'pickle.load() can execute arbitrary code from untrusted data. Use JSON or safe alternatives.',code:''});
                 }
                 // subprocess with shell=True
-                if(scanContent.match(/subprocess\.\w+\([^)]*shell\s*=\s*True/)){
+                if(!isNonProductionPath(f.path)&&scanContent.match(/subprocess\.\w+\([^)]*shell\s*=\s*True/)){
                     issues.push({severity:'high',title:'Shell Injection Risk',file:f.name,path:f.path,desc:'subprocess with shell=True is vulnerable to command injection. Use shell=False with a list of args.',code:''});
                 }
                 // os.system / os.popen - command injection

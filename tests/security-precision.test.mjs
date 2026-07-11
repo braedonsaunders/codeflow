@@ -110,3 +110,23 @@ test('Hardcoded Secret rule excludes test stubs, keeps real hits', async () => {
   assert.equal(flaggedPaths.includes('test/client-ip.test.ts'), false);
   assert.equal(flaggedPaths.includes('lib/auth.ts'), true);
 });
+
+test('Shell Injection Risk rule excludes dev tooling, keeps real hits', async () => {
+  const data = await analyzeFixture('security-precision-world');
+  const flaggedPaths = data.securityIssues
+    .filter((i) => i.title === 'Shell Injection Risk')
+    .map((i) => i.path);
+
+  assert.equal(flaggedPaths.includes('.claude/hooks/pre-commit.py'), false);
+  assert.equal(flaggedPaths.includes('api/import.py'), true);
+});
+
+test('Command Execution rule excludes regex.exec(), keeps child_process.exec()', async () => {
+  const data = await analyzeFixture('security-precision-world');
+  const flaggedPaths = data.securityIssues
+    .filter((i) => i.title === 'Command Execution')
+    .map((i) => i.path);
+
+  assert.equal(flaggedPaths.includes('lib/search.ts'), false);
+  assert.equal(flaggedPaths.includes('lib/runner.ts'), true);
+});
