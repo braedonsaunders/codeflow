@@ -50,6 +50,8 @@ Automatic detection of:
 - Dangerous `eval()` usage
 - Debug statements in production code
 
+Test files, fixtures, `docs/`, and common tooling directories (`.github/`, `.claude/`, `scripts/`) are excluded from the secret/XSS/shell-execution checks, since findings there don't reflect the shipped product's attack surface.
+
 ### Pattern Detection
 Automatically identifies:
 - Singleton patterns
