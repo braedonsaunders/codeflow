@@ -159,3 +159,13 @@ test('XSS Vulnerability rule still catches a dangerous occurrence after a safe l
 
   assert.equal(flaggedPaths.includes('app/mixed-render.tsx'), true);
 });
+
+test('Function Constructor rule excludes substring mentions, keeps real constructor calls', async () => {
+  const data = await analyzeFixture('security-precision-world');
+  const flaggedPaths = data.securityIssues
+    .filter((i) => i.title === 'Function Constructor')
+    .map((i) => i.path);
+
+  assert.equal(flaggedPaths.includes('lib/csp.ts'), false);
+  assert.equal(flaggedPaths.includes('lib/dynamic.ts'), true);
+});
