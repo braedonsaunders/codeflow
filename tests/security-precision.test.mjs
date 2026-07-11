@@ -169,3 +169,12 @@ test('Function Constructor rule excludes substring mentions, keeps real construc
   assert.equal(flaggedPaths.includes('lib/csp.ts'), false);
   assert.equal(flaggedPaths.includes('lib/dynamic.ts'), true);
 });
+
+test('Debug Statements rule downgrades server-only code, keeps client code at low', async () => {
+  const data = await analyzeFixture('security-precision-world');
+  const serverIssue = data.securityIssues.find((i) => i.title === 'Debug Statements' && i.path === 'server/logger.ts');
+  const clientIssue = data.securityIssues.find((i) => i.title === 'Debug Statements' && i.path === 'components/dashboard.tsx');
+
+  assert.equal(serverIssue.severity, 'info');
+  assert.equal(clientIssue.severity, 'low');
+});

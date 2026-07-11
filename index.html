@@ -1523,7 +1523,8 @@ const Parser={
             if(scanContent.match(/console\.(log|debug|info)\(/)){
                 var consoleCount=(scanContent.match(/console\.(log|debug|info)\(/g)||[]).length;
                 if(consoleCount>3){
-                    issues.push({severity:'low',title:'Debug Statements',file:f.name,path:f.path,desc:consoleCount+' console statements found. Remove before production.',code:''});
+                    var debugSeverity=isArchitectureBackendPath(f.path)?'info':'low';
+                    issues.push({severity:debugSeverity,title:'Debug Statements',file:f.name,path:f.path,desc:consoleCount+' console statements found. Remove before production.',code:''});
                 }
             }
             // VBA-specific security checks
