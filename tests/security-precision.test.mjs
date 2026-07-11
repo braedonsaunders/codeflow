@@ -130,3 +130,13 @@ test('Command Execution rule excludes regex.exec(), keeps child_process.exec()',
   assert.equal(flaggedPaths.includes('lib/search.ts'), false);
   assert.equal(flaggedPaths.includes('lib/runner.ts'), true);
 });
+
+test('SQL Injection Risk rule excludes markdown prose, keeps real template injection', async () => {
+  const data = await analyzeFixture('security-precision-world');
+  const flaggedPaths = data.securityIssues
+    .filter((i) => i.title === 'SQL Injection Risk')
+    .map((i) => i.path);
+
+  assert.equal(flaggedPaths.includes('docs/decisions.md'), false);
+  assert.equal(flaggedPaths.includes('lib/db.ts'), true);
+});
