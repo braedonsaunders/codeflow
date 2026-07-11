@@ -1495,9 +1495,17 @@ const Parser={
             var hasInnerHtmlAssignment=scanContent.match(/innerHTML\s*=/);
             var hasDangerousHtmlRender=scanContent.match(/dangerouslySetInnerHTML/);
             var isSafePreviewRender=!hasInnerHtmlAssignment&&hasDangerousHtmlRender&&isSanitizedPreviewRenderer(f.content||'');
-            var htmlValueMatch=scanContent.match(/dangerouslySetInnerHTML\s*[:=]\s*\{\{?\s*__html\s*:\s*([^}]+)\}/);
-            var isLiteralOnlyHtml=!!(htmlValueMatch&&/^(['"`])(?:(?!\1)[\s\S])*\1$/.test(htmlValueMatch[1].trim()));
-            var isSafeStaticHtml=!hasInnerHtmlAssignment&&hasDangerousHtmlRender&&isLiteralOnlyHtml;
+            var htmlValueRegex=/dangerouslySetInnerHTML\s*[:=]\s*\{\{?\s*__html\s*:\s*([^}]+)\}/g;
+            var allHtmlValuesLiteral=true;
+            var foundHtmlValue=false;
+            var htmlMatch;
+            while((htmlMatch=htmlValueRegex.exec(scanContent))!==null){
+                foundHtmlValue=true;
+                if(!/^(['"`])(?:(?!\1)[\s\S])*\1$/.test(htmlMatch[1].trim())){
+                    allHtmlValuesLiteral=false;
+                }
+            }
+            var isSafeStaticHtml=!hasInnerHtmlAssignment&&hasDangerousHtmlRender&&foundHtmlValue&&allHtmlValuesLiteral;
             if((hasInnerHtmlAssignment||hasDangerousHtmlRender)&&!isSafePreviewRender&&!isSafeStaticHtml){
                 issues.push({severity:'high',title:'XSS Vulnerability',file:f.name,path:f.path,desc:'Direct HTML injection can lead to XSS attacks. Sanitize user input.',code:''});
             }

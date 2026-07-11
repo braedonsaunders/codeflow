@@ -150,3 +150,12 @@ test('XSS Vulnerability rule excludes static literals, keeps variable interpolat
   assert.equal(flaggedPaths.includes('app/page.tsx'), false);
   assert.equal(flaggedPaths.includes('app/profile-card.tsx'), true);
 });
+
+test('XSS Vulnerability rule still catches a dangerous occurrence after a safe literal in the same file', async () => {
+  const data = await analyzeFixture('security-precision-world');
+  const flaggedPaths = data.securityIssues
+    .filter((i) => i.title === 'XSS Vulnerability')
+    .map((i) => i.path);
+
+  assert.equal(flaggedPaths.includes('app/mixed-render.tsx'), true);
+});
