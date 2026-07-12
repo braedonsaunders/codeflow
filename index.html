@@ -1389,10 +1389,12 @@ const Parser={
             var importedFile=fileByPath[c.source];
             var importerFile=fileByPath[c.target];
             if(!importedFile||!importerFile)return;
-            // Test files legitimately depend on every layer — never flag them as violators.
-            if(isArchitectureTestFile(importerFile.path))return;
             var importedLayer=(importedFile.layer||'').toLowerCase();
             var importerLayer=(importerFile.layer||'').toLowerCase();
+            // Test files legitimately depend on every layer — never flag them as violators.
+            // Use both classifiers: isArchitectureTestFile catches *.test/*.spec files outside
+            // a tests/ dir; the 'test' layer catches Python test_*.py, conftest.py, and test-folders.
+            if(isArchitectureTestFile(importerFile.path)||importerLayer==='test')return;
             var importedLevel=layerOrder[importedLayer];
             var importerLevel=layerOrder[importerLayer];
             // Violation: a more-foundational file (higher level number) imports from a higher-up layer.

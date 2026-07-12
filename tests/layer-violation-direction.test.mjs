@@ -98,3 +98,26 @@ test('coupling issue label describes fan-out (files it imports), not fan-in', ()
   // ...replaced by wording that describes fan-out (this file imports others).
   assert.match(snippet, /import 8\+ other/);
 });
+
+test('Python test files and test-folder importers are not flagged (layer=test), and .spec files outside tests/ stay excluded', () => {
+  // Python test file (detectLayer -> 'test', but isArchitectureTestFile does NOT match .py)
+  const pyFiles = [
+    { path: 'myapp/test_service.py', layer: Parser.detectLayer('myapp/test_service.py') },
+    { path: 'myapp/services/foo.py', layer: Parser.detectLayer('myapp/services/foo.py') },
+  ];
+  const pyViolations = Parser.detectLayerViolations(pyFiles, [
+    { source: 'myapp/services/foo.py', target: 'myapp/test_service.py', fn: 'createUser' },
+  ]);
+  assert.equal(pyViolations.length, 0);
+
+  // A .spec file outside a tests/ dir: detectLayer -> 'utils' (NOT test), but isArchitectureTestFile matches it.
+  // This guards that the isArchitectureTestFile half of the condition still covers such files.
+  const specFiles = [
+    { path: 'src/utils/user.spec.ts', layer: Parser.detectLayer('src/utils/user.spec.ts') },
+    { path: 'src/services/user.ts', layer: Parser.detectLayer('src/services/user.ts') },
+  ];
+  const specViolations = Parser.detectLayerViolations(specFiles, [
+    { source: 'src/services/user.ts', target: 'src/utils/user.spec.ts', fn: 'createUser' },
+  ]);
+  assert.equal(specViolations.length, 0);
+});
