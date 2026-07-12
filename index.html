@@ -1382,22 +1382,24 @@ const Parser={
         var fileByPath={};
         files.forEach(function(f){fileByPath[f.path]=f;});
         connections.forEach(function(c){
-            var srcFile=fileByPath[c.source];
-            var tgtFile=fileByPath[c.target];
-            if(!srcFile||!tgtFile)return;
-            var srcLayer=(srcFile.layer||'').toLowerCase();
-            var tgtLayer=(tgtFile.layer||'').toLowerCase();
-            var srcLevel=layerOrder[srcLayer];
-            var tgtLevel=layerOrder[tgtLayer];
-            // Violation: lower layer importing from higher layer (e.g., service importing from UI)
-            if(srcLevel!==undefined&&tgtLevel!==undefined&&srcLevel>tgtLevel&&srcLevel-tgtLevel>1){
+            // Convention (see buildAnalysisData): source = file DEFINING the fn (imported),
+            // target = file CALLING it (the importer). The importer is c.target.
+            var importedFile=fileByPath[c.source];
+            var importerFile=fileByPath[c.target];
+            if(!importedFile||!importerFile)return;
+            var importedLayer=(importedFile.layer||'').toLowerCase();
+            var importerLayer=(importerFile.layer||'').toLowerCase();
+            var importedLevel=layerOrder[importedLayer];
+            var importerLevel=layerOrder[importerLayer];
+            // Violation: a more-foundational file (higher level number) imports from a higher-up layer.
+            if(importerLevel!==undefined&&importedLevel!==undefined&&importerLevel>importedLevel&&importerLevel-importedLevel>1){
                 violations.push({
-                    from:srcFile.path,
-                    fromLayer:srcFile.layer,
-                    to:tgtFile.path,
-                    toLayer:tgtFile.layer,
+                    from:importerFile.path,
+                    fromLayer:importerFile.layer,
+                    to:importedFile.path,
+                    toLayer:importedFile.layer,
                     fn:c.fn,
-                    suggestion:srcFile.layer+' should not import from '+tgtFile.layer+'. Consider inverting the dependency or using dependency injection.'
+                    suggestion:importerFile.layer+' should not import from '+importedFile.layer+'. Consider inverting the dependency or using dependency injection.'
                 });
             }
         });
