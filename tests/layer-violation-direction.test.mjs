@@ -73,3 +73,18 @@ test('detectLayer classifies root-level layer folders, not just nested ones', ()
   // A file with no recognizable layer folder still falls through to the default.
   assert.equal(Parser.detectLayer('src/app.js'), 'utils');
 });
+
+test('a test file importing a util or service is NOT flagged as a layer violation', () => {
+  const testFiles = [
+    { path: 'tests/userService.test.ts', layer: Parser.detectLayer('tests/userService.test.ts') },
+    { path: 'src/lib/helper.ts', layer: Parser.detectLayer('src/lib/helper.ts') },
+    { path: 'src/services/userService.ts', layer: Parser.detectLayer('src/services/userService.ts') },
+  ];
+  // The test file calls helper() and createUser() — conns point {source: definition, target: caller=the test file}.
+  const conns = [
+    { source: 'src/lib/helper.ts', target: 'tests/userService.test.ts', fn: 'formatDate' },
+    { source: 'src/services/userService.ts', target: 'tests/userService.test.ts', fn: 'createUser' },
+  ];
+  const violations = Parser.detectLayerViolations(testFiles, conns);
+  assert.equal(violations.length, 0);
+});

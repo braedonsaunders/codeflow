@@ -1389,6 +1389,8 @@ const Parser={
             var importedFile=fileByPath[c.source];
             var importerFile=fileByPath[c.target];
             if(!importedFile||!importerFile)return;
+            // Test files legitimately depend on every layer — never flag them as violators.
+            if(isArchitectureTestFile(importerFile.path))return;
             var importedLayer=(importedFile.layer||'').toLowerCase();
             var importerLayer=(importerFile.layer||'').toLowerCase();
             var importedLevel=layerOrder[importedLayer];
