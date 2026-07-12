@@ -88,3 +88,13 @@ test('a test file importing a util or service is NOT flagged as a layer violatio
   const violations = Parser.detectLayerViolations(testFiles, conns);
   assert.equal(violations.length, 0);
 });
+
+test('coupling issue label describes fan-out (files it imports), not fan-in', () => {
+  const start = htmlSource.indexOf("title:highCoup.length+' Highly Coupled'");
+  assert.ok(start > 0, 'Highly Coupled issue builder not found in analyzer source');
+  const snippet = htmlSource.slice(start, start + 200);
+  // The stale fan-in wording ("imported by 8+ others") must be gone...
+  assert.equal(/imported by 8\+ others/.test(snippet), false, 'stale fan-in wording still present');
+  // ...replaced by wording that describes fan-out (this file imports others).
+  assert.match(snippet, /import 8\+ other/);
+});

@@ -4768,7 +4768,7 @@ async function buildAnalysisData(options){
     var coupling=Object.create(null);
     conns.forEach(function(c){coupling[c.target]=(coupling[c.target]||0)+1;});
     var highCoup=Object.entries(coupling).filter(function(x){return x[1]>8;}).sort(function(a,b){return b[1]-a[1];});
-    if(highCoup.length)issues.push({type:'warning',title:highCoup.length+' Highly Coupled',desc:'Files imported by 8+ others',items:highCoup.map(function(x){return{name:x[0].split('/').pop()+' ('+x[1]+' imports)',file:x[0],imports:x[1]};})});
+    if(highCoup.length)issues.push({type:'warning',title:highCoup.length+' Highly Coupled',desc:'Files that import 8+ other files',items:highCoup.map(function(x){return{name:x[0].split('/').pop()+' ('+x[1]+' imports)',file:x[0],imports:x[1]};})});
 
     var connSet=new Set(conns.map(function(c){return c.source+'|'+c.target;}));
     var circular=[];
