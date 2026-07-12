@@ -1096,7 +1096,9 @@ const Parser={
         return null;
     },
     detectLayer:function(p){
-        var l=p.toLowerCase();
+        // Prepend a leading slash so root-level layer folders (e.g. "services/x.ts")
+        // match the same substring patterns as nested ones (e.g. "src/services/x.ts").
+        var l='/'+p.toLowerCase().replace(/^\/+/,'');
         // Test files
         if(l.includes('/test')||l.match(/test_\w+\.py$/)||l.match(/\w+_test\.py$/)||l.includes('conftest'))return'test';
         // UI/View layer

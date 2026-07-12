@@ -61,3 +61,15 @@ test('genuine upward dependency (util reaches into a service) IS a violation, co
   assert.equal(violations[0].to, 'src/services/userService.ts');
   assert.match(violations[0].suggestion, /utils should not import from services/);
 });
+
+test('detectLayer classifies root-level layer folders, not just nested ones', () => {
+  // Root-level folders (no leading path segment) must match the same as nested ones.
+  assert.equal(Parser.detectLayer('services/userService.ts'), 'services');
+  assert.equal(Parser.detectLayer('ui/Button.tsx'), 'ui');
+  assert.equal(Parser.detectLayer('lib/helper.ts'), 'utils');
+  // Nested paths keep their existing classification (regression guard).
+  assert.equal(Parser.detectLayer('src/services/userService.ts'), 'services');
+  assert.equal(Parser.detectLayer('src/lib/helper.ts'), 'utils');
+  // A file with no recognizable layer folder still falls through to the default.
+  assert.equal(Parser.detectLayer('src/app.js'), 'utils');
+});
