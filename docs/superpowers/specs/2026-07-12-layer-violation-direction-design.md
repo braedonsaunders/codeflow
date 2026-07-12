@@ -81,6 +81,33 @@ on its own — the inversion does. Fixing it broadens correct classification (an
 surface genuine violations that were previously suppressed), but it reclassifies
 files repo-wide, so it needs its own regression coverage.
 
+### Interaction — test files must be excluded as importers (found during implementation)
+
+The direction fix (§1) and the `detectLayer` fix (§2) interact to surface a *new*
+false-positive class that neither fix causes alone. Once root-level `tests/` and
+`test/` folders classify correctly as the `test` layer (level 6 — the most
+foundational rung in `layerOrder`), and once the direction is corrected so the
+importer is evaluated, a test file importing a util or service (the single most
+common pattern in any codebase) is flagged: "test should not import from utils".
+
+This did not appear on `origin/main` only by accident: there, `tests/` folders
+misclassified as `utils` (the leading-slash bug), so a test and its util landed at
+the same level and produced no violation. Verified empirically against the real
+analyzer: after §1+§2, a `tests/x.test.ts` importing `lib/helper.ts` and
+`services/userService.ts` produces two violations.
+
+Test code legitimately depends on every layer — it is the universal consumer, not a
+foundational module. The fix is to exclude test files from the *importer* side of a
+violation, reusing the existing path-based classifier `isArchitectureTestFile`
+(`index.html:3287`, already inside the analyzer block), which robustly matches
+`test/`, `tests/`, `__tests__/`, and co-located `*.test.*`/`*.spec.*` files. This is
+in scope: it is required for the direction fix to not trade the old false positives
+for a new class, which is the whole point of the change.
+
+Config (level 5) and VBA `modules` (level 5) importing from a much higher layer
+remain flagged — those are niche and plausibly real smells, and are left as-is
+rather than expanding the exclusion speculatively.
+
 ### Tertiary observation — coupling metric mislabel
 
 `index.html:4797` computes `coupling[c.target]++` and the resulting issue is labelled
@@ -101,6 +128,9 @@ depend on.
 
 In scope:
 - Fix the direction inversion in `detectLayerViolations` (primary).
+- Exclude test files from the importer side of a violation, so the direction fix does
+  not introduce a new "test should not import from X" false-positive class (required
+  companion to the primary fix — see the Interaction section).
 - Fix the leading-slash gap in `detectLayer` so root-level layer folders classify
   correctly (secondary).
 - Correct the coupling metric's fan-in/fan-out label (tertiary, optional).
@@ -147,6 +177,21 @@ connections.forEach(function(c){
 The `>1` gap threshold, the `layerOrder` map, and the suggestion wording are all
 preserved — only the source/target roles swap. `from`/`to` in the emitted violation
 now correctly name the importer and the imported file respectively.
+
+### 1b. Exclude test-file importers (companion to §1)
+
+Immediately after resolving `importerFile`, skip the connection if the importer is a
+test file:
+
+```js
+if(!importedFile||!importerFile)return;
+if(isArchitectureTestFile(importerFile.path))return; // tests legitimately depend on every layer
+```
+
+`isArchitectureTestFile` is the existing top-level classifier at `index.html:3287`
+(inside the analyzer block, hoisted, already used for architecture test-block
+visibility). No new helper is introduced. This is done as its own commit/task after
+§1 and §2 so its effect is isolated and independently reviewable.
 
 ### 2. `detectLayer` leading-slash tolerance (secondary)
 
