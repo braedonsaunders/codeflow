@@ -248,6 +248,24 @@ test('Debug Statements rule downgrades server-only code, keeps client code at lo
   assert.equal(clientIssue.severity, 'low');
 });
 
+test('security issue sort places info strictly after high/medium/low with no NaN corruption', async () => {
+  const data = await analyzeSyntheticFiles([
+    { path: 'server/telemetry.ts', content: 'console.log(1);console.log(2);console.log(3);console.log(4);\n' },
+    { path: 'app/widget.ts', content: 'var f=new Function("return 1;");\n' },
+    { path: 'lib/db-query.ts', content: 'function findUser(id){ return db.query(`SELECT * FROM users WHERE id = ${id}`); }\n' },
+  ]);
+  const rank = { high: 0, medium: 1, low: 2, info: 3 };
+  const severities = Array.from(data.securityIssues, (i) => i.severity);
+
+  assert.deepEqual(severities, ['high', 'medium', 'info']);
+  for (let i = 1; i < severities.length; i++) {
+    assert.ok(
+      rank[severities[i - 1]] <= rank[severities[i]],
+      'security issues must be sorted by non-decreasing severity rank (high, medium, low, info)'
+    );
+  }
+});
+
 test('Duplicate names: Next.js POST route handlers are not flagged as a naming conflict', async () => {
   const data = await analyzeFixture('security-precision-world');
   const postNameDup = data.duplicates.find((d) => d.type === 'name' && d.name === 'POST');

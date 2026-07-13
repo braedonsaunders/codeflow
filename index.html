@@ -170,6 +170,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .security-item.high{background:linear-gradient(180deg,rgba(255,95,95,0.08) 0%,var(--bg0) 55%);border-color:rgba(255,95,95,0.36)}
 .security-item.medium{background:linear-gradient(180deg,rgba(255,159,67,0.08) 0%,var(--bg0) 55%);border-color:rgba(255,159,67,0.34)}
 .security-item.low{background:linear-gradient(180deg,rgba(77,159,255,0.08) 0%,var(--bg0) 55%);border-color:rgba(77,159,255,0.34)}
+.security-item.info{background:linear-gradient(180deg,rgba(92,92,102,0.08) 0%,var(--bg0) 55%);border-color:rgba(92,92,102,0.34)}
 .security-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .security-title{font-size:11px;color:var(--t0);font-weight:500}
 .security-desc{font-size:10px;color:var(--t2);margin-bottom:6px;line-height:1.4}
@@ -1606,7 +1607,7 @@ const Parser={
                 }
             }
         });
-        return issues.sort(function(a,b){var sev={high:0,medium:1,low:2};return sev[a.severity]-sev[b.severity];});
+        return issues.sort(function(a,b){var sev={high:0,medium:1,low:2,info:3};return sev[a.severity]-sev[b.severity];});
     },
     // AST-based function extraction - accurate detection without false positives
     extract:function(content,filename){
@@ -5378,7 +5379,7 @@ function iconLabel(name,label,size,className){
 }
 
 function getSeverityColor(level){
-    return level==='critical'||level==='high'?'var(--red)':level==='medium'?'var(--orange)':'var(--blue)';
+    return level==='critical'||level==='high'?'var(--red)':level==='medium'?'var(--orange)':level==='info'?'var(--t3)':'var(--blue)';
 }
 
 function getFilePreviewIconName(filename){
@@ -8758,7 +8759,8 @@ function App(){
                                 React.createElement('div',{style:{display:'flex',gap:8,marginBottom:12}},
                                     React.createElement('div',{className:'badge badge-danger'},data.securityIssues.filter(function(i){return i.severity==='high';}).length,' High'),
                                     React.createElement('div',{className:'badge badge-warning'},data.securityIssues.filter(function(i){return i.severity==='medium';}).length,' Medium'),
-                                    React.createElement('div',{className:'badge badge-info'},data.securityIssues.filter(function(i){return i.severity==='low';}).length,' Low')
+                                    React.createElement('div',{className:'badge badge-info'},data.securityIssues.filter(function(i){return i.severity==='low';}).length,' Low'),
+                                    React.createElement('div',{className:'badge badge-default'},data.securityIssues.filter(function(i){return i.severity==='info';}).length,' Info')
                                 ),
                                 data.securityIssues.map(function(issue,i){return React.createElement('div',{key:i,className:'security-item '+issue.severity,style:{cursor:'pointer'},onClick:function(){setDrillDown({type:'security',data:issue});}},
                                     React.createElement('div',{className:'security-header'},
