@@ -1491,9 +1491,13 @@ const Parser={
                     issues.push({severity:'high',title:'Hardcoded Secret',file:f.name,path:f.path,line:idx+1,desc:'Credentials should never be hardcoded. Use environment variables or a secrets manager.',code:line.trim().substring(0,80)});
                 }
             });
-            var dbCallMatch=scanContent.match(/\b(?:query|execute|raw)\s*\(([^)]*)\)/i);
             var hasSqlConcat=scanContent.match(/query\s*\(\s*['"`][^'"`]*\s*\+/)||scanContent.match(/execute\s*\(\s*['"`][^'"`]*\$\{/);
-            var hasSqlTemplateInjection=dbCallMatch&&/\$\{/.test(dbCallMatch[1])&&/(?:SELECT|INSERT|UPDATE|DELETE)/i.test(dbCallMatch[1]);
+            var dbCallRegex=/\b(?:query|execute|raw)\s*\(([^)]*)\)/gi;
+            var hasSqlTemplateInjection=false;
+            var dbCall;
+            while((dbCall=dbCallRegex.exec(scanContent))!==null){
+                if(/\$\{/.test(dbCall[1])&&/(?:SELECT|INSERT|UPDATE|DELETE)/i.test(dbCall[1])){hasSqlTemplateInjection=true;break;}
+            }
             if(f.isCode&&(hasSqlConcat||hasSqlTemplateInjection)){
                 var m=scanContent.match(/.*(query|execute|SELECT|INSERT|UPDATE|DELETE).*(\+|\$\{).*/i);
                 issues.push({severity:'high',title:'SQL Injection Risk',file:f.name,path:f.path,desc:'String concatenation in SQL queries. Use parameterized queries instead.',code:m?m[0].trim().substring(0,80):''});
