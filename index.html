@@ -9112,7 +9112,9 @@ function App(){
                             ? getAccentBlockStyle('rgba(255,95,95,0.36)','rgba(255,95,95,0.1)',{padding:12,marginBottom:16})
                             : drillDown.data.severity==='medium'
                                 ? getAccentBlockStyle('rgba(255,159,67,0.34)','rgba(255,180,100,0.1)',{padding:12,marginBottom:16})
-                                : getAccentBlockStyle('rgba(77,159,255,0.34)','rgba(100,180,255,0.1)',{padding:12,marginBottom:16})},
+                                : drillDown.data.severity==='info'
+                                    ? getAccentBlockStyle('rgba(92,92,102,0.34)','rgba(92,92,102,0.1)',{padding:12,marginBottom:16})
+                                    : getAccentBlockStyle('rgba(77,159,255,0.34)','rgba(100,180,255,0.1)',{padding:12,marginBottom:16})},
                             React.createElement('div',{style:{fontSize:11,fontWeight:600,marginBottom:4}},drillDown.data.severity.toUpperCase()+' Severity'),
                             React.createElement('div',{style:{fontSize:11,color:'var(--t2)'}},drillDown.data.desc)
                         ),
