@@ -1096,7 +1096,9 @@ const Parser={
         return null;
     },
     detectLayer:function(p){
-        var l=p.toLowerCase();
+        // Prepend a leading slash so root-level layer folders (e.g. "services/x.ts")
+        // match the same substring patterns as nested ones (e.g. "src/services/x.ts").
+        var l='/'+p.toLowerCase().replace(/^\/+/,'');
         // Test files
         if(l.includes('/test')||l.match(/test_\w+\.py$/)||l.match(/\w+_test\.py$/)||l.includes('conftest'))return'test';
         // UI/View layer
@@ -1382,22 +1384,28 @@ const Parser={
         var fileByPath={};
         files.forEach(function(f){fileByPath[f.path]=f;});
         connections.forEach(function(c){
-            var srcFile=fileByPath[c.source];
-            var tgtFile=fileByPath[c.target];
-            if(!srcFile||!tgtFile)return;
-            var srcLayer=(srcFile.layer||'').toLowerCase();
-            var tgtLayer=(tgtFile.layer||'').toLowerCase();
-            var srcLevel=layerOrder[srcLayer];
-            var tgtLevel=layerOrder[tgtLayer];
-            // Violation: lower layer importing from higher layer (e.g., service importing from UI)
-            if(srcLevel!==undefined&&tgtLevel!==undefined&&srcLevel>tgtLevel&&srcLevel-tgtLevel>1){
+            // Convention (see buildAnalysisData): source = file DEFINING the fn (imported),
+            // target = file CALLING it (the importer). The importer is c.target.
+            var importedFile=fileByPath[c.source];
+            var importerFile=fileByPath[c.target];
+            if(!importedFile||!importerFile)return;
+            var importedLayer=(importedFile.layer||'').toLowerCase();
+            var importerLayer=(importerFile.layer||'').toLowerCase();
+            // Test files legitimately depend on every layer — never flag them as violators.
+            // Use both classifiers: isArchitectureTestFile catches *.test/*.spec files outside
+            // a tests/ dir; the 'test' layer catches Python test_*.py, conftest.py, and test-folders.
+            if(isArchitectureTestFile(importerFile.path)||importerLayer==='test')return;
+            var importedLevel=layerOrder[importedLayer];
+            var importerLevel=layerOrder[importerLayer];
+            // Violation: a more-foundational file (higher level number) imports from a higher-up layer.
+            if(importerLevel!==undefined&&importedLevel!==undefined&&importerLevel>importedLevel&&importerLevel-importedLevel>1){
                 violations.push({
-                    from:srcFile.path,
-                    fromLayer:srcFile.layer,
-                    to:tgtFile.path,
-                    toLayer:tgtFile.layer,
+                    from:importerFile.path,
+                    fromLayer:importerFile.layer,
+                    to:importedFile.path,
+                    toLayer:importedFile.layer,
                     fn:c.fn,
-                    suggestion:srcFile.layer+' should not import from '+tgtFile.layer+'. Consider inverting the dependency or using dependency injection.'
+                    suggestion:importerFile.layer+' should not import from '+importedFile.layer+'. Consider inverting the dependency or using dependency injection.'
                 });
             }
         });
@@ -4762,7 +4770,7 @@ async function buildAnalysisData(options){
     var coupling=Object.create(null);
     conns.forEach(function(c){coupling[c.target]=(coupling[c.target]||0)+1;});
     var highCoup=Object.entries(coupling).filter(function(x){return x[1]>8;}).sort(function(a,b){return b[1]-a[1];});
-    if(highCoup.length)issues.push({type:'warning',title:highCoup.length+' Highly Coupled',desc:'Files imported by 8+ others',items:highCoup.map(function(x){return{name:x[0].split('/').pop()+' ('+x[1]+' imports)',file:x[0],imports:x[1]};})});
+    if(highCoup.length)issues.push({type:'warning',title:highCoup.length+' Highly Coupled',desc:'Files that import 8+ other files',items:highCoup.map(function(x){return{name:x[0].split('/').pop()+' ('+x[1]+' imports)',file:x[0],imports:x[1]};})});
 
     var connSet=new Set(conns.map(function(c){return c.source+'|'+c.target;}));
     var circular=[];
