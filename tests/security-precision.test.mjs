@@ -101,6 +101,43 @@ async function analyzeFixture(name) {
   });
 }
 
+async function analyzeSyntheticFiles(fileDescs) {
+  const analyzed = [];
+  const allFns = [];
+
+  for (const file of fileDescs) {
+    const path = file.path;
+    const name = basename(path);
+    const folder = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : 'root';
+    const content = file.content;
+    const layer = Parser.detectLayer(path);
+    const actualIsCode = Parser.isCode(name) !== false && (!Parser.isScriptContainer(path) || Parser.hasEmbeddedCode(content, path));
+    const functions = actualIsCode ? Parser.extract(content, path) : [];
+    analyzed.push({
+      path,
+      name,
+      folder,
+      content,
+      functions,
+      lines: content ? content.split('\n').length : 0,
+      layer,
+      churn: 0,
+      isCode: actualIsCode,
+    });
+    if (actualIsCode) {
+      functions.forEach((fn) => allFns.push(Object.assign({}, fn, { folder, layer })));
+    }
+  }
+
+  return buildAnalysisData({
+    analyzed,
+    allFns,
+    excludePatterns: [],
+    progress() {},
+    yieldFn: async () => {},
+  });
+}
+
 test('Hardcoded Secret rule excludes test stubs, keeps real hits', async () => {
   const data = await analyzeFixture('security-precision-world');
   const flaggedPaths = data.securityIssues
@@ -138,6 +175,20 @@ test('Command Execution rule detects node: specifier on child_process import and
     .map((i) => i.path);
 
   assert.equal(flaggedPaths.includes('server/logger.ts'), true);
+});
+
+test('Command Execution rule detects require("node:child_process") in isolation', async () => {
+  const data = await analyzeSyntheticFiles([
+    {
+      path: 'server/spawner.ts',
+      content: 'const cp=require("node:child_process");\n',
+    },
+  ]);
+  const flaggedPaths = data.securityIssues
+    .filter((i) => i.title === 'Command Execution')
+    .map((i) => i.path);
+
+  assert.equal(flaggedPaths.includes('server/spawner.ts'), true);
 });
 
 test('SQL Injection Risk rule excludes markdown prose, keeps real template injection', async () => {
