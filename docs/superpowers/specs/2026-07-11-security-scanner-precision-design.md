@@ -60,34 +60,38 @@ New function, adjacent to the existing `isArchitectureTestFile`/
 `isArchitectureFixtureFile` (~line 2502):
 
 ```js
+function isDocumentationPath(path){ /* docs/ dirs + .md/.markdown/.mdx */ }
+function isDevToolingPath(path){ /* .github/, .claude/, scripts|tools|tooling */ }
+function isSecretScanExemptPath(path){
+    // tests + fixtures + docs ONLY — dev tooling is executable code, so the
+    // Hardcoded Secret rule stays active there (PR 65 review, 2026-07-13).
+    return isArchitectureTestFile(path)||isArchitectureFixtureFile(path)||isDocumentationPath(path);
+}
 function isNonProductionPath(path){
-    var p=String(path||'').toLowerCase().replace(/\\/g,'/');
-    if(isArchitectureTestFile(p))return true;
-    if(isArchitectureFixtureFile(p))return true;
-    if(/(^|\/)\.github(\/|$)/.test(p))return true;
-    if(/(^|\/)\.claude(\/|$)/.test(p))return true;
-    if(/(^|\/)(scripts|tools|tooling)(\/|$)/.test(p))return true;
-    if(/(^|\/)docs?(\/|$)/.test(p))return true;
-    if(/\.(md|markdown|mdx)$/.test(p))return true;
-    return false;
+    return isSecretScanExemptPath(path)||isDevToolingPath(path);
 }
 ```
 
 This reuses the two classifiers that already exist but were only wired into the
-architecture/dead-code path, never into security or duplicate detection. It becomes
-the single source of truth for "does this path count as shipped product code?".
+architecture/dead-code path, never into security or duplicate detection.
+`isNonProductionPath` remains the single source of truth for "does this path count
+as shipped product code?", now composed from per-concern predicates so individual
+rules can opt into a narrower exemption.
 
-`detectSecurity(files)` and `findDuplicates(...)` both consult it. Rules that only
-make sense for product code (secrets, XSS, shell/command execution) skip when
-`isNonProductionPath(f.path)` is true. Python-specific rules (eval/exec/pickle/
+`detectSecurity(files)` and `findDuplicates(...)` both consult these. XSS and
+shell/command-execution rules skip when `isNonProductionPath(f.path)` is true.
+The Hardcoded Secret rule uses the narrower `isSecretScanExemptPath` — a credential
+in a CI workflow, hook, or deploy script is a real leak even though the file is not
+shipped product code. Python-specific rules (eval/exec/pickle/
 subprocess) stay active on all `.py` files regardless of path — a path-only signal
 can't distinguish a production Python script from a tooling one — but this
 limitation is documented in the PR body rather than left implicit.
 
 ### 2. Per-category fixes
 
-1. **Hardcoded Secret** (~line 703-705): add the `isNonProductionPath` guard before
-   pushing the issue. Regex itself unchanged.
+1. **Hardcoded Secret** (~line 703-705): add the `isSecretScanExemptPath` guard
+   (tests/fixtures/docs only — see above) before pushing the issue. Regex itself
+   unchanged.
 
 2. **SQL Injection Risk** (~line 707-709): restrict to `f.isCode` files only (the
    parser already computes this); tighten the third alternative to require a
