@@ -1526,7 +1526,7 @@ const Parser={
             if(scanContent.match(/\bnew\s+Function\s*\(/)){
                 issues.push({severity:'medium',title:'Function Constructor',file:f.name,path:f.path,desc:'Function constructor is similar to eval(). Consider alternatives.',code:''});
             }
-            var execMatch=scanContent.match(/(?:child_process|cp)\.\w*[Ee]xec\w*\s*\(/)||scanContent.match(/require\(\s*['"]child_process['"]\s*\)/)||scanContent.match(/from\s+['"]child_process['"]/);
+            var execMatch=scanContent.match(/(?:child_process|cp)\.\w*[Ee]xec\w*\s*\(/)||scanContent.match(/require\(\s*['"](?:node:)?child_process['"]\s*\)/)||scanContent.match(/from\s+['"](?:node:)?child_process['"]/);
             if(!isNonProductionPath(f.path)&&execMatch){
                 issues.push({severity:'medium',title:'Command Execution',file:f.name,path:f.path,desc:'Shell command execution detected. Ensure input is sanitized to prevent injection.',code:''});
             }
