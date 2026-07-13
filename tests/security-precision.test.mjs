@@ -239,6 +239,21 @@ test('Function Constructor rule excludes substring mentions, keeps real construc
   assert.equal(flaggedPaths.includes('lib/dynamic.ts'), true);
 });
 
+test('Function Constructor rule flags bare Function() and new Function(), not identifiers like getFunction()', async () => {
+  const data = await analyzeSyntheticFiles([
+    { path: 'lib/factory.ts', content: 'export function make(src: string) {\n  return Function(src);\n}\n' },
+    { path: 'lib/builder.ts', content: 'export function build(src: string) {\n  return new Function(src);\n}\n' },
+    { path: 'lib/reflection.ts', content: 'export function lookup(name: string) {\n  return getFunction(name);\n}\n' },
+  ]);
+  const flaggedPaths = data.securityIssues
+    .filter((i) => i.title === 'Function Constructor')
+    .map((i) => i.path);
+
+  assert.equal(flaggedPaths.includes('lib/factory.ts'), true);
+  assert.equal(flaggedPaths.includes('lib/builder.ts'), true);
+  assert.equal(flaggedPaths.includes('lib/reflection.ts'), false);
+});
+
 test('Debug Statements rule downgrades server-only code, keeps client code at low', async () => {
   const data = await analyzeFixture('security-precision-world');
   const serverIssue = data.securityIssues.find((i) => i.title === 'Debug Statements' && i.path === 'server/logger.ts');
