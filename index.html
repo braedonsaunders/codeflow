@@ -1487,7 +1487,7 @@ const Parser={
             if(!scanContent)return;
             var lines=scanContent.split('\n');
             lines.forEach(function(line,idx){
-                if(!isNonProductionPath(f.path)&&line.match(/(?:password|passwd|pwd|secret|api_key|apikey|token|auth)\s*[=:]\s*['"][^'"]{4,}['"]/i)&&!line.includes('process.env')&&!line.includes('config.')){
+                if(!isSecretScanExemptPath(f.path)&&line.match(/(?:password|passwd|pwd|secret|api_key|apikey|token|auth)\s*[=:]\s*['"][^'"]{4,}['"]/i)&&!line.includes('process.env')&&!line.includes('config.')){
                     issues.push({severity:'high',title:'Hardcoded Secret',file:f.name,path:f.path,line:idx+1,desc:'Credentials should never be hardcoded. Use environment variables or a secrets manager.',code:line.trim().substring(0,80)});
                 }
             });
@@ -3316,15 +3316,36 @@ function isArchitectureFixtureFile(path){
     return /(^|\/)fixtures(\/|$)/.test(p)||/(^|\/)__fixtures__(\/|$)/.test(p);
 }
 
-function isNonProductionPath(path){
+function isDocumentationPath(path){
     var p=String(path||'').toLowerCase().replace(/\\/g,'/');
-    if(isArchitectureTestFile(p))return true;
-    if(isArchitectureFixtureFile(p))return true;
+    if(/(^|\/)docs?(\/|$)/.test(p))return true;
+    if(/\.(md|markdown|mdx)$/.test(p))return true;
+    return false;
+}
+
+function isDevToolingPath(path){
+    var p=String(path||'').toLowerCase().replace(/\\/g,'/');
     if(/(^|\/)\.github(\/|$)/.test(p))return true;
     if(/(^|\/)\.claude(\/|$)/.test(p))return true;
     if(/(^|\/)(scripts|tools|tooling)(\/|$)/.test(p))return true;
-    if(/(^|\/)docs?(\/|$)/.test(p))return true;
-    if(/\.(md|markdown|mdx)$/.test(p))return true;
+    return false;
+}
+
+// Secrets are dangerous wherever the code executes — CI workflows, hooks and
+// deploy scripts included — so the Hardcoded Secret rule exempts only
+// tests/fixtures (stub credentials) and docs (examples), NOT dev tooling.
+function isSecretScanExemptPath(path){
+    var p=String(path||'').toLowerCase().replace(/\\/g,'/');
+    if(isArchitectureTestFile(p))return true;
+    if(isArchitectureFixtureFile(p))return true;
+    if(isDocumentationPath(p))return true;
+    return false;
+}
+
+function isNonProductionPath(path){
+    var p=String(path||'').toLowerCase().replace(/\\/g,'/');
+    if(isSecretScanExemptPath(p))return true;
+    if(isDevToolingPath(p))return true;
     return false;
 }
 

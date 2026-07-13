@@ -148,6 +148,26 @@ test('Hardcoded Secret rule excludes test stubs, keeps real hits', async () => {
   assert.equal(flaggedPaths.includes('lib/auth.ts'), true);
 });
 
+test('Hardcoded Secret rule still applies to executable infrastructure paths', async () => {
+  // Fixture lines are assembled at runtime so this test file never contains a
+  // literal credential-shaped string (fake values only, for the analyzer regex).
+  const credentialLine = (keyword, fakeValue) => `${keyword} = "${fakeValue}"\n`;
+  const data = await analyzeSyntheticFiles([
+    { path: '.github/workflows/notify.js', content: `const ${credentialLine('api_key', 'fake-ci-value-1234')}` },
+    { path: '.claude/hooks/session-start.py', content: credentialLine('password', 'fake-hook-value-1234') },
+    { path: 'scripts/provision.py', content: credentialLine('token', 'fake-script-value-1234') },
+    { path: 'docs/setup.md', content: credentialLine('password', 'fake-doc-value-1234') },
+  ]);
+  const flaggedPaths = data.securityIssues
+    .filter((i) => i.title === 'Hardcoded Secret')
+    .map((i) => i.path);
+
+  assert.equal(flaggedPaths.includes('.github/workflows/notify.js'), true);
+  assert.equal(flaggedPaths.includes('.claude/hooks/session-start.py'), true);
+  assert.equal(flaggedPaths.includes('scripts/provision.py'), true);
+  assert.equal(flaggedPaths.includes('docs/setup.md'), false);
+});
+
 test('Shell Injection Risk rule excludes dev tooling, keeps real hits', async () => {
   const data = await analyzeFixture('security-precision-world');
   const flaggedPaths = data.securityIssues
