@@ -1265,7 +1265,6 @@ const Parser={
         // Use structural hash that captures the essence of the code
         var codeGroups=Object.create(null);
         allFns.forEach(function(fn){
-            if(isNonProductionPath(fn.file))return;
             if(!fn.code||fn.code.length<80)return;  // Skip very short functions
 
             // Create a structural fingerprint

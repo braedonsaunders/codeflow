@@ -264,3 +264,28 @@ test('XSS Vulnerability rule excludes dangerouslySetInnerHTML in non-production 
   assert.equal(flaggedPaths.includes('preview-guard.md'), false);
   assert.equal(flaggedPaths.includes('app/profile-card.tsx'), true);
 });
+
+test('Duplicate code: structural duplicates are still detected across non-production paths', async () => {
+  const duplicateFn = [
+    'function processDataAlpha(items){',
+    '    var result=[];',
+    '    for(var i=0;i<items.length;i++){',
+    '        if(items[i]>0){',
+    '            result.push(items[i]*2);',
+    '        }',
+    '    }',
+    '    return result;',
+    '}',
+    '',
+  ].join('\n');
+  const data = await analyzeSyntheticFiles([
+    { path: 'tests/helpers/a.ts', content: duplicateFn },
+    { path: 'tools/b.ts', content: duplicateFn.replace('processDataAlpha', 'processDataBeta') },
+  ]);
+
+  const codeDup = data.duplicates.find(
+    (d) => d.type === 'code' && d.files.some((f) => f.file === 'tests/helpers/a.ts') && d.files.some((f) => f.file === 'tools/b.ts')
+  );
+
+  assert.notEqual(codeDup, undefined);
+});
