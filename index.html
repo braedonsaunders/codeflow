@@ -170,6 +170,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .security-item.high{background:linear-gradient(180deg,rgba(255,95,95,0.08) 0%,var(--bg0) 55%);border-color:rgba(255,95,95,0.36)}
 .security-item.medium{background:linear-gradient(180deg,rgba(255,159,67,0.08) 0%,var(--bg0) 55%);border-color:rgba(255,159,67,0.34)}
 .security-item.low{background:linear-gradient(180deg,rgba(77,159,255,0.08) 0%,var(--bg0) 55%);border-color:rgba(77,159,255,0.34)}
+.security-item.info{background:linear-gradient(180deg,rgba(92,92,102,0.08) 0%,var(--bg0) 55%);border-color:rgba(92,92,102,0.34)}
 .security-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .security-title{font-size:11px;color:var(--t0);font-weight:500}
 .security-desc{font-size:10px;color:var(--t2);margin-bottom:6px;line-height:1.4}
@@ -1209,12 +1210,17 @@ const Parser={
             // Angular lifecycle
             'ngOnInit','ngOnDestroy','ngOnChanges','ngAfterViewInit',
             // Svelte
-            'onMount','onDestroy'
+            'onMount','onDestroy',
+            // Next.js App Router route-handler & metadata exports (framework-mandated names)
+            'GET','POST','PUT','DELETE','PATCH','HEAD','OPTIONS',
+            'generateMetadata','generateStaticParams','generateImageMetadata','generateSitemaps','middleware'
         ]);
 
         // Group functions by name (excluding common names)
         var fnByName=Object.create(null);
         allFns.forEach(function(fn){
+            // Skip functions outside shipped product code (tests, fixtures, tooling, docs)
+            if(isNonProductionPath(fn.file))return;
             // Skip non-string names (e.g. numeric object-literal keys from the JS AST walker)
             if(typeof fn.name!=='string')return;
             // Skip common/idiomatic names
@@ -1489,41 +1495,61 @@ const Parser={
             if(!scanContent)return;
             var lines=scanContent.split('\n');
             lines.forEach(function(line,idx){
-                if(line.match(/(?:password|passwd|pwd|secret|api_key|apikey|token|auth)\s*[=:]\s*['"][^'"]{4,}['"]/i)&&!line.includes('process.env')&&!line.includes('config.')){
+                if(!isSecretScanExemptPath(f.path)&&line.match(/(?:password|passwd|pwd|secret|api_key|apikey|token|auth)\s*[=:]\s*['"][^'"]{4,}['"]/i)&&!line.includes('process.env')&&!line.includes('config.')){
                     issues.push({severity:'high',title:'Hardcoded Secret',file:f.name,path:f.path,line:idx+1,desc:'Credentials should never be hardcoded. Use environment variables or a secrets manager.',code:line.trim().substring(0,80)});
                 }
             });
-            if(scanContent.match(/query\s*\(\s*['"`][^'"`]*\s*\+/)||scanContent.match(/execute\s*\(\s*['"`][^'"`]*\$\{/)||scanContent.match(/\$\{.*\}.*(?:SELECT|INSERT|UPDATE|DELETE)/i)){
+            var hasSqlConcat=scanContent.match(/query\s*\(\s*['"`][^'"`]*\s*\+/)||scanContent.match(/execute\s*\(\s*['"`][^'"`]*\$\{/);
+            var dbCallRegex=/\b(?:query|execute|raw)\s*\(([^)]*)\)/gi;
+            var hasSqlTemplateInjection=false;
+            var dbCall;
+            while((dbCall=dbCallRegex.exec(scanContent))!==null){
+                if(/\$\{/.test(dbCall[1])&&/(?:SELECT|INSERT|UPDATE|DELETE)/i.test(dbCall[1])){hasSqlTemplateInjection=true;break;}
+            }
+            if(f.isCode&&(hasSqlConcat||hasSqlTemplateInjection)){
                 var m=scanContent.match(/.*(query|execute|SELECT|INSERT|UPDATE|DELETE).*(\+|\$\{).*/i);
                 issues.push({severity:'high',title:'SQL Injection Risk',file:f.name,path:f.path,desc:'String concatenation in SQL queries. Use parameterized queries instead.',code:m?m[0].trim().substring(0,80):''});
             }
             var hasInnerHtmlAssignment=scanContent.match(/innerHTML\s*=/);
             var hasDangerousHtmlRender=scanContent.match(/dangerouslySetInnerHTML/);
             var isSafePreviewRender=!hasInnerHtmlAssignment&&hasDangerousHtmlRender&&isSanitizedPreviewRenderer(f.content||'');
-            if((hasInnerHtmlAssignment||hasDangerousHtmlRender)&&!isSafePreviewRender){
+            var htmlValueRegex=/dangerouslySetInnerHTML\s*[:=]\s*\{\{?\s*__html\s*:\s*([^}]+)\}/g;
+            var allHtmlValuesLiteral=true;
+            var foundHtmlValue=false;
+            var htmlMatch;
+            while((htmlMatch=htmlValueRegex.exec(scanContent))!==null){
+                foundHtmlValue=true;
+                if(!/^(['"`])(?:(?!\1)[\s\S])*\1$/.test(htmlMatch[1].trim())){
+                    allHtmlValuesLiteral=false;
+                }
+            }
+            var isSafeStaticHtml=!hasInnerHtmlAssignment&&hasDangerousHtmlRender&&foundHtmlValue&&allHtmlValuesLiteral;
+            if(!isNonProductionPath(f.path)&&(hasInnerHtmlAssignment||hasDangerousHtmlRender)&&!isSafePreviewRender&&!isSafeStaticHtml){
                 issues.push({severity:'high',title:'XSS Vulnerability',file:f.name,path:f.path,desc:'Direct HTML injection can lead to XSS attacks. Sanitize user input.',code:''});
             }
             if(scanContent.includes('eval(')){
                 var evalLine=lines.findIndex(function(l){return l.includes('eval(');});
                 issues.push({severity:'medium',title:'Dynamic Code Execution',file:f.name,path:f.path,line:evalLine+1,desc:'eval() executes arbitrary code. Avoid if possible or validate input strictly.',code:evalLine>=0?lines[evalLine].trim().substring(0,80):''});
             }
-            if(scanContent.includes('Function(')||scanContent.match(/new\s+Function\s*\(/)){
+            if(scanContent.match(/\b(?:new\s+)?Function\s*\(/)){
                 issues.push({severity:'medium',title:'Function Constructor',file:f.name,path:f.path,desc:'Function constructor is similar to eval(). Consider alternatives.',code:''});
             }
-            if(scanContent.match(/\.exec\s*\(/)||scanContent.match(/child_process/)){
+            var execMatch=scanContent.match(/(?:child_process|cp)\.\w*[Ee]xec\w*\s*\(/)||scanContent.match(/require\(\s*['"](?:node:)?child_process['"]\s*\)/)||scanContent.match(/from\s+['"](?:node:)?child_process['"]/);
+            if(!isNonProductionPath(f.path)&&execMatch){
                 issues.push({severity:'medium',title:'Command Execution',file:f.name,path:f.path,desc:'Shell command execution detected. Ensure input is sanitized to prevent injection.',code:''});
             }
             if(scanContent.match(/console\.(log|debug|info)\(/)){
                 var consoleCount=(scanContent.match(/console\.(log|debug|info)\(/g)||[]).length;
                 if(consoleCount>3){
-                    issues.push({severity:'low',title:'Debug Statements',file:f.name,path:f.path,desc:consoleCount+' console statements found. Remove before production.',code:''});
+                    var debugSeverity=isArchitectureBackendPath(f.path)?'info':'low';
+                    issues.push({severity:debugSeverity,title:'Debug Statements',file:f.name,path:f.path,desc:consoleCount+' console statements found. Remove before production.',code:''});
                 }
             }
             // VBA-specific security checks
             if(scanContent.match(/SendKeys\s*\(/i)){
                 issues.push({severity:'high',title:'SendKeys Usage',file:f.name,path:f.path,desc:'SendKeys can be exploited for code injection. Avoid using SendKeys.',code:''});
             }
-            if(scanContent.match(/Shell\s*\(/i)){
+            if(!isNonProductionPath(f.path)&&scanContent.match(/Shell\s*\(/i)){
                 issues.push({severity:'high',title:'Shell Command Execution',file:f.name,path:f.path,desc:'Shell() executes system commands. Ensure input is validated.',code:''});
             }
             if(scanContent.match(/CreateObject\s*\(\s*["']WScript\.Shell["']/i)){
@@ -1559,7 +1585,7 @@ const Parser={
                     issues.push({severity:'high',title:'Pickle Deserialization',file:f.name,path:f.path,desc:'pickle.load() can execute arbitrary code from untrusted data. Use JSON or safe alternatives.',code:''});
                 }
                 // subprocess with shell=True
-                if(scanContent.match(/subprocess\.\w+\([^)]*shell\s*=\s*True/)){
+                if(!isNonProductionPath(f.path)&&scanContent.match(/subprocess\.\w+\([^)]*shell\s*=\s*True/)){
                     issues.push({severity:'high',title:'Shell Injection Risk',file:f.name,path:f.path,desc:'subprocess with shell=True is vulnerable to command injection. Use shell=False with a list of args.',code:''});
                 }
                 // os.system / os.popen - command injection
@@ -1589,7 +1615,7 @@ const Parser={
                 }
             }
         });
-        return issues.sort(function(a,b){var sev={high:0,medium:1,low:2};return sev[a.severity]-sev[b.severity];});
+        return issues.sort(function(a,b){var sev={high:0,medium:1,low:2,info:3};return sev[a.severity]-sev[b.severity];});
     },
     // AST-based function extraction - accurate detection without false positives
     extract:function(content,filename){
@@ -3296,6 +3322,39 @@ function isArchitectureTestFile(path){
 function isArchitectureFixtureFile(path){
     var p=String(path||'').toLowerCase().replace(/\\/g,'/');
     return /(^|\/)fixtures(\/|$)/.test(p)||/(^|\/)__fixtures__(\/|$)/.test(p);
+}
+
+function isDocumentationPath(path){
+    var p=String(path||'').toLowerCase().replace(/\\/g,'/');
+    if(/(^|\/)docs?(\/|$)/.test(p))return true;
+    if(/\.(md|markdown|mdx)$/.test(p))return true;
+    return false;
+}
+
+function isDevToolingPath(path){
+    var p=String(path||'').toLowerCase().replace(/\\/g,'/');
+    if(/(^|\/)\.github(\/|$)/.test(p))return true;
+    if(/(^|\/)\.claude(\/|$)/.test(p))return true;
+    if(/(^|\/)(scripts|tools|tooling)(\/|$)/.test(p))return true;
+    return false;
+}
+
+// Secrets are dangerous wherever the code executes — CI workflows, hooks and
+// deploy scripts included — so the Hardcoded Secret rule exempts only
+// tests/fixtures (stub credentials) and docs (examples), NOT dev tooling.
+function isSecretScanExemptPath(path){
+    var p=String(path||'').toLowerCase().replace(/\\/g,'/');
+    if(isArchitectureTestFile(p))return true;
+    if(isArchitectureFixtureFile(p))return true;
+    if(isDocumentationPath(p))return true;
+    return false;
+}
+
+function isNonProductionPath(path){
+    var p=String(path||'').toLowerCase().replace(/\\/g,'/');
+    if(isSecretScanExemptPath(p))return true;
+    if(isDevToolingPath(p))return true;
+    return false;
 }
 
 function isArchitectureBarrelIndex(path){
@@ -5352,7 +5411,7 @@ function iconLabel(name,label,size,className){
 }
 
 function getSeverityColor(level){
-    return level==='critical'||level==='high'?'var(--red)':level==='medium'?'var(--orange)':'var(--blue)';
+    return level==='critical'||level==='high'?'var(--red)':level==='medium'?'var(--orange)':level==='info'?'var(--t3)':'var(--blue)';
 }
 
 function getFilePreviewIconName(filename){
@@ -8732,7 +8791,8 @@ function App(){
                                 React.createElement('div',{style:{display:'flex',gap:8,marginBottom:12}},
                                     React.createElement('div',{className:'badge badge-danger'},data.securityIssues.filter(function(i){return i.severity==='high';}).length,' High'),
                                     React.createElement('div',{className:'badge badge-warning'},data.securityIssues.filter(function(i){return i.severity==='medium';}).length,' Medium'),
-                                    React.createElement('div',{className:'badge badge-info'},data.securityIssues.filter(function(i){return i.severity==='low';}).length,' Low')
+                                    React.createElement('div',{className:'badge badge-info'},data.securityIssues.filter(function(i){return i.severity==='low';}).length,' Low'),
+                                    React.createElement('div',{className:'badge badge-default'},data.securityIssues.filter(function(i){return i.severity==='info';}).length,' Info')
                                 ),
                                 data.securityIssues.map(function(issue,i){return React.createElement('div',{key:i,className:'security-item '+issue.severity,style:{cursor:'pointer'},onClick:function(){setDrillDown({type:'security',data:issue});}},
                                     React.createElement('div',{className:'security-header'},
@@ -9063,7 +9123,9 @@ function App(){
                             ? getAccentBlockStyle('rgba(255,95,95,0.36)','rgba(255,95,95,0.1)',{padding:12,marginBottom:16})
                             : drillDown.data.severity==='medium'
                                 ? getAccentBlockStyle('rgba(255,159,67,0.34)','rgba(255,180,100,0.1)',{padding:12,marginBottom:16})
-                                : getAccentBlockStyle('rgba(77,159,255,0.34)','rgba(100,180,255,0.1)',{padding:12,marginBottom:16})},
+                                : drillDown.data.severity==='info'
+                                    ? getAccentBlockStyle('rgba(92,92,102,0.34)','rgba(92,92,102,0.1)',{padding:12,marginBottom:16})
+                                    : getAccentBlockStyle('rgba(77,159,255,0.34)','rgba(100,180,255,0.1)',{padding:12,marginBottom:16})},
                             React.createElement('div',{style:{fontSize:11,fontWeight:600,marginBottom:4}},drillDown.data.severity.toUpperCase()+' Severity'),
                             React.createElement('div',{style:{fontSize:11,color:'var(--t2)'}},drillDown.data.desc)
                         ),
