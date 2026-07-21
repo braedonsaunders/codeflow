@@ -22,7 +22,7 @@ preserved it rather than assert it.
 | Serve the production build (added Commit 2, expanded Commits 5-6) | `npm run start` (or `node server/index.js`) — serves `dist/` plus `/healthz`, `/readyz` (public, no auth), `POST /api/analyze`, `POST /api/analyze-repo` (both require `Authorization: Bearer <AUTH_TOKEN>`); **required** env vars `AUTH_TOKEN`, `GITHUB_TOKEN`, and at least one of `ALLOWED_REPOS`/`ALLOWED_OWNERS` (comma-separated) — the server now fails fast at startup if any are missing, same fail-fast principle as the pre-existing `dist/index.html`/`PORT`/workspace-writability checks; optional: `PORT` (default `3000`), `WORKSPACE_ROOT` (default `<tmpdir>/codeflow-workspaces`), `NODE_ENV`, `RATE_LIMIT_PER_MINUTE` (default `30`), `MAX_REQUEST_BODY_BYTES` (default `16384`), `MAX_REPO_FILES` (default `500`) |
 | Run the server integration smoke suite (added Commit 5, expanded Commit 6) | `node tests/server-smoke.mjs` — needs `dist/` built first, and a real GitHub credential via `gh auth login` (extracts it with `gh auth token` to verify the GitHub-backed path against real repos, not a mock); spawns the real server on an isolated port/workspace root, not part of `node --test tests/*.test.mjs` for the same reason `codeflow-repo-smoke.mjs`/`ui-smoke.mjs` aren't |
 | Run the browser UI smoke suite against a server (Commit 4A, now requires Commit 6 env vars too) | `AUTH_TOKEN=x GITHUB_TOKEN=x ALLOWED_OWNERS=x node server/index.js` then `node tests/ui-smoke.mjs [url]` — the values don't need to be real for this suite specifically, since it only drives the local-folder (client-side-only) flow, never the server's `/api/*` endpoints; the server just needs to *start*, which now requires these to be set to anything non-empty |
-| Run the full test suite | `node --test tests/*.test.mjs` (105 tests as of Commit 6; `node --test tests/` alone fails — Node's directory-mode test discovery does not pick up this repo's flat `tests/*.test.mjs` layout) |
+| Run the full test suite | `node --test tests/*.test.mjs` (126 tests as of the PR #1 review fixups; `node --test tests/` alone fails — Node's directory-mode test discovery does not pick up this repo's flat `tests/*.test.mjs` layout) |
 | Run the analyzer against an arbitrary repo | `node tests/codeflow-repo-smoke.mjs [--json] [--limit=<files>] <repo-dir>...` |
 | Run the GitHub Action analyzer locally | `cd card && node index.js` — writes `.github/codeflow-card.svg` and `.github/codeflow-card.json` **relative to `card/`** when `GITHUB_WORKSPACE` is unset (it falls back to `process.cwd()`); do not run this from the repo root without setting `GITHUB_WORKSPACE`, or it will analyze `card/` itself and leave stray output there |
 | `card/` package script | `npm run dry-run` from `card/` (alias for `node index.js`) |
@@ -657,6 +657,68 @@ all; this only changes *which* repos a valid caller can point it at.
 Redeployed and verified live: `octocat/Hello-World` (previously blocked)
 now analyzes successfully, and `OwenTanzer/CodeVisualizer` (the original
 narrower allowlist entry) still works too.
+
+## PR #1 review fixups
+
+Four review comments came back on the pull request for all of MOO-67
+(https://github.com/OwenTanzer/codeflow/pull/1). All four addressed:
+
+1. **Repository byte limits, not just file-count limits.** `MAX_REPO_FILES`
+   capped file *count* but not byte size — the GitHub-backed path fetched
+   every accepted blob into memory and held it resident before analysis.
+   That mattered less while repositories were tightly allowlisted; the
+   wildcard follow-up above means any authenticated caller can point the
+   server at any public repo, and a repo with a few hundred enormous blobs
+   could exhaust memory despite staying under `MAX_REPO_FILES`. Added
+   `MAX_FILE_BYTES` (default 1MB) and `MAX_REPO_BYTES` (default 25MB).
+   GitHub's tree API already reports each blob's size, so oversized files
+   are rejected **before any content is fetched/decoded** — exactly the
+   reviewer's suggestion. Individually-oversized files are *skipped*
+   (excluded from analysis, same treatment as an ignored directory) rather
+   than failing the whole request; the aggregate is a hard cap instead,
+   since that's the actual memory-exhaustion risk. Refactored the
+   selection logic out of `fetchTree()` into a pure, exported
+   `selectAnalyzableFiles()` (`server/lib/github-analyzer-bridge.js`)
+   specifically so this could be unit-tested against synthetic tree data
+   (`tests/server-github-bridge.test.mjs`, 7 tests) instead of only being
+   reachable through a real GitHub round-trip.
+2. **Local-path symlink containment claim was false.** `resolveWithinRepo()`
+   (`server/routes/analyze.js`) did lexical path-traversal checking only,
+   but its own comment claimed it rejected symlinks — it didn't call
+   `realpath()`, so a symlink sitting lexically inside the repo while
+   pointing elsewhere would sail through un-rejected. Fixed by resolving
+   both the repo root and the requested target through `realpath()` and
+   checking containment on the *resolved* paths (what `cp()` actually
+   reads from), rejecting a nonexistent path — including a broken symlink
+   — as invalid input rather than a 500. Verified with real filesystem
+   junctions (Windows equivalent of a symlink that doesn't require
+   elevated privileges), not just a claim: `tests/server-analyze-path.test.mjs`
+   creates an actual junction pointing outside a temp repo root and
+   confirms it's rejected, and a second junction pointing to another
+   location *inside* the root and confirms that one is accepted — proving
+   the fix distinguishes the two cases rather than just rejecting
+   everything.
+3. **Request-body limit was inconsistent between the two endpoints.**
+   `/api/analyze-repo` bounded its body via `MAX_REQUEST_BODY_BYTES`;
+   `/api/analyze` buffered the whole request unbounded, despite both being
+   publicly addressable behind the same bearer-token gate. Extracted one
+   shared `readJsonBody()` (`server/lib/http-body.js`, 5 unit tests in
+   `tests/server-http-body.test.mjs`) both routes now use, rather than
+   maintaining two subtly different parsers.
+4. **No CI status checks.** Explicitly flagged as non-blocking by the
+   reviewer, but easy enough to close out now rather than defer: added
+   `.github/workflows/test.yml` running `npm ci && npm run build && node --test tests/*.test.mjs`
+   on push/PR to `main`. Deliberately scoped to the credential-free, no-
+   real-network unit/integration suite — `tests/ui-smoke.mjs` (needs a
+   Playwright browser) and `tests/server-smoke.mjs` (needs a real GitHub
+   token) stay manual-precondition scripts for now, consistent with how
+   they're already documented above; wiring those into CI too is a
+   reasonable separate follow-up, not bundled into this fixup.
+
+**Checks:** full suite 126/126 (up from 107 — 19 new tests across the four
+fixups). Clean build. `tests/server-smoke.mjs` re-verified against real
+GitHub data (17/17) to confirm none of these changes broke the existing
+happy paths.
 
 ## Baseline snapshot mechanism
 
