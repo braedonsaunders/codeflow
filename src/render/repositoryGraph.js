@@ -1,4 +1,4 @@
-// Repository graph (2D D3 force layout) renderer — MOO-67 Commit 4B.
+// Repository graph (2D D3 force layout) renderer — MOO-67 Commits 4B/4E.
 //
 // Mechanically extracted from index.html's App() component (the useEffect
 // that rebuilt the D3 force graph on [data,colorMap,colorMode,theme,
@@ -12,6 +12,16 @@
 // to Issues" button) read these refs directly and are unaffected by this
 // extraction, since it's the same ref objects being populated, not new
 // ones.
+//
+// Commit 4E adds one small new thing rather than just parameterizing
+// existing code: a double-click ("activate") handler alongside the
+// existing single-click ("select") one, wired to activateFileRef —
+// existing node identity only (the same `d.id` selectFileRef already
+// gets), deliberately a no-op by default (see App()'s
+// activateFileRef.current). Real drill-down semantics belong to MOO-68;
+// this only establishes that a later commit has an obvious seam to wire
+// into, per Commit 4's governing decision not to encode navigation policy
+// ahead of MOO-68.
 //
 // `d3` is read as an ambient global (window.d3, set by the CDN UMD bundle
 // index.html already loads) rather than imported — same pattern
@@ -33,7 +43,8 @@
  * @param {{current: any}} options.simRef
  * @param {{current: any}} options.linksRef
  * @param {{current: any}} options.nodesRef
- * @param {{current: (id: string) => void}} options.selectFileRef
+ * @param {{current: (id: string) => void}} options.selectFileRef - single-click ("node-select")
+ * @param {{current: (id: string) => void}} options.activateFileRef - double-click ("node-activate"); no-op until MOO-68
  * @param {(info: {x:number,y:number,title:string,content:string}|null) => void} options.onHover
  * @param {() => void} options.onBackgroundClick - fires on empty-canvas click; caller clears selection/blast-radius state
  * @returns {() => void} cleanup function (stops the force simulation)
@@ -42,7 +53,7 @@ export function renderRepositoryGraph(options) {
   const {
     svgEl, data, colorMap, colorMode, theme, folderFilter, graphConfig,
     COLORS, LAYER_COLORS,
-    zoomRef, simRef, linksRef, nodesRef, selectFileRef,
+    zoomRef, simRef, linksRef, nodesRef, selectFileRef, activateFileRef,
     onHover, onBackgroundClick,
   } = options;
 
@@ -154,6 +165,7 @@ export function renderRepositoryGraph(options) {
         nodesRef.current=node;
         node.call(d3.drag().on('start',function(e,d){if(!e.active)sim.alphaTarget(0.1).restart();d.fx=d.x;d.fy=d.y;}).on('drag',function(e,d){d.fx=e.x;d.fy=e.y;}).on('end',function(e,d){if(!e.active)sim.alphaTarget(0);d.fx=null;d.fy=null;}));
         node.on('click',function(e,d){e.stopPropagation();if(selectFileRef.current)selectFileRef.current(d.id);});
+        node.on('dblclick',function(e,d){e.stopPropagation();if(activateFileRef&&activateFileRef.current)activateFileRef.current(d.id);});
         node.on('mouseenter',function(e,d){var r=svgEl.getBoundingClientRect();onHover({x:e.clientX-r.left+10,y:e.clientY-r.top,title:d.name,content:d.fnCount+' functions\n'+d.layer+' layer\n'+d.churn+' recent commits'});}).on('mouseleave',function(){onHover(null);});
         svg.on('click',function(e){if(e.target===svgEl){onBackgroundClick();link.attr('stroke',theme==='light'?'#ccc':'#333').attr('stroke-opacity',0.4);node.selectAll('.nc').attr('opacity',1).attr('fill',getC);}});
         node.append('circle').attr('class','nc').attr('r',getR).attr('fill',getC).attr('stroke',function(d){var c=d3.color(getC(d));return c?c.brighter(0.3):'#fff';}).attr('stroke-width',1.5);

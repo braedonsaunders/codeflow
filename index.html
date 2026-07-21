@@ -1264,6 +1264,11 @@ function App(){
     var nodesRef=useRef(null);
     var linksRef=useRef(null);
     var selectFileRef=useRef(null);
+    // MOO-67 Commit 4E: neutral "node-activate" (double-click) seam. A
+    // no-op until MOO-68 defines real drill-down semantics -- deliberately
+    // not wired to anything yet, per Commit 4's governing decision not to
+    // encode navigation policy ahead of MOO-68.
+    var activateFileRef=useRef(function(){});
     var zipInputRef=useRef(null);
     var zipArchiveRef=useRef(null);
     var zipFileRef=useRef(null);
@@ -2283,7 +2288,7 @@ function App(){
         return renderRepositoryGraph({
             svgEl:svgRef.current,data,colorMap,colorMode,theme,folderFilter,graphConfig,
             COLORS,LAYER_COLORS,
-            zoomRef,simRef,linksRef,nodesRef,selectFileRef,
+            zoomRef,simRef,linksRef,nodesRef,selectFileRef,activateFileRef,
             onHover:setTooltip,
             onBackgroundClick:function(){setSelected(null);setBlastRadius(null);}
         });

@@ -1,4 +1,4 @@
-# CodeFlow baseline (MOO-67, Commits 1-4D)
+# CodeFlow baseline (MOO-67, Commits 1-4E — Commit 4 complete)
 
 This document is the regression-protection reference point for the Code
 Reality Layer construction work (MOO-66 and its sub-issues). It records what
@@ -292,6 +292,31 @@ separately with an ad hoc Playwright probe calling
 `window.writeRepoRoute`/`window.clearRoute` directly and asserting
 `window.location.search` changed correctly both ways — zero console
 errors. Full suite unaffected (70/70 total, 62 pre-existing + 8 new).
+
+### Commit 4E — generic node-select/node-activate interaction seam
+
+Unlike 4B/4C/4D, this one adds something genuinely new rather than just
+parameterizing/relocating existing code: a `dblclick` handler on graph
+nodes in `src/render/repositoryGraph.js`, alongside the existing `click`
+handler, using the same node identity (`d.id`) the click handler already
+uses. Wired to a new `activateFileRef` (React ref, same pattern as
+`selectFileRef`), which `App()` initializes to a no-op
+(`useRef(function(){})`) and does not wire to anything else — per Commit
+4's governing decision not to encode navigation policy ahead of MOO-68,
+and the checklist's explicit allowance that `node-activate` "may remain
+unused or resolve to a no-op in MOO-67."
+
+This gives MOO-68 an obvious, already-wired seam (swap `activateFileRef`'s
+no-op for a real drill-down dispatch) instead of needing to touch the
+renderer again to add double-click handling from scratch.
+
+**Checks:** `tests/ui-smoke.mjs` 6/6 against a production build (single-
+click selection, the behavior 4E must not disturb, still passes). Beyond
+that, an ad hoc Playwright probe specifically double-clicked a node (no
+crash — the no-op default absorbs it cleanly) and then single-clicked the
+same node again (still selects correctly, proving the new handler didn't
+corrupt event wiring or leave stray state behind). Full Node suite
+unaffected (70/70 — this only touches browser rendering).
 
 ## Baseline snapshot mechanism
 
