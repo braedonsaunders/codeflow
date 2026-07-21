@@ -577,7 +577,7 @@ deployment metadata after redeploying with this file present
 |---|---|---|
 | `AUTH_TOKEN` | a generated 32-byte random secret (base64url) | **Not recorded in this repo or in Linear** — given directly to the operator in conversation when set. Rotate via `railway variable set AUTH_TOKEN=<new value>` (triggers a redeploy by default; add `--skip-deploys` to stage it and roll out separately) whenever it may have been exposed. |
 | `GITHUB_TOKEN` | the operator's existing `gh auth token` PAT | Same credential already used locally throughout Commits 5-6's verification — reused per the decision recorded in the MOO-67 environment-setup comment, not a new credential. |
-| `ALLOWED_OWNERS` | `OwenTanzer` | **A judgment call made during deployment, not an explicit prior decision** — set to the operator's own GitHub account so the deployed instance can analyze their own repos. Change anytime with `railway variable set ALLOWED_OWNERS=...` or add `ALLOWED_REPOS` for narrower per-repo scoping. |
+| `ALLOWED_OWNERS` | `*` (wildcard — any owner) | Started as `OwenTanzer` only (a judgment call made at initial deployment); widened to the wildcard on request, to analyze other users' repos too. `server/lib/allowlist.js` treats `*` as an explicit "any owner" opt-in, not the default — the auth token remains the actual gate on who can reach the endpoint at all; the allowlist only restricts *which* repos a valid caller can point it at, and this setting says "don't restrict that." Change anytime with `railway variable set ALLOWED_OWNERS=...`, or add `ALLOWED_REPOS` for narrower per-repo scoping instead of the wildcard. |
 | `NODE_ENV` | `production` | |
 | `PORT` | *(not set)* | Railway injects its own `PORT`; `server/lib/config.js` already reads `process.env.PORT` with a fallback, so this needed no change. |
 
@@ -643,6 +643,20 @@ Not doing this now — MOO-66/MOO-67 explicitly scope the DNS/Hub cutover to
 MOO-72, after all layers (repository/file/function views) are actually
 operational. This is intentionally just the recorded procedure, not a
 blocker for MOO-68 to begin.
+
+### Post-deployment update — allowlist widened to any owner
+
+Requested after the initial deploy: analyze other users' repos too, not
+just the operator's own. Added a `*` wildcard to
+`server/lib/allowlist.js`'s owner check (2 new unit tests in
+`tests/server-auth.test.mjs` covering it) rather than piling on individual
+owner names — `ALLOWED_OWNERS=*` is an explicit "any owner" opt-in
+recognized by the code, not a magic value that happened to work. The auth
+token is still the operative gate on who can reach `/api/analyze-repo` at
+all; this only changes *which* repos a valid caller can point it at.
+Redeployed and verified live: `octocat/Hello-World` (previously blocked)
+now analyzes successfully, and `OwenTanzer/CodeVisualizer` (the original
+narrower allowlist entry) still works too.
 
 ## Baseline snapshot mechanism
 

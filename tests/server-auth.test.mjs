@@ -39,6 +39,18 @@ test('isRepoAllowed matches any repo under an allowed owner', () => {
   assert.equal(isRepoAllowed('someone-else', 'anything', config), false);
 });
 
+test('isRepoAllowed allows any owner/repo when ALLOWED_OWNERS contains the "*" wildcard', () => {
+  const config = { allowedRepos: [], allowedOwners: ['*'] };
+  assert.equal(isRepoAllowed('octocat', 'Hello-World', config), true);
+  assert.equal(isRepoAllowed('torvalds', 'linux', config), true);
+  assert.equal(isRepoAllowed('anyone-at-all', 'any-repo', config), true);
+});
+
+test('isRepoAllowed treats the wildcard as just one more owner entry, not exclusive', () => {
+  const config = { allowedRepos: [], allowedOwners: ['octocat', '*'] };
+  assert.equal(isRepoAllowed('someone-else', 'anything', config), true);
+});
+
 test('RateLimiter allows up to the configured limit within a window, then rejects', () => {
   const limiter = new RateLimiter(3);
   assert.equal(limiter.check('client-a').allowed, true);
