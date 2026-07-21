@@ -22,7 +22,7 @@ preserved it rather than assert it.
 | Serve the production build (added Commit 2, expanded Commits 5-6) | `npm run start` (or `node server/index.js`) — serves `dist/` plus `/healthz`, `/readyz` (public, no auth), `POST /api/analyze`, `POST /api/analyze-repo` (both require `Authorization: Bearer <AUTH_TOKEN>`); **required** env vars `AUTH_TOKEN`, `GITHUB_TOKEN`, and at least one of `ALLOWED_REPOS`/`ALLOWED_OWNERS` (comma-separated) — the server now fails fast at startup if any are missing, same fail-fast principle as the pre-existing `dist/index.html`/`PORT`/workspace-writability checks; optional: `PORT` (default `3000`), `WORKSPACE_ROOT` (default `<tmpdir>/codeflow-workspaces`), `NODE_ENV`, `RATE_LIMIT_PER_MINUTE` (default `30`), `MAX_REQUEST_BODY_BYTES` (default `16384`), `MAX_REPO_FILES` (default `500`) |
 | Run the server integration smoke suite (added Commit 5, expanded Commit 6) | `node tests/server-smoke.mjs` — needs `dist/` built first, and a real GitHub credential via `gh auth login` (extracts it with `gh auth token` to verify the GitHub-backed path against real repos, not a mock); spawns the real server on an isolated port/workspace root, not part of `node --test tests/*.test.mjs` for the same reason `codeflow-repo-smoke.mjs`/`ui-smoke.mjs` aren't |
 | Run the browser UI smoke suite against a server (Commit 4A, now requires Commit 6 env vars too) | `AUTH_TOKEN=x GITHUB_TOKEN=x ALLOWED_OWNERS=x node server/index.js` then `node tests/ui-smoke.mjs [url]` — the values don't need to be real for this suite specifically, since it only drives the local-folder (client-side-only) flow, never the server's `/api/*` endpoints; the server just needs to *start*, which now requires these to be set to anything non-empty |
-| Run the full test suite | `node --test tests/*.test.mjs` (126 tests as of the PR #1 review fixups; `node --test tests/` alone fails — Node's directory-mode test discovery does not pick up this repo's flat `tests/*.test.mjs` layout) |
+| Run the full test suite | `node --test tests/*.test.mjs` (132 tests as of the CodeQL fixups; `node --test tests/` alone fails — Node's directory-mode test discovery does not pick up this repo's flat `tests/*.test.mjs` layout) |
 | Run the analyzer against an arbitrary repo | `node tests/codeflow-repo-smoke.mjs [--json] [--limit=<files>] <repo-dir>...` |
 | Run the GitHub Action analyzer locally | `cd card && node index.js` — writes `.github/codeflow-card.svg` and `.github/codeflow-card.json` **relative to `card/`** when `GITHUB_WORKSPACE` is unset (it falls back to `process.cwd()`); do not run this from the repo root without setting `GITHUB_WORKSPACE`, or it will analyze `card/` itself and leave stray output there |
 | `card/` package script | `npm run dry-run` from `card/` (alias for `node index.js`) |
@@ -719,6 +719,60 @@ Four review comments came back on the pull request for all of MOO-67
 fixups). Clean build. `tests/server-smoke.mjs` re-verified against real
 GitHub data (17/17) to confirm none of these changes broke the existing
 happy paths.
+
+## GitHub code scanning (CodeQL) findings
+
+The new `Build and test` CI check passed on the first run; the pre-existing
+`CodeQL` check failed with 3 new alerts (2 high, 1 medium) — GitHub's own
+note on the finding: "Alerts not introduced by this pull request might have
+been detected because the code changes were too large," meaning these
+were pre-existing gaps in the original codebase that only surfaced now
+because so much of `index.html`/`server/` changed across this PR, not
+regressions freshly introduced. Fixed regardless:
+
+1. **`server/lib/static.js` — `js/path-injection`, high, x2** (lines 43 and
+   45, `stat()`/`readFile()` on a path CodeQL couldn't verify was
+   contained). The original check (`resolved.startsWith(distDir + sep)`) is
+   a raw string-prefix comparison — not a pattern static analysis
+   recognizes as a proven sanitizer barrier, unlike `path.relative()` +
+   a `..`/absolute check, which is exactly what
+   `server/routes/analyze.js`'s `resolveWithinRepo` already uses and which
+   CodeQL did *not* flag. Rewrote `static.js` to use the same idiom.
+   **Deliberately did not add `realpath()`** the way the earlier
+   `resolveWithinRepo` symlink fix did: `dist/` is build output the
+   operator controls, not arbitrary externally-sourced content, so that
+   specific risk doesn't transfer — and `realpath()` throws for anything
+   not on disk, which would have broken the existing SPA-style fallback
+   (an unmatched client-side route legitimately doesn't exist under
+   `dist/` and should serve `index.html`, not `400`). Exported
+   `resolveRequestedFile` and added `tests/server-static.test.mjs` (6
+   tests, including a percent-encoded traversal attempt and the
+   SPA-fallback case specifically, so a future "fix" doesn't
+   accidentally break that path again) rather than only asserting the
+   fix works.
+2. **`index.html` line 30 — `js/functionality-from-untrusted-source`,
+   medium** (a CDN script loaded with no Subresource Integrity check).
+   Every *other* CDN script tag already had an `integrity="sha512-..."`
+   attribute — only `mermaid.min.js` was missing one. Computed the hash
+   locally (`sha512-6a80OTZVmEJhqYJUmYd5z8yHUCDlYnj6q9XwB/gKOEyNQV/Q8u+XeSG59a2ZKFEHGTYzgfOQKYEBtrZV7vBr+Q==`)
+   and cross-checked it against cdnjs's own published SRI metadata for
+   this exact version before trusting it, rather than taking either source
+   alone on faith — they matched.
+   (Not addressed: `<script src="https://unpkg.com/3d-force-graph">` on
+   the next line has no version pin at all, which is arguably a worse
+   problem than a missing integrity hash — you can't give an unpinned URL
+   a fixed SRI hash without it breaking the next time unpkg serves a
+   newer build. CodeQL didn't flag this one, and pinning a version is a
+   more consequential change than this fixup pass — worth a follow-up,
+   not bundled in here.)
+
+**Checks:** full suite 132/132 (up from 126 — 6 new tests). Clean build.
+`tests/server-smoke.mjs` re-verified (17/17). Manually re-confirmed live
+against a local server: a traversal attempt (`../../../../windows/win.ini`)
+still returns `400`, an unmatched client-side route still falls back to
+`index.html` (`200`), and a real built asset still serves correctly
+(`200`) — the three behaviors the rewrite specifically had to preserve
+simultaneously.
 
 ## Baseline snapshot mechanism
 
