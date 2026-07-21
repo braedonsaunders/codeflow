@@ -1,4 +1,4 @@
-# CodeFlow baseline (MOO-67, Commits 1-3)
+# CodeFlow baseline (MOO-67, Commits 1-4A)
 
 This document is the regression-protection reference point for the Code
 Reality Layer construction work (MOO-66 and its sub-issues). It records what
@@ -23,6 +23,7 @@ preserved it rather than assert it.
 | Run the full test suite | `node --test tests/*.test.mjs` (62 tests as of Commit 2; `node --test tests/` alone fails — Node's directory-mode test discovery does not pick up this repo's flat `tests/*.test.mjs` layout) |
 | Run the analyzer against an arbitrary repo | `node tests/codeflow-repo-smoke.mjs [--json] [--limit=<files>] <repo-dir>...` |
 | Run the GitHub Action analyzer locally | `cd card && node index.js` — writes `.github/codeflow-card.svg` and `.github/codeflow-card.json` **relative to `card/`** when `GITHUB_WORKSPACE` is unset (it falls back to `process.cwd()`); do not run this from the repo root without setting `GITHUB_WORKSPACE`, or it will analyze `card/` itself and leave stray output there |
+| Run the browser UI smoke suite (added Commit 4A) | `node tests/ui-smoke.mjs [url]` — needs a server already running (`npm run build && npm start`, default `http://localhost:3000/`, or `npm run dev` with its URL passed explicitly); not part of `node --test tests/*.test.mjs` for the same reason `codeflow-repo-smoke.mjs` isn't |
 | `card/` package script | `npm run dry-run` from `card/` (alias for `node index.js`) |
 
 ### Commit 2 scope note
@@ -135,6 +136,40 @@ still works correctly served over any local HTTP server — `npm run dev` or
 the supported self-host path. `README.md` has been updated (Quick Start,
 Architecture, Contributing, FAQ) to no longer advertise the zero-install
 `open index.html` workflow.
+
+### Commit 4A — browser UI smoke suite
+
+`tests/ui-smoke.mjs` drives the repository-view interactions Commit 4B-4E
+are about to touch, before touching them, so behavioral drift from the
+upcoming renderer/state extraction has something to fail against. Six
+deterministic checks, no screenshots: a local folder loads and the D3
+graph renders (`svg circle.nc` nodes appear), clicking a node populates
+`.panel-title` in the detail panel, switching `graphConfig.vizType` via the
+`[aria-label="Visualization type"]` select round-trips correctly
+(`treemap` → `graph`), a `?repo=owner/name` URL (deliberately without
+`&run=1`) prefills the repo input without ever calling GitHub, browser
+back/forward survives without corrupting the view, and no non-noise
+console errors occur across the whole run. Verified passing against both
+`npm run dev` and a production build (`npm run build && npm start`), per
+Commit 4A's own check.
+
+Uses a local-folder fixture (`tests/fixtures/golden-world`, chosen over
+`web-app-world` because the latter has basename collisions like multiple
+`index.js`/`index.ts` files across directories — see the
+`webkitRelativePath` note below) rather than a real GitHub repository, to
+keep the suite deterministic and independent of network access or a token.
+
+**Correction to something I assumed wrong in Commit 3's verification
+script:** `Worker`+`Blob`+`fetch` mocking there didn't need file inputs, so
+this wasn't tested until now — Playwright's `setInputFiles` on a
+`[webkitdirectory]` input, when given a **directory path** (not an array of
+individual file paths), resolves the real directory tree and populates
+each file's `webkitRelativePath` correctly. Passing an array of loose file
+paths instead (what I tried first) throws
+`Error: [webkitdirectory] input requires passing a path to a directory` —
+Playwright enforces the directory-path form specifically for
+`webkitdirectory` inputs; it doesn't silently degrade to flat `.name`-only
+files the way raw CDP file injection would.
 
 ## Baseline snapshot mechanism
 
