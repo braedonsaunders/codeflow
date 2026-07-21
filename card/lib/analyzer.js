@@ -1,67 +1,37 @@
-// Extract the codeflow analyzer block from index.html and run it in a Node vm
-// context. Mirrors what tests/codeflow-golden.test.mjs does — the analyzer is
-// the single source of truth, lives in one file, never drifts.
+// Load the codeflow analyzer module. src/analyzer.js is the single source of
+// truth (see docs/baseline.md) — this used to VM-extract a marker-delimited
+// block from index.html's inline script; since MOO-67 Commit 3 the analyzer
+// is a real ES module and Node 22.12+'s synchronous `require(esm)` support
+// loads it directly, same as tests/*.test.mjs do via `import`.
 
 'use strict';
 
 const fs = require('fs');
 const path = require('path');
-const vm = require('vm');
-
-const START_MARKER = '// ===== CODEFLOW_ANALYZER_START =====';
-const END_MARKER = '// ===== CODEFLOW_ANALYZER_END =====';
-const METRICS_START = '// ===== CODEFLOW_METRICS_START =====';
-const METRICS_END = '// ===== CODEFLOW_METRICS_END =====';
-
-function sliceBlock(html, startMarker, endMarker, label) {
-  const start = html.indexOf(startMarker);
-  const end = html.indexOf(endMarker, start);
-  if (start < 0 || end < 0) {
-    throw new Error(
-      'Could not locate ' + label + ' block. Expected ' + startMarker + ' / ' + endMarker + '.'
-    );
-  }
-  return html.slice(start, end);
-}
 
 function loadAnalyzer(htmlPath) {
-  const html = fs.readFileSync(htmlPath, 'utf8');
-  const analyzerSource = sliceBlock(html, START_MARKER, END_MARKER, 'analyzer');
-  const metricsSource = sliceBlock(html, METRICS_START, METRICS_END, 'metrics');
+  // htmlPath is index.html's location (see locateIndexHtml below); the
+  // analyzer module is always its sibling src/analyzer.js — resolving
+  // relative to htmlPath (not the consuming repo) preserves the security
+  // property tests/card-analyzer-security.test.mjs guards: the action
+  // always loads its own analyzer, never one from the repo being analyzed.
+  const analyzerPath = path.resolve(path.dirname(htmlPath), 'src', 'analyzer.js');
 
-  const context = {
-    console,
-    TreeSitter: undefined,
-    Babel: undefined,
-    acorn: undefined,
-    getSecurityScanContent(file) {
-      return file && file.content ? file.content : '';
-    },
-    isSanitizedPreviewRenderer() {
-      return false;
-    },
-  };
-  vm.createContext(context, {
-    codeGeneration: {
-      strings: false,
-      wasm: false,
-    },
-  });
-  const exposeExports =
-    '\nthis.Parser = Parser;' +
-    '\nthis.buildAnalysisData = buildAnalysisData;' +
-    '\nthis.calcBlast = calcBlast;' +
-    '\nthis.calcHealth = calcHealth;';
-  const script = new vm.Script(analyzerSource + '\n' + metricsSource + exposeExports, {
-    filename: 'codeflow-analyzer.js',
-  });
-  script.runInContext(context, { timeout: 1000 });
+  // Parser's methods reference these as ambient globals when actually
+  // invoked (not at module-evaluation time) — stub them to `undefined` so a
+  // reference doesn't throw, mirroring the browser's real CDN-provided
+  // globals and tests/*.test.mjs's equivalent setup.
+  if (!('TreeSitter' in globalThis)) globalThis.TreeSitter = undefined;
+  if (!('Babel' in globalThis)) globalThis.Babel = undefined;
+  if (!('acorn' in globalThis)) globalThis.acorn = undefined;
+
+  const analyzerModule = require(analyzerPath);
 
   return {
-    Parser: context.Parser,
-    buildAnalysisData: context.buildAnalysisData,
-    calcBlast: context.calcBlast,
-    calcHealth: context.calcHealth,
+    Parser: analyzerModule.Parser,
+    buildAnalysisData: analyzerModule.buildAnalysisData,
+    calcBlast: analyzerModule.calcBlast,
+    calcHealth: analyzerModule.calcHealth,
   };
 }
 
@@ -74,4 +44,4 @@ function locateIndexHtml(actionDir) {
   );
 }
 
-module.exports = { loadAnalyzer, locateIndexHtml, START_MARKER, END_MARKER };
+module.exports = { loadAnalyzer, locateIndexHtml };

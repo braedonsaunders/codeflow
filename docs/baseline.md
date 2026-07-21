@@ -1,4 +1,4 @@
-# CodeFlow baseline (MOO-67 Commit 1)
+# CodeFlow baseline (MOO-67, Commits 1-3)
 
 This document is the regression-protection reference point for the Code
 Reality Layer construction work (MOO-66 and its sub-issues). It records what
@@ -16,9 +16,9 @@ preserved it rather than assert it.
 
 | Purpose | Command |
 |---|---|
-| Run the app, zero-tooling | `open index.html` — still works standalone with no build step, no `npm install`; loads pinned CDN dependencies. This remains the rollback path per MOO-67 Commit 2 until module extraction (Commit 3+) reaches parity. |
-| Run the app, dev server (added Commit 2) | `npm install && npm run dev` — Vite dev server over the same unmodified `index.html`; hot-reload not meaningful yet since the app isn't module-based (see Commit 2 note below) |
-| Production build (added Commit 2) | `npm run build` — Vite build, output to `dist/` (600KB `dist/index.html` + hashed asset files, gitignored) |
+| Run the app, zero-tooling | `open index.html` — **broken as of Commit 3, see the flagged regression below.** Opening the file directly (`file://`) now crashes with `ReferenceError: calcHealth is not defined` because the browser blocks the analyzer module's `import` under CORS for the `file://` origin. |
+| Run the app, dev server (added Commit 2) | `npm install && npm run dev` — Vite dev server; now genuinely module-based as of Commit 3 (analyzer code lives in `src/analyzer.js`) |
+| Production build (added Commit 2) | `npm run build` — Vite build, output to `dist/` (as of Commit 3: `dist/index.html` ~369KB + a separate hashed `dist/assets/index-*.js` ~117KB carrying the analyzer module, gitignored) |
 | Serve the production build (added Commit 2) | `npm run start` (or `node server/index.js`) — minimal static file server over `dist/`, `PORT` env var (default `3000`); rejects path-traversal requests, falls back to `index.html` for unmatched paths |
 | Run the full test suite | `node --test tests/*.test.mjs` (62 tests as of Commit 2; `node --test tests/` alone fails — Node's directory-mode test discovery does not pick up this repo's flat `tests/*.test.mjs` layout) |
 | Run the analyzer against an arbitrary repo | `node tests/codeflow-repo-smoke.mjs [--json] [--limit=<files>] <repo-dir>...` |
@@ -27,25 +27,105 @@ preserved it rather than assert it.
 
 ### Commit 2 scope note
 
-`vite.config.js` points the build at the existing `index.html` unchanged —
-the app's inline script and CDN dependency loading (React/ReactDOM/D3/Babel
-Standalone/tree-sitter/acorn) are untouched, so `npm run build` currently
-produces an output nearly byte-identical to the source (600,654 →
-600,110 bytes; the small delta is Vite's asset-URL rewriting for
-`codeflow-social.png`, hashed into `dist/assets/`). This is deliberate:
-Commit 2 only proves the tooling can build/serve the app as-is. Actually
-splitting the inline script into real ES modules — which is what will make
-the dev server's hot-reload and code-splitting meaningful — is Commit 3's
-job, once there's a module-based replacement for the marker-based
-extraction (`CODEFLOW_ANALYZER_START`/`END`) that `card/lib/analyzer.js`,
-`tests/codeflow-golden.test.mjs`, and `tests/codeflow-repo-smoke.mjs` all
-still depend on today.
+`vite.config.js` points the build at `index.html`. At Commit 2 this produced
+an output nearly byte-identical to the source, since the app's inline
+script was left untouched — that changed in Commit 3 (below).
 
-`server/index.js` is similarly a placeholder: it serves `dist/` as static
-files and has no analysis endpoints, authentication, health checks, or
-request-workspace abstraction yet — those are Commit 5 and Commit 6.
+`server/index.js` is still a placeholder as of Commit 3: it serves `dist/`
+as static files and has no analysis endpoints, authentication, health
+checks, or request-workspace abstraction yet — those are Commit 5 and 6.
 
 Node version used to establish this baseline: `v24.16.0`.
+
+### Commit 3 — analyzer extraction, and a flagged regression
+
+`Parser`, `buildAnalysisData`, `calcBlast`, `calcHealth`, `runAnalysisData`,
+`createAnalysisWorkerSource`, `GitHub`, and the rest of the analyzer's
+top-level names (previously inline in `index.html` between
+`CODEFLOW_ANALYZER_START`/`END` and `CODEFLOW_METRICS_START`/`END` marker
+comments) now live in **`src/analyzer.js`**, a real ES module. This is the
+one canonical implementation:
+
+- **Browser main thread**: `index.html` loads it via
+  `<script type="module">import * as analyzer from './src/analyzer.js'; Object.assign(window, analyzer);</script>`,
+  placed right before the classic `<script type="text/babel">` app script so
+  the rest of that (unmodified, still non-module) script keeps referencing
+  `Parser`/`GitHub`/etc. as bare identifiers, resolving through `window`
+  exactly as it did when they were local top-level declarations in the same
+  script. `Object.assign(window, analyzer)` rather than a hand-picked list
+  of names, so this bridge can't silently drift out of sync with
+  `src/analyzer.js`'s export statement.
+- **The analysis Web Worker** (`createAnalysisWorkerSource`, still inside
+  `src/analyzer.js`): previously fetched the *page's own HTML*
+  (`fetch(window.location.href)`) and sliced out the analyzer block by
+  string marker, because the analyzer lived inline in that HTML. Now that
+  it's a separate module, it fetches **its own module URL**
+  (`fetch(import.meta.url)`) instead — `import.meta.url` resolves correctly
+  to `/src/analyzer.js` in dev or the hashed built asset in production,
+  either way giving the worker its own real source text with no page
+  involved. New internal markers, `CODEFLOW_CORE_START`/`END` (inside
+  `src/analyzer.js`, distinct from the old `CODEFLOW_ANALYZER_START`/`END`
+  which no longer exist anywhere), delimit exactly the "pure analysis"
+  slice — `Parser` through `calcHealth` — that gets embedded into the
+  classic (non-module) worker script. `runAnalysisData` and
+  `createAnalysisWorkerSource` themselves are deliberately **excluded** from
+  that slice: their own source text contains `import.meta.url`, and
+  `import.meta` is a syntax error when parsed as part of a classic
+  (non-module) script — embedding it would have broken the worker outright.
+  Verified end-to-end (real `Worker` + `Blob` + `fetch`, not mocked) via
+  `scripts/verify-worker-analysis.mjs` against both the dev server and a
+  production build — worker constructed, module fetched, correct
+  file/function counts, zero console errors.
+- **`card/lib/analyzer.js`**: previously VM-extracted the marker block from
+  `index.html` text (`vm.createContext` + `vm.Script`). Now `require()`s
+  `src/analyzer.js` directly — Node 22.12+ (this baseline: v24.16.0) added
+  stable synchronous `require(esm)` support, confirmed working empirically
+  before relying on it.
+- **The Node test suite**: every test that used to VM-extract the marker
+  block from `index.html` (`tests/codeflow-golden.test.mjs`,
+  `tests/codeflow-repo-smoke.mjs`, `tests/architecture-diagram.test.mjs`,
+  `tests/duplicate-function-resolution.test.mjs`,
+  `tests/layer-violation-direction.test.mjs`,
+  `tests/numeric-fn-name.test.mjs`, `tests/security-precision.test.mjs`, and
+  `tests/html-inline-script-analysis.smoke.js`, the last renamed to `.mjs`
+  — see below) now does `await import('../src/analyzer.js')` instead. All
+  still stub `globalThis.TreeSitter`/`Babel`/`acorn` to `undefined` before
+  importing (Parser's methods reference these as ambient globals only when
+  actually invoked, not at import time — same requirement as before, just
+  via `globalThis` mutation instead of a `vm.createContext` object, since a
+  real ES module resolves unqualified identifiers through `globalThis`, not
+  through an injectable sandbox object).
+
+**Two pre-existing leaks fixed as a side effect.** `getSecurityScanContent`
+and `isSanitizedPreviewRenderer` used to be defined just *outside* the
+marker block (`index.html:744-759`, pre-Commit-3 line numbers), meaning
+every Node-side consumer had to inject **simplified stub versions** of them
+(e.g. the stub `getSecurityScanContent` was missing the real one's
+`index.html`-self-exclusion special case for the security scanner). They're
+now moved into `src/analyzer.js` for real, so Node-side analysis uses the
+exact same implementation the browser does — closing a latent
+browser/Node behavioral divergence, not just a code-location cleanup.
+
+**Known regression, deliberately not silently fixed:** opening `index.html`
+directly via `file://` (the project's original "no build, no install, just
+open the file" pitch, and the literal Commit 2 rollback guarantee — "keep
+the original single-file entry available") now **crashes**
+(`ReferenceError: calcHealth is not defined`), because Chromium blocks the
+analyzer module's `import` under CORS for the `file://` origin (confirmed
+via headless Chromium, not assumed). The app still works correctly served
+over any local HTTP server — `npm run dev` or `npm run build && npm start`,
+both already established in Commit 2 — so this is not a functional dead
+end, but it is a real loss of the zero-tooling `open index.html` workflow
+the current public README still advertises. Properly restoring `file://`
+support would mean build-time-inlining `src/analyzer.js`'s content back
+into a classic script for the shipped `dist/index.html` (via a custom Vite
+transform) while keeping Node/test consumers on the real ES module — not
+done here to avoid open-ended scope inside a "modularize the build" commit.
+Flagging this explicitly for a product decision rather than assuming it's
+fine: MOO-66's broader direction is a Railway-hosted, server-owned-auth
+application (see MOO-67 commits 5-7), which may make the standalone
+`file://` mode moot anyway — but that's a call for whoever's driving product
+direction, not an engineering default to quietly accept.
 
 ## Baseline snapshot mechanism
 

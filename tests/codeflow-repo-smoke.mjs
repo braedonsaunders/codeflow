@@ -1,35 +1,17 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import vm from 'node:vm';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(__dirname, '..');
-const htmlSource = await readFile(join(repoRoot, 'index.html'), 'utf8');
-const parserStart = htmlSource.indexOf('const Parser={');
-const parserEnd = htmlSource.indexOf('\nfunction calcBlast', parserStart);
 
-if (parserStart < 0 || parserEnd < 0) {
-  throw new Error('Could not locate analyzer source in index.html');
-}
+// Parser's methods reference these as ambient globals only when actually
+// invoked (mirroring the browser's real CDN-provided globals) — see
+// docs/baseline.md.
+if (!('TreeSitter' in globalThis)) globalThis.TreeSitter = undefined;
+if (!('Babel' in globalThis)) globalThis.Babel = undefined;
+if (!('acorn' in globalThis)) globalThis.acorn = undefined;
 
-const context = {
-  console,
-  TreeSitter: undefined,
-  Babel: undefined,
-  acorn: undefined,
-  getSecurityScanContent(file) {
-    return file && file.content ? file.content : '';
-  },
-  isSanitizedPreviewRenderer() {
-    return false;
-  },
-};
-
-vm.createContext(context);
-vm.runInContext(`${htmlSource.slice(parserStart, parserEnd)}\nthis.Parser = Parser; this.buildAnalysisData = buildAnalysisData;`, context);
-
-const { Parser, buildAnalysisData } = context;
+const { Parser, buildAnalysisData } = await import('../src/analyzer.js');
 const ignoredDirs = new Set([
   '.git',
   'node_modules',
