@@ -1,4 +1,4 @@
-# CodeFlow baseline (MOO-67, Commits 1-4E — Commit 4 complete)
+# CodeFlow baseline (MOO-67, Commits 1-5)
 
 This document is the regression-protection reference point for the Code
 Reality Layer construction work (MOO-66 and its sub-issues). It records what
@@ -19,8 +19,9 @@ preserved it rather than assert it.
 | Run the app, zero-tooling | `open index.html` — **no longer supported (intentional, decided Commit 3, see below).** Opening the file directly (`file://`) crashes with `ReferenceError: calcHealth is not defined` because the browser blocks the analyzer module's `import` under CORS for the `file://` origin. Use `npm run dev` or `npm run build && npm start` instead. |
 | Run the app, dev server (added Commit 2) | `npm install && npm run dev` — Vite dev server; now genuinely module-based as of Commit 3 (analyzer code lives in `src/analyzer.js`) |
 | Production build (added Commit 2) | `npm run build` — Vite build, output to `dist/` (as of Commit 3: `dist/index.html` ~369KB + a separate hashed `dist/assets/index-*.js` ~117KB carrying the analyzer module, gitignored) |
-| Serve the production build (added Commit 2) | `npm run start` (or `node server/index.js`) — minimal static file server over `dist/`, `PORT` env var (default `3000`); rejects path-traversal requests, falls back to `index.html` for unmatched paths |
-| Run the full test suite | `node --test tests/*.test.mjs` (70 tests as of Commit 4D; `node --test tests/` alone fails — Node's directory-mode test discovery does not pick up this repo's flat `tests/*.test.mjs` layout) |
+| Serve the production build (added Commit 2, expanded Commit 5) | `npm run start` (or `node server/index.js`) — serves `dist/` plus `/healthz`, `/readyz`, `POST /api/analyze`; env vars `PORT` (default `3000`), `WORKSPACE_ROOT` (default `<tmpdir>/codeflow-workspaces`), `NODE_ENV`; fails fast at startup (not on first request) if `dist/index.html` is missing, `PORT` is invalid, or the workspace root isn't writable |
+| Run the server integration smoke suite (added Commit 5) | `node tests/server-smoke.mjs` — needs `dist/` built first; spawns the real server on an isolated port/workspace root, not part of `node --test tests/*.test.mjs` for the same reason `codeflow-repo-smoke.mjs`/`ui-smoke.mjs` aren't |
+| Run the full test suite | `node --test tests/*.test.mjs` (79 tests as of Commit 5; `node --test tests/` alone fails — Node's directory-mode test discovery does not pick up this repo's flat `tests/*.test.mjs` layout) |
 | Run the analyzer against an arbitrary repo | `node tests/codeflow-repo-smoke.mjs [--json] [--limit=<files>] <repo-dir>...` |
 | Run the GitHub Action analyzer locally | `cd card && node index.js` — writes `.github/codeflow-card.svg` and `.github/codeflow-card.json` **relative to `card/`** when `GITHUB_WORKSPACE` is unset (it falls back to `process.cwd()`); do not run this from the repo root without setting `GITHUB_WORKSPACE`, or it will analyze `card/` itself and leave stray output there |
 | Run the browser UI smoke suite (added Commit 4A) | `node tests/ui-smoke.mjs [url]` — needs a server already running (`npm run build && npm start`, default `http://localhost:3000/`, or `npm run dev` with its URL passed explicitly); not part of `node --test tests/*.test.mjs` for the same reason `codeflow-repo-smoke.mjs` isn't |
@@ -317,6 +318,75 @@ crash — the no-op default absorbs it cleanly) and then single-clicked the
 same node again (still selects correctly, proving the new handler didn't
 corrupt event wiring or leave stray state behind). Full Node suite
 unaffected (70/70 — this only touches browser rendering).
+
+## Commit 5 — Railway service and workspace skeleton
+
+`server/index.js` (the Commit 2 static-file placeholder) is now a real
+server shell, split into namespaced modules:
+
+- `server/lib/config.js` — reads `PORT`/`WORKSPACE_ROOT`/`NODE_ENV`,
+  **fails fast at startup** (not lazily on first request) if `dist/index.html`
+  is missing or `PORT` is invalid, with an actionable message
+  (`ConfigError`).
+- `server/lib/workspace.js` — `WorkspaceManager`: one controlled root
+  (`ensureRoot()` probes writability at startup, same fail-fast principle),
+  one normalized subdirectory per request (`createRequestWorkspace(requestId)`,
+  requestId restricted to `[a-zA-Z0-9_-]`), a `resolve()` that rejects any
+  path escaping that subdirectory, and a `cleanup()`. This exists so MOO-70
+  (pyan3) and MOO-71 (CodeVisualizer) have one shared convention for
+  staging fetched source and intermediate artifacts instead of each
+  inventing its own temp-directory handling.
+- `server/lib/logger.js` — structured JSON-lines logging
+  (`{time,level,message,...meta}`), a `generateRequestId()`
+  (`crypto.randomUUID()`), and a `createRequestLogger(requestId)` so every
+  log line from one request carries the same ID. Sanitizes any meta key
+  matching `/token|authorization|secret|password|api[_-]?key|cookie/i` to
+  `[redacted]` — no secrets exist yet (that's Commit 6), but the sanitizer
+  is in place before there's anything to leak, not retrofitted after.
+- `server/lib/health.js` — `/healthz` (liveness: process up, Node version,
+  uptime) and `/readyz` (readiness: `dist/index.html` present + workspace
+  root writable, 503 if either fails) are deliberately distinct — a
+  liveness failure means "restart the container," a readiness failure
+  means "stop routing traffic here without necessarily restarting,"
+  relevant once this runs on Railway.
+- `server/lib/static.js` — the Commit 2 static-file logic, unchanged, just
+  relocated into its own module.
+- `server/routes/analyze.js` (+ `server/lib/analyzer-bridge.js`) —
+  `POST /api/analyze`, deliberately bounded to paths already on the
+  server's own filesystem (validated to resolve within `repoRoot`, e.g.
+  `tests/fixtures/golden-world`) rather than fetching from GitHub — no
+  credential and no auth gate exist yet (Commit 6), so this endpoint
+  couldn't safely reach further even if it tried. Copies the requested
+  path into a request-scoped workspace, runs the analyzer, cleans up.
+  `analyzer-bridge.js` reuses `card/lib/collect.js`'s `buildAnalyzed()`
+  for file collection rather than writing a fourth copy of that logic
+  (codeflow-repo-smoke.mjs, card/lib/collect.js, and
+  codeflow-golden.test.mjs's fixture harness each already have one) —
+  genuine cross-package reuse (`card/`'s CommonJS module imported directly
+  from the ESM server code), not just avoided duplication in spirit.
+
+**Checks:**
+- `tests/server-config.test.mjs` (4 tests) and
+  `tests/server-workspace.test.mjs` (5 tests) — plain Node unit tests, no
+  process spawning, covering `loadConfig`'s fail-fast validation and
+  `WorkspaceManager`'s containment/cleanup guarantees directly.
+- `tests/server-smoke.mjs` (new, following the existing `-smoke.mjs`
+  convention — not part of `node --test tests/*.test.mjs`, needs `dist/`
+  built first) spawns the **real** server process on an isolated port and
+  workspace root and exercises exactly what Commit 5's checklist checks:
+  static serving, `/healthz`, `/readyz`, `/api/analyze` against
+  `golden-world` (confirmed to match the exact `files:6/functions:7/connections:6`
+  baseline from Commit 1 — the server-side pipeline produces identical
+  results to the existing analyzer, not just "doesn't crash"), the
+  path-traversal and missing-path rejections, and — critically — that the
+  workspace root is completely empty after all requests complete (cleanup
+  actually ran, not just callable).
+- Manually confirmed (via `curl` and a captured log file) that request IDs
+  correlate across every log line for a single request (workspace
+  created → analysis complete → request summary all share one ID), and
+  that `tests/ui-smoke.mjs` still passes 6/6 against the refactored server
+  (the static-file logic moved modules but didn't change behavior).
+- Full suite: 79/79 (70 pre-existing + 9 new unit tests).
 
 ## Baseline snapshot mechanism
 
