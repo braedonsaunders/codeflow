@@ -635,12 +635,16 @@ body{height:100dvh;min-height:100dvh}
 
   MOO-67 Commit 4C: same pattern again, for the selected-node/blast-radius/
   panel-tab/drill-down state — see src/state/selection.js.
+
+  MOO-67 Commit 4D: same pattern again, for reading/writing the repository
+  URL — see src/state/route.js.
 -->
 <script type="module">
 import * as analyzer from './src/analyzer.js';
 import { renderRepositoryGraph } from './src/render/repositoryGraph.js';
 import { useRepositorySelection } from './src/state/selection.js';
-Object.assign(window, analyzer, { renderRepositoryGraph, useRepositorySelection });
+import { buildRepoUrl, readRouteRepo, writeRepoRoute, clearRoute } from './src/state/route.js';
+Object.assign(window, analyzer, { renderRepositoryGraph, useRepositorySelection, buildRepoUrl, readRouteRepo, writeRepoRoute, clearRoute });
 </script>
 <script type="text/babel">
 /*
@@ -1108,13 +1112,10 @@ function getFilePreviewIconName(filename){
         },extra||{});
     }
 
-function buildAppUrl(repo,autoRun){
-    var url=new URL(window.location.href);
-    url.search='';
-    if(repo)url.searchParams.set('repo',repo);
-    if(autoRun&&repo)url.searchParams.set('run','1');
-    return url.toString();
-}
+// MOO-67 Commit 4D: buildAppUrl/readRouteRepo/writeRepoRoute/clearRoute now
+// live in src/state/route.js (bridged onto window like the analyzer,
+// renderer, and selection modules) — buildAppUrl is now buildRepoUrl,
+// called the same way at every existing call site.
 
 function getDialogTone(tone){
     if(tone==='danger')return{
@@ -1413,12 +1414,10 @@ function App(){
     },[confirmDialog]);
 
     useEffect(function(){
-        var params=new URLSearchParams(window.location.search);
-        var repo=params.get('repo');
-        var shouldAutoRun=params.get('run')==='1';
-        if(repo&&repo.length<200&&!repo.includes('{')&&/^[a-zA-Z0-9_.\/-]+$/.test(repo)){
-            setRepoUrl(repo);
-            if(shouldAutoRun){
+        var route=readRouteRepo();
+        if(route){
+            setRepoUrl(route.repo);
+            if(route.autoRun){
                 setTimeout(function(){var btn=document.getElementById('analyze-btn');if(btn)btn.click();},500);
             }
         }
@@ -1637,7 +1636,7 @@ function App(){
                         });
                         setData(dataObj);
                         setExpandedPaths(new Set(['']));
-                        window.history.replaceState({},'',buildAppUrl(p.owner+'/'+p.repo,false));
+                        writeRepoRoute(p.owner+'/'+p.repo);
                         setLoading(false);
                     }catch(err){
                         setError('Analysis failed: '+(err.message||err)+'. Try a smaller repository.');
@@ -3697,11 +3696,11 @@ function App(){
             showNotification('Share links are not available for local sources','warning');
             return;
         }
-        var shareUrl=buildAppUrl(repoInfo?repoInfo.owner+'/'+repoInfo.repo:repoUrl,true);
+        var shareUrl=buildRepoUrl(repoInfo?repoInfo.owner+'/'+repoInfo.repo:repoUrl,true);
         navigator.clipboard.writeText(shareUrl).then(function(){showNotification('Link copied to clipboard!');}).catch(function(){showNotification('Failed to copy link','error');});
     }
     function analyzePR(){if(!prUrl||!repoInfo)return;var m=prUrl.match(/\/pull\/(\d+)/);if(!m){showNotification('Invalid PR URL','error');return;}GitHub.getPR(repoInfo.owner,repoInfo.repo,m[1]).then(function(pr){if(pr)setPrData(pr);else showNotification('Could not load PR','error');});}
-    function resetAnalysis(){setData(null);setSelected(null);setBlastRadius(null);setOwnership(null);setRepoInfo(null);setRepoUrl('');setPrData(null);setFolderFilter(null);setLocalDirHandle(null);setLocalSourceKind(null);setArchitectureIncludeTests(false);setArchitectureIncludeBuildOutput(false);zipArchiveRef.current=null;zipFileRef.current=null;window.history.replaceState({},'',window.location.pathname);}
+    function resetAnalysis(){setData(null);setSelected(null);setBlastRadius(null);setOwnership(null);setRepoInfo(null);setRepoUrl('');setPrData(null);setFolderFilter(null);setLocalDirHandle(null);setLocalSourceKind(null);setArchitectureIncludeTests(false);setArchitectureIncludeBuildOutput(false);zipArchiveRef.current=null;zipFileRef.current=null;clearRoute();}
     function filterByFolder(path){setFolderFilter(function(prev){return prev===path?null:path;});}
     function getArchitectureViewStats(diagram,includeTests,includeBuildOutput){
         if(!diagram)return{blocks:0,dependencies:0,routes:0,apiRoutes:0,databaseTouchpoints:0,warnings:0};

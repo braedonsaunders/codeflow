@@ -1,4 +1,4 @@
-# CodeFlow baseline (MOO-67, Commits 1-4C)
+# CodeFlow baseline (MOO-67, Commits 1-4D)
 
 This document is the regression-protection reference point for the Code
 Reality Layer construction work (MOO-66 and its sub-issues). It records what
@@ -20,7 +20,7 @@ preserved it rather than assert it.
 | Run the app, dev server (added Commit 2) | `npm install && npm run dev` — Vite dev server; now genuinely module-based as of Commit 3 (analyzer code lives in `src/analyzer.js`) |
 | Production build (added Commit 2) | `npm run build` — Vite build, output to `dist/` (as of Commit 3: `dist/index.html` ~369KB + a separate hashed `dist/assets/index-*.js` ~117KB carrying the analyzer module, gitignored) |
 | Serve the production build (added Commit 2) | `npm run start` (or `node server/index.js`) — minimal static file server over `dist/`, `PORT` env var (default `3000`); rejects path-traversal requests, falls back to `index.html` for unmatched paths |
-| Run the full test suite | `node --test tests/*.test.mjs` (62 tests as of Commit 2; `node --test tests/` alone fails — Node's directory-mode test discovery does not pick up this repo's flat `tests/*.test.mjs` layout) |
+| Run the full test suite | `node --test tests/*.test.mjs` (70 tests as of Commit 4D; `node --test tests/` alone fails — Node's directory-mode test discovery does not pick up this repo's flat `tests/*.test.mjs` layout) |
 | Run the analyzer against an arbitrary repo | `node tests/codeflow-repo-smoke.mjs [--json] [--limit=<files>] <repo-dir>...` |
 | Run the GitHub Action analyzer locally | `cd card && node index.js` — writes `.github/codeflow-card.svg` and `.github/codeflow-card.json` **relative to `card/`** when `GITHUB_WORKSPACE` is unset (it falls back to `process.cwd()`); do not run this from the repo root without setting `GITHUB_WORKSPACE`, or it will analyze `card/` itself and leave stray output there |
 | Run the browser UI smoke suite (added Commit 4A) | `node tests/ui-smoke.mjs [url]` — needs a server already running (`npm run build && npm start`, default `http://localhost:3000/`, or `npm run dev` with its URL passed explicitly); not part of `node --test tests/*.test.mjs` for the same reason `codeflow-repo-smoke.mjs` isn't |
@@ -254,6 +254,44 @@ into the extraction just because they were nearby.
 that fixed suite, ran an ad hoc Playwright probe cycling all four panel
 tabs (details → patterns → security → suggestions → details) — zero
 console errors. Full Node suite unaffected (62/62).
+
+### Commit 4D — minimal route persistence extracted to src/state/route.js
+
+`buildAppUrl` (a top-level function) and the scattered query-param
+read/write logic it fed — a `useEffect` reading `?repo=`/`?run=1` on
+mount, and two `window.history.replaceState` call sites (one after a
+GitHub repo successfully loads, one clearing the URL in `resetAnalysis`)
+— consolidated into `src/state/route.js`: `buildRepoUrl`, `readRouteRepo`,
+`writeRepoRoute`, `clearRoute`. Bridged onto `window` the same way as
+Commits 3, 4B, and 4C.
+
+**Scope, per the checklist's own boundary:** repository identity only
+(which repo the URL names, and whether to auto-run) — not active
+view/panel/selection/drill-down restoration, and not canonical source
+coordinates or breadcrumb payloads, both explicitly reserved for MOO-68.
+
+**Unlike the three prior extractions, this one is genuinely unit-testable
+without a DOM** — `buildRepoUrl`/`readRouteRepo` accept an optional
+`baseHref`/`search` parameter (falling back to the real
+`window.location` when omitted) specifically so `tests/route-state.test.mjs`
+could exercise them as plain Node tests: URL construction, the `run=1`
+gating logic, and the three validation guards the original inline code
+had (200-char cap, reject `{`, restrict to `[a-zA-Z0-9_./-]`) — 8 new
+tests, including one for each rejection case, none of which had explicit
+test coverage before this extraction even though the validation logic
+itself is unchanged.
+
+**Checks:** `tests/route-state.test.mjs` 8/8. `tests/ui-smoke.mjs` 6/6
+against a production build — its "route/hash restoration" check exercises
+`readRouteRepo` directly, so this wasn't just incidentally unbroken, it
+was specifically re-verified. The write path (`writeRepoRoute`/
+`clearRoute`) isn't reachable through the local-folder flow the smoke
+suite uses (only a real GitHub repo load triggers it, which the suite
+deliberately avoids to skip a network dependency), so verified it
+separately with an ad hoc Playwright probe calling
+`window.writeRepoRoute`/`window.clearRoute` directly and asserting
+`window.location.search` changed correctly both ways — zero console
+errors. Full suite unaffected (70/70 total, 62 pre-existing + 8 new).
 
 ## Baseline snapshot mechanism
 
