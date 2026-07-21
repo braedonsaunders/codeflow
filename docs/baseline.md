@@ -78,9 +78,18 @@ one canonical implementation:
   file/function counts, zero console errors.
 - **`card/lib/analyzer.js`**: previously VM-extracted the marker block from
   `index.html` text (`vm.createContext` + `vm.Script`). Now `require()`s
-  `src/analyzer.js` directly — Node 22.12+ (this baseline: v24.16.0) added
-  stable synchronous `require(esm)` support, confirmed working empirically
-  before relying on it.
+  `src/analyzer.js` directly, using unflagged synchronous `require(esm)`.
+  **This raises the real minimum Node version** — unflagged `require(esm)`
+  shipped in Node **20.19.0** and **22.12.0** (not all of 20.x/22.x, and not
+  21.x, which was non-LTS and reached EOL before the backport). Both
+  `package.json` files' `engines` fields are `^20.19.0 || >=22.12.0`
+  (exactly Vite 8's own declared constraint — already a real dependency
+  here, so the project couldn't have claimed a broader range regardless),
+  enforced via `.npmrc`'s `engine-strict=true` so an incompatible local
+  Node fails loudly at `npm install`/`npm ci` instead of surfacing as a
+  runtime `ERR_REQUIRE_ESM` later. Confirmed working empirically on
+  v24.16.0 (this baseline's Node); not independently re-verified against
+  20.19.0 specifically.
 - **The Node test suite**: every test that used to VM-extract the marker
   block from `index.html` (`tests/codeflow-golden.test.mjs`,
   `tests/codeflow-repo-smoke.mjs`, `tests/architecture-diagram.test.mjs`,

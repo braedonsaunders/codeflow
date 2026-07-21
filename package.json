@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "description": "CodeFlow application shell — build/dev tooling. See README.md for the app itself and card/ for the GitHub Action.",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
