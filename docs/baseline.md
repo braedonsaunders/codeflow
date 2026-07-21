@@ -1,4 +1,4 @@
-# CodeFlow baseline (MOO-67, Commits 1-4B)
+# CodeFlow baseline (MOO-67, Commits 1-4C)
 
 This document is the regression-protection reference point for the Code
 Reality Layer construction work (MOO-66 and its sub-issues). It records what
@@ -219,6 +219,41 @@ production build (6/6 both times) — same suite Commit 4A added, now
 serving as this commit's regression check exactly as intended. Full Node
 suite unaffected (62/62 — this commit touches only browser-side rendering
 code, nothing under `card/` or `tests/*.test.mjs`).
+
+### Commit 4C — bounded selection/panel state extracted to src/state/selection.js
+
+`selected`, `blastRadius`, `rightTab`, and `drillDown` — the state the
+repository view's selection and detail panel need — moved from four
+separate `useState` calls in `App()` into `useRepositorySelection()`
+(`src/state/selection.js`), bridged onto `window` the same way as Commits
+3 and 4B.
+
+**Every variable name stayed identical** (`selected`, `setSelected`,
+`blastRadius`, `setBlastRadius`, `rightTab`, `setRightTab`, `drillDown`,
+`setDrillDown`) — the hook call replaces the old `useState` declarations
+one-for-one at their original destructuring site, so **no call site
+elsewhere in `App()` needed to change**. The ~8 places that inline
+`setSelected(null);setBlastRadius(null);` and the panel-tab buttons that
+inline `setRightTab(x);setDrillDown(null);` were deliberately left as-is
+rather than migrated to the hook's new `clearSelection()`/`selectTab()`
+composite actions — those exist for future use (satisfying "introduce a
+small hook" per the checklist) without forcing a wider migration than this
+commit needs.
+
+**What was deliberately left alone**, per Commit 4C's own "do not migrate"
+list: `showGraphConfig` (graph-config panel visibility — a different kind
+of "panel" than the checklist meant here), `rightPanelWidth` (resize
+state), `folderFilter`, `data`/`loading`/`error` (fetch state), `theme`,
+and all architecture/security-specific state. `expandedPaths` and
+`expandedCards` sit textually between the old `selected` and
+`rightTab`/`drillDown`/`blastRadius` declarations in `App()` but are
+unrelated (tree-expansion state) — left untouched in place, not swept
+into the extraction just because they were nearby.
+
+**Checks:** `tests/ui-smoke.mjs` 6/6 against a production build. Beyond
+that fixed suite, ran an ad hoc Playwright probe cycling all four panel
+tabs (details → patterns → security → suggestions → details) — zero
+console errors. Full Node suite unaffected (62/62).
 
 ## Baseline snapshot mechanism
 

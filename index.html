@@ -632,11 +632,15 @@ body{height:100dvh;min-height:100dvh}
 
   MOO-67 Commit 4B: same pattern, for the repository graph's D3
   render/update lifecycle — see src/render/repositoryGraph.js.
+
+  MOO-67 Commit 4C: same pattern again, for the selected-node/blast-radius/
+  panel-tab/drill-down state — see src/state/selection.js.
 -->
 <script type="module">
 import * as analyzer from './src/analyzer.js';
 import { renderRepositoryGraph } from './src/render/repositoryGraph.js';
-Object.assign(window, analyzer, { renderRepositoryGraph });
+import { useRepositorySelection } from './src/state/selection.js';
+Object.assign(window, analyzer, { renderRepositoryGraph, useRepositorySelection });
 </script>
 <script type="text/babel">
 /*
@@ -1201,12 +1205,14 @@ function App(){
     var _g=useState(null),data=_g[0],setData=_g[1];
     var _h=useState(null),repoInfo=_h[0],setRepoInfo=_h[1];
     var _i=useState('folder'),colorMode=_i[0],setColorMode=_i[1];
-    var _j=useState(null),selected=_j[0],setSelected=_j[1];
+    // MOO-67 Commit 4C: selected/blastRadius/rightTab/drillDown (the state
+    // the repository view's selection + detail panel needs) now live in
+    // useRepositorySelection() (src/state/selection.js) instead of four
+    // separate useState calls. Every variable name below is unchanged, so
+    // no call site elsewhere in App() needed to change.
+    var _sel=useRepositorySelection(),selected=_sel.selected,setSelected=_sel.setSelected,blastRadius=_sel.blastRadius,setBlastRadius=_sel.setBlastRadius,rightTab=_sel.rightTab,setRightTab=_sel.setRightTab,drillDown=_sel.drillDown,setDrillDown=_sel.setDrillDown,clearSelection=_sel.clearSelection,selectTab=_sel.selectTab;
     var _k=useState(new Set([''])),expandedPaths=_k[0],setExpandedPaths=_k[1];
     var _l=useState(new Set(['blast','fns'])),expandedCards=_l[0],setExpandedCards=_l[1];
-    var _m=useState('details'),rightTab=_m[0],setRightTab=_m[1];
-    var _m2=useState(null),drillDown=_m2[0],setDrillDown=_m2[1];// {type:'issue'|'pattern'|'security'|'suggestion'|'duplicate', data:...}
-    var _n=useState(null),blastRadius=_n[0],setBlastRadius=_n[1];
     var _o=useState(null),ownership=_o[0],setOwnership=_o[1];
     var _p=useState(''),prUrl=_p[0],setPrUrl=_p[1];
     var _q=useState(null),prData=_q[0],setPrData=_q[1];
