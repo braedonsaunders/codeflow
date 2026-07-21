@@ -1,7 +1,11 @@
 // Enforces that `Parser.extractMarkdownLinks` / `Parser.resolveMarkdownLink`
-// embedded in index.html produce identical output to the source-of-truth
+// in src/analyzer.js produce identical output to the source-of-truth
 // implementation in tests/md-extractors.mjs. This prevents silent drift
 // across the two copies that the "Keep in sync" comments rely on.
+//
+// This used to read index.html; that source moved to src/analyzer.js in
+// MOO-67 Commit 3 (see docs/baseline.md) — only the read target changed,
+// the method-body slicing below is source-agnostic.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -15,14 +19,15 @@ import {
 } from './md-extractors.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
+const html = readFileSync(join(__dirname, '..', 'src', 'analyzer.js'), 'utf8');
 
-// Pull the two method bodies from index.html. They live as `extractMarkdownLinks:function(...)`
-// entries inside the Parser object, separated by a comma before the next method.
+// Pull the two method bodies from src/analyzer.js. They live as
+// `extractMarkdownLinks:function(...)` entries inside the Parser object,
+// separated by a comma before the next method.
 function sliceMethod(source, name) {
   const needle = `${name}:function`;
   const start = source.indexOf(needle);
-  if (start < 0) throw new Error(`couldn't find ${name} in index.html`);
+  if (start < 0) throw new Error(`couldn't find ${name} in src/analyzer.js`);
   // Find the opening brace of the function body.
   const openParen = source.indexOf('(', start);
   const closeParen = source.indexOf(')', openParen);

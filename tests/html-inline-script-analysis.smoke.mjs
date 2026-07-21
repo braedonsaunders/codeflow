@@ -1,34 +1,20 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const repoRoot = path.resolve(__dirname, '..');
-const htmlSource = fs.readFileSync(path.join(repoRoot, 'index.html'), 'utf8');
-const parserStart = htmlSource.indexOf('const Parser={');
-const parserEnd = htmlSource.indexOf('\nvar GitHub={', parserStart);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const repoRoot = join(__dirname, '..');
+const htmlSource = readFileSync(join(repoRoot, 'index.html'), 'utf8');
 
-if (parserStart === -1 || parserEnd === -1) {
-  throw new Error('Could not locate Parser source in index.html');
-}
+// Parser's methods reference these as ambient globals only when actually
+// invoked (mirroring the browser's real CDN-provided globals) — see
+// docs/baseline.md.
+if (!('TreeSitter' in globalThis)) globalThis.TreeSitter = undefined;
+if (!('Babel' in globalThis)) globalThis.Babel = undefined;
+if (!('acorn' in globalThis)) globalThis.acorn = undefined;
 
-const context = {
-  console,
-  TreeSitter: undefined,
-  Babel: undefined,
-  acorn: undefined,
-  getSecurityScanContent() {
-    return '';
-  },
-  isSanitizedPreviewRenderer() {
-    return false;
-  }
-};
-
-vm.createContext(context);
-vm.runInContext(`${htmlSource.slice(parserStart, parserEnd)}\nthis.Parser = Parser;`, context);
-
-const Parser = context.Parser;
+const { Parser } = await import('../src/analyzer.js');
 
 assert(Parser, 'Parser should be available');
 

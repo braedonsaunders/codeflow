@@ -3,36 +3,21 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import vm from 'node:vm';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(__dirname, '..');
-const htmlSource = await readFile(join(repoRoot, 'index.html'), 'utf8');
-const startMarker = '// ===== CODEFLOW_ANALYZER_START =====';
-const endMarker = '// ===== CODEFLOW_ANALYZER_END =====';
-const parserStart = htmlSource.indexOf(startMarker);
-const parserEnd = htmlSource.indexOf(endMarker, parserStart);
+// The "Highly Coupled" wording check below inspects the analyzer's own
+// source text, not its runtime behavior — this used to read index.html;
+// that source now lives in src/analyzer.js (see docs/baseline.md).
+const analyzerSource = await readFile(join(__dirname, '..', 'src', 'analyzer.js'), 'utf8');
 
-if (parserStart < 0 || parserEnd < 0) {
-  throw new Error('Could not locate analyzer source in index.html');
-}
+// Parser's methods reference these as ambient globals only when actually
+// invoked (mirroring the browser's real CDN-provided globals) — see
+// docs/baseline.md.
+if (!('TreeSitter' in globalThis)) globalThis.TreeSitter = undefined;
+if (!('Babel' in globalThis)) globalThis.Babel = undefined;
+if (!('acorn' in globalThis)) globalThis.acorn = undefined;
 
-const context = {
-  console,
-  TreeSitter: undefined,
-  Babel: undefined,
-  acorn: undefined,
-  getSecurityScanContent(file) {
-    return file && file.content ? file.content : '';
-  },
-  isSanitizedPreviewRenderer() {
-    return false;
-  },
-};
-
-vm.createContext(context);
-vm.runInContext(`${htmlSource.slice(parserStart, parserEnd)}\nthis.Parser = Parser;`, context);
-const { Parser } = context;
+const { Parser } = await import('../src/analyzer.js');
 
 // Convention (index.html): connection {source: fileDefiningFn (imported), target: fileCallingFn (importer)}.
 // layerOrder: lower number = higher/topmost layer. services=2, utils/lib=4. utils importing UP from services = violation.
@@ -90,9 +75,9 @@ test('a test file importing a util or service is NOT flagged as a layer violatio
 });
 
 test('coupling issue label describes fan-out (files it imports), not fan-in', () => {
-  const start = htmlSource.indexOf("title:highCoup.length+' Highly Coupled'");
+  const start = analyzerSource.indexOf("title:highCoup.length+' Highly Coupled'");
   assert.ok(start > 0, 'Highly Coupled issue builder not found in analyzer source');
-  const snippet = htmlSource.slice(start, start + 200);
+  const snippet = analyzerSource.slice(start, start + 200);
   // The stale fan-in wording ("imported by 8+ others") must be gone...
   assert.equal(/imported by 8\+ others/.test(snippet), false, 'stale fan-in wording still present');
   // ...replaced by wording that describes fan-out (this file imports others).

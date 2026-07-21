@@ -1,0 +1,21 @@
+{
+  "repo": "golden-world",
+  "eligibleFiles": 6,
+  "analyzedFiles": 6,
+  "truncated": false,
+  "functions": 7,
+  "connections": 6,
+  "patterns": 0,
+  "securityIssues": 0,
+  "highSecurityIssues": 0,
+  "duplicates": 0,
+  "layerViolations": 1,
+  "highComplexityFiles": 0,
+  "loc": 44,
+  "topLanguages": [
+    { "ext": "js", "lines": 20, "pct": 45 },
+    { "ext": "py", "lines": 16, "pct": 36 },
+    { "ext": "md", "lines": 8, "pct": 18 }
+  ],
+  "errors": []
+}

@@ -1,0 +1,22 @@
+{
+  "repo": "security-precision-world",
+  "eligibleFiles": 19,
+  "analyzedFiles": 19,
+  "truncated": false,
+  "functions": 19,
+  "connections": 0,
+  "patterns": 1,
+  "securityIssues": 10,
+  "highSecurityIssues": 5,
+  "duplicates": 1,
+  "layerViolations": 0,
+  "highComplexityFiles": 0,
+  "loc": 139,
+  "topLanguages": [
+    { "ext": "ts", "lines": 86, "pct": 62 },
+    { "ext": "tsx", "lines": 27, "pct": 19 },
+    { "ext": "md", "lines": 14, "pct": 10 },
+    { "ext": "py", "lines": 12, "pct": 9 }
+  ],
+  "errors": []
+}

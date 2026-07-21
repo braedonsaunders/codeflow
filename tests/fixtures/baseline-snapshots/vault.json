@@ -1,0 +1,19 @@
+{
+  "repo": "vault",
+  "eligibleFiles": 7,
+  "analyzedFiles": 7,
+  "truncated": false,
+  "functions": 0,
+  "connections": 9,
+  "patterns": 0,
+  "securityIssues": 0,
+  "highSecurityIssues": 0,
+  "duplicates": 0,
+  "layerViolations": 0,
+  "highComplexityFiles": 0,
+  "loc": 55,
+  "topLanguages": [
+    { "ext": "md", "lines": 55, "pct": 100 }
+  ],
+  "errors": []
+}
