@@ -16,7 +16,7 @@ preserved it rather than assert it.
 
 | Purpose | Command |
 |---|---|
-| Run the app, zero-tooling | `open index.html` — **broken as of Commit 3, see the flagged regression below.** Opening the file directly (`file://`) now crashes with `ReferenceError: calcHealth is not defined` because the browser blocks the analyzer module's `import` under CORS for the `file://` origin. |
+| Run the app, zero-tooling | `open index.html` — **no longer supported (intentional, decided Commit 3, see below).** Opening the file directly (`file://`) crashes with `ReferenceError: calcHealth is not defined` because the browser blocks the analyzer module's `import` under CORS for the `file://` origin. Use `npm run dev` or `npm run build && npm start` instead. |
 | Run the app, dev server (added Commit 2) | `npm install && npm run dev` — Vite dev server; now genuinely module-based as of Commit 3 (analyzer code lives in `src/analyzer.js`) |
 | Production build (added Commit 2) | `npm run build` — Vite build, output to `dist/` (as of Commit 3: `dist/index.html` ~369KB + a separate hashed `dist/assets/index-*.js` ~117KB carrying the analyzer module, gitignored) |
 | Serve the production build (added Commit 2) | `npm run start` (or `node server/index.js`) — minimal static file server over `dist/`, `PORT` env var (default `3000`); rejects path-traversal requests, falls back to `index.html` for unmatched paths |
@@ -115,26 +115,26 @@ now moved into `src/analyzer.js` for real, so Node-side analysis uses the
 exact same implementation the browser does — closing a latent
 browser/Node behavioral divergence, not just a code-location cleanup.
 
-**Known regression, deliberately not silently fixed:** opening `index.html`
-directly via `file://` (the project's original "no build, no install, just
-open the file" pitch, and the literal Commit 2 rollback guarantee — "keep
-the original single-file entry available") now **crashes**
-(`ReferenceError: calcHealth is not defined`), because Chromium blocks the
-analyzer module's `import` under CORS for the `file://` origin (confirmed
-via headless Chromium, not assumed). The app still works correctly served
-over any local HTTP server — `npm run dev` or `npm run build && npm start`,
-both already established in Commit 2 — so this is not a functional dead
-end, but it is a real loss of the zero-tooling `open index.html` workflow
-the current public README still advertises. Properly restoring `file://`
-support would mean build-time-inlining `src/analyzer.js`'s content back
-into a classic script for the shipped `dist/index.html` (via a custom Vite
-transform) while keeping Node/test consumers on the real ES module — not
-done here to avoid open-ended scope inside a "modularize the build" commit.
-Flagging this explicitly for a product decision rather than assuming it's
-fine: MOO-66's broader direction is a Railway-hosted, server-owned-auth
-application (see MOO-67 commits 5-7), which may make the standalone
-`file://` mode moot anyway — but that's a call for whoever's driving product
-direction, not an engineering default to quietly accept.
+**Decided regression — `file://` support intentionally dropped.** Opening
+`index.html` directly via `file://` (the project's original "no build, no
+install, just open the file" pitch, and the literal Commit 2 rollback
+guarantee — "keep the original single-file entry available") now
+**crashes** (`ReferenceError: calcHealth is not defined`), because Chromium
+blocks the analyzer module's `import` under CORS for the `file://` origin
+(confirmed via headless Chromium, not assumed). This was flagged as an open
+question when Commit 3 landed; **product decision (2026-07-21): accept the
+removal.** MOO-67 is building toward a server-backed Railway application
+with server-held GitHub credentials (Commits 5-7) — preserving double-click
+local-file execution would complicate the modular architecture for little
+value against that direction, and isn't worth the build-time-inlining
+workaround (re-embedding `src/analyzer.js`'s content into a classic script
+for `dist/index.html` via a custom Vite transform, while keeping Node/test
+consumers on the real ES module) that restoring it would require. The app
+still works correctly served over any local HTTP server — `npm run dev` or
+`npm run build && npm start`, both established in Commit 2 — which remains
+the supported self-host path. `README.md` has been updated (Quick Start,
+Architecture, Contributing, FAQ) to no longer advertise the zero-install
+`open index.html` workflow.
 
 ## Baseline snapshot mechanism
 

@@ -124,13 +124,25 @@ Just visit [CodeFlow](https://codeflow-five.vercel.app/) and paste any GitHub UR
 ### Option 2: Self-Host
 ```bash
 # Clone the repo
-git clone https://github.com/braedonsaunders/codeflow.git
+git clone https://github.com/OwenTanzer/codeflow.git
+cd codeflow
 
-# That's it! Just open index.html in your browser
-open index.html
+# Install dev tooling and start a local server
+npm install
+npm run dev
 ```
 
-No build process. No npm install. It is a single `index.html` app that loads pinned browser dependencies from CDNs.
+Then open the URL Vite prints (defaults to `http://localhost:5173`).
+
+Opening `index.html` directly from disk (`file://`, no server) is **not
+supported** — the app's analyzer code is loaded as an ES module
+(`src/analyzer.js`), and browsers block ES module imports under the
+`file://` origin's CORS restrictions. This was an intentional tradeoff made
+while modularizing the codebase for a future server-hosted deployment with
+server-held credentials (see `docs/baseline.md`); a zero-install, double-click
+local file was judged not worth preserving against that direction. A local
+HTTP server is required either way — `npm run dev` for development, or
+`npm run build && npm start` to run the production build locally.
 
 ### Option 3: Analyze Local Files
 You can now analyze code directly from your local machine without uploading to GitHub:
@@ -308,15 +320,17 @@ For larger repositories or team usage, we recommend using GitHub App authenticat
 │                       │                         │
 │              ┌────────▼────────┐                │
 │              │   React App     │                │
-│              │  (Single File)  │                │
 │              └─────────────────┘                │
 └─────────────────────────────────────────────────┘
 ```
 
-**Zero build dependencies to install.** Everything runs from pinned CDNs:
-- React 18
-- D3.js 7
-- Babel (for JSX)
+The analyzer (`Parser`, `buildAnalysisData`, the `GitHub` API client, and
+related logic) lives in `src/analyzer.js`, imported as an ES module by both
+`index.html` and the Node-side tooling (`card/`, tests) — one implementation,
+not a duplicated copy. React, D3, and Babel still load from pinned CDNs at
+runtime; `npm install` only brings in local dev tooling (Vite for
+building/serving, Playwright for headless browser verification), not
+application dependencies.
 
 ---
 
@@ -325,15 +339,17 @@ For larger repositories or team usage, we recommend using GitHub App authenticat
 We love contributions! Here's how:
 
 1. Fork the repo
-2. Make your changes to `index.html`
-3. Test locally (just open in browser)
+2. Make your changes to `index.html` (app shell/UI) or `src/analyzer.js` (analyzer logic)
+3. Test locally: `npm install && npm run dev`, then open the printed URL
 4. Submit a PR
 
-If you're editing the markdown / wiki-link parser, Node.js unit tests live under `tests/` and run with no dependencies:
+Node.js unit tests live under `tests/` — run them with:
 
 ```bash
-node --test tests/
+node --test tests/*.test.mjs
 ```
+
+(`node --test tests/` without the glob won't discover this repo's flat `tests/*.test.mjs` layout.)
 
 `tests/verify-brain-vault.mjs` is an optional end-to-end script that always verifies the bundled fixtures and will also scan a real local vault when you explicitly set `BRAIN_VAULT=/path/to/vault`.
 
@@ -352,7 +368,7 @@ node --test tests/
 > CodeFlow runs entirely in your browser. It calls the GitHub API directly from your browser and processes everything client-side.
 
 **Q: Is my code safe?**
-> Yes. Your code is fetched directly from GitHub to your browser. Nothing is sent to any server we control. Check the source — it's one file!
+> Yes. Your code is fetched directly from GitHub to your browser. Nothing is sent to any server we control. The source is open — check it yourself.
 
 **Q: Can I use it offline?**
 > Yes. With the local file analysis feature, you can analyze code from your computer without any internet connection. Click the "Open Folder" button and select your files. All processing happens entirely in your browser.
