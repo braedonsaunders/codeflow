@@ -1,4 +1,4 @@
-# CodeFlow baseline (MOO-67, Commits 1-5)
+# CodeFlow baseline (MOO-67, Commits 1-6)
 
 This document is the regression-protection reference point for the Code
 Reality Layer construction work (MOO-66 and its sub-issues). It records what
@@ -19,12 +19,12 @@ preserved it rather than assert it.
 | Run the app, zero-tooling | `open index.html` — **no longer supported (intentional, decided Commit 3, see below).** Opening the file directly (`file://`) crashes with `ReferenceError: calcHealth is not defined` because the browser blocks the analyzer module's `import` under CORS for the `file://` origin. Use `npm run dev` or `npm run build && npm start` instead. |
 | Run the app, dev server (added Commit 2) | `npm install && npm run dev` — Vite dev server; now genuinely module-based as of Commit 3 (analyzer code lives in `src/analyzer.js`) |
 | Production build (added Commit 2) | `npm run build` — Vite build, output to `dist/` (as of Commit 3: `dist/index.html` ~369KB + a separate hashed `dist/assets/index-*.js` ~117KB carrying the analyzer module, gitignored) |
-| Serve the production build (added Commit 2, expanded Commit 5) | `npm run start` (or `node server/index.js`) — serves `dist/` plus `/healthz`, `/readyz`, `POST /api/analyze`; env vars `PORT` (default `3000`), `WORKSPACE_ROOT` (default `<tmpdir>/codeflow-workspaces`), `NODE_ENV`; fails fast at startup (not on first request) if `dist/index.html` is missing, `PORT` is invalid, or the workspace root isn't writable |
-| Run the server integration smoke suite (added Commit 5) | `node tests/server-smoke.mjs` — needs `dist/` built first; spawns the real server on an isolated port/workspace root, not part of `node --test tests/*.test.mjs` for the same reason `codeflow-repo-smoke.mjs`/`ui-smoke.mjs` aren't |
-| Run the full test suite | `node --test tests/*.test.mjs` (79 tests as of Commit 5; `node --test tests/` alone fails — Node's directory-mode test discovery does not pick up this repo's flat `tests/*.test.mjs` layout) |
+| Serve the production build (added Commit 2, expanded Commits 5-6) | `npm run start` (or `node server/index.js`) — serves `dist/` plus `/healthz`, `/readyz` (public, no auth), `POST /api/analyze`, `POST /api/analyze-repo` (both require `Authorization: Bearer <AUTH_TOKEN>`); **required** env vars `AUTH_TOKEN`, `GITHUB_TOKEN`, and at least one of `ALLOWED_REPOS`/`ALLOWED_OWNERS` (comma-separated) — the server now fails fast at startup if any are missing, same fail-fast principle as the pre-existing `dist/index.html`/`PORT`/workspace-writability checks; optional: `PORT` (default `3000`), `WORKSPACE_ROOT` (default `<tmpdir>/codeflow-workspaces`), `NODE_ENV`, `RATE_LIMIT_PER_MINUTE` (default `30`), `MAX_REQUEST_BODY_BYTES` (default `16384`), `MAX_REPO_FILES` (default `500`) |
+| Run the server integration smoke suite (added Commit 5, expanded Commit 6) | `node tests/server-smoke.mjs` — needs `dist/` built first, and a real GitHub credential via `gh auth login` (extracts it with `gh auth token` to verify the GitHub-backed path against real repos, not a mock); spawns the real server on an isolated port/workspace root, not part of `node --test tests/*.test.mjs` for the same reason `codeflow-repo-smoke.mjs`/`ui-smoke.mjs` aren't |
+| Run the browser UI smoke suite against a server (Commit 4A, now requires Commit 6 env vars too) | `AUTH_TOKEN=x GITHUB_TOKEN=x ALLOWED_OWNERS=x node server/index.js` then `node tests/ui-smoke.mjs [url]` — the values don't need to be real for this suite specifically, since it only drives the local-folder (client-side-only) flow, never the server's `/api/*` endpoints; the server just needs to *start*, which now requires these to be set to anything non-empty |
+| Run the full test suite | `node --test tests/*.test.mjs` (105 tests as of Commit 6; `node --test tests/` alone fails — Node's directory-mode test discovery does not pick up this repo's flat `tests/*.test.mjs` layout) |
 | Run the analyzer against an arbitrary repo | `node tests/codeflow-repo-smoke.mjs [--json] [--limit=<files>] <repo-dir>...` |
 | Run the GitHub Action analyzer locally | `cd card && node index.js` — writes `.github/codeflow-card.svg` and `.github/codeflow-card.json` **relative to `card/`** when `GITHUB_WORKSPACE` is unset (it falls back to `process.cwd()`); do not run this from the repo root without setting `GITHUB_WORKSPACE`, or it will analyze `card/` itself and leave stray output there |
-| Run the browser UI smoke suite (added Commit 4A) | `node tests/ui-smoke.mjs [url]` — needs a server already running (`npm run build && npm start`, default `http://localhost:3000/`, or `npm run dev` with its URL passed explicitly); not part of `node --test tests/*.test.mjs` for the same reason `codeflow-repo-smoke.mjs` isn't |
 | `card/` package script | `npm run dry-run` from `card/` (alias for `node index.js`) |
 
 ### Commit 2 scope note
@@ -427,6 +427,108 @@ exports and exercises their logic with synthetic inputs. Full suite
 (83/83 with the new tests), a clean build, and `tests/ui-smoke.mjs` (6/6)
 all still pass — this was a pure addition/relocation, no existing
 behavior changed.
+
+## Commit 6 — authentication and repository-request controls
+
+Three independent gates now sit in front of every `/api/*` route, checked
+in this order, each failing before the next thing it protects is touched:
+
+1. **`server/lib/auth.js`** — a shared-secret check
+   (`Authorization: Bearer <AUTH_TOKEN>`), timing-safe compared
+   (`crypto.timingSafeEqual`, padded to equal length first so the
+   length-mismatch branch doesn't return early with a different timing
+   profile). This is a private-use gate, not a multi-user login system —
+   deliberately, per the checklist's own "practical private-use
+   authentication gate" framing. `/healthz`/`/readyz`/static serving stay
+   public, since Railway's own health monitoring needs to reach them
+   without a token.
+2. **`server/lib/rate-limit.js`** — an in-memory, per-client-IP
+   (`X-Forwarded-For`-aware) fixed-window counter (`RATE_LIMIT_PER_MINUTE`,
+   default 30). Adequate for a single-instance private tool; doesn't
+   survive a restart or scale across instances, which is fine at this
+   scale.
+3. **`server/lib/validate-repo-request.js`** + **`server/lib/allowlist.js`**
+   — format validation (owner/repo/ref/PR-number patterns, deliberately
+   narrower than GitHub actually allows in edge cases) happens before the
+   allowlist check, which happens before any GitHub call.
+
+**The GitHub-backed pipeline** (`server/lib/github-analyzer-bridge.js`,
+wired up by `server/routes/analyze-repo.js`'s new `POST /api/analyze-repo`)
+reuses `GitHub`/`Parser`/`shouldExcludeFile`/`buildAnalysisData` from
+`src/analyzer.js` rather than writing a second GitHub client. It does
+**not** reuse `GitHub.scanTree`/`getFile` as-is, though — both are
+hardcoded to the repository's default branch with no ref parameter, which
+is exactly the gap "validate repository, branch, commit, and PR inputs"
+needs closed. Instead: resolve the request to a concrete `{owner, repo,
+ref}` (branch name, commit SHA, or a PR's head SHA), fetch that ref's tree
+via the Git Trees API, then fetch each file's content by **blob SHA**
+(`git/blobs/{sha}`) rather than the Contents API's own separate ref
+resolution — sidesteps needing to export more analyzer-internal URL
+helpers just for this, and guarantees the content matches the exact tree
+entry, not a second, potentially-racy lookup.
+
+Kept `Commit 5`'s local-path `/api/analyze` as a separate endpoint rather
+than merging the two — they have genuinely different trust boundaries
+(server's own filesystem vs. an external API call with a credential) and
+different validation needs (file path vs. owner/repo/ref/PR).
+
+### Two real bugs found and fixed while verifying this against real GitHub data
+
+Both were caught because verification used **real repositories and PRs**,
+not fixtures with predictable shapes — worth calling out since it's the
+reason this took longer than the code alone would suggest.
+
+1. **A PR's head commit usually lives in a fork, not the base repo.**
+   `octocat/Hello-World` PR #10590's head SHA only exists in
+   `angelg84/Hello-World`'s object database — fetching the *base* repo's
+   tree for that SHA 404s (confirmed directly against GitHub's API, not
+   assumed). Fixed by having `resolveRef()` return the PR's actual
+   `head.repo` owner/name alongside its SHA, and using *that* — not the
+   originally-requested owner/repo — for the subsequent tree/blob fetches.
+   The base repo being allowlisted remains the operative access check: the
+   caller asked for a specific PR *of* that allowlisted repo, and GitHub's
+   own PR data is what resolves which fork/SHA that means.
+   (Separately: while testing this, PR #10590's fork/commit turned out to
+   already be deleted/garbage-collected — a genuinely old PR on a 15-year
+   demo repo — which is *why* bug #2 below was worth finding: that failure
+   mode needs to surface as a clear error, not a crash.)
+2. **`GitHub.request()`'s errorMap-driven errors are plain `Error`s, not
+   `GithubFetchError`.** `GitHub.request` (shared with the browser) throws
+   a plain `Error` using the caller-supplied `errorMap`'s messages on a
+   non-OK response. Since the route handler only maps `GithubFetchError`
+   to a clean `502`, this genuinely-expected condition (bug #1's deleted
+   fork) was surfacing as a generic `"Analysis failed"` `500` instead of
+   GitHub's own `"Ref not found..."` message. Fixed by having
+   `apiRequest()` catch and re-wrap every `GitHub.request()` failure as a
+   `GithubFetchError`.
+
+Both are now covered by dedicated `tests/server-smoke.mjs` steps against
+real GitHub data (PR #10587, still resolvable at the time of writing) —
+not just unit tests with mocked responses, since the whole point of both
+bugs was a mismatch between assumed and actual GitHub API behavior that a
+mock would have hidden.
+
+**Checks:**
+- `tests/server-auth.test.mjs` (16 unit tests, no network) covering
+  `auth.js`, `allowlist.js`, `rate-limit.js`, and
+  `validate-repo-request.js` directly.
+- `tests/server-config.test.mjs` expanded (10 tests) for the new required
+  fields and their fail-fast validation.
+- `tests/server-smoke.mjs` expanded to 17 steps: anonymous/wrong-token
+  rejection, the local-path endpoint now requiring auth too, the
+  GitHub-backed endpoint against a real allowlisted repo (`octocat/Hello-World`,
+  default branch **and** an explicit `ref` **and** a real PR resolved
+  through its fork), allowlist rejection *before* any GitHub call,
+  malformed-input rejection, the clean-502-not-generic-500 regression
+  check, and rate-limit exceeded (429). Requires a real GitHub credential
+  via `gh auth token` — verifies the actual claim in Commit 6's own
+  checklist ("allowed requests work using server-held GitHub
+  credentials"), not just "didn't throw with a fake token."
+- Full suite: 105/105. Clean build. `tests/ui-smoke.mjs` still 6/6 (the
+  browser's local-folder flow never touches the new `/api/*` endpoints, so
+  it's unaffected by the new auth requirement — though the server process
+  itself now needs `AUTH_TOKEN`/`GITHUB_TOKEN`/an allowlist entry set to
+  *something* just to start, even for this browser-only test).
 
 ## Baseline snapshot mechanism
 
