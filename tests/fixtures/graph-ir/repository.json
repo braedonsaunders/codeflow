@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-21T00:00:00.000Z",
+  "warnings": [],
+  "groups": [
+    {
+      "id": "grp-src",
+      "layer": "repository",
+      "label": "src",
+      "parentGroupId": null
+    }
+  ],
+  "rootCoordinate": null,
+  "layer": "repository",
+  "context": {
+    "owner": "octocat",
+    "repo": "Hello-World",
+    "mode": "branch",
+    "ref": "main",
+    "resolvedSha": "deadbeef00deadbeef00deadbeef00deadbeef0",
+    "baseSha": null,
+    "headSha": null,
+    "prNumber": null
+  },
+  "analyzer": {
+    "name": "codeflow-repository-adapter",
+    "version": "1.0.0"
+  },
+  "confidence": 1,
+  "nodes": [
+    {
+      "id": "dir-src",
+      "layer": "repository",
+      "kind": "directory",
+      "label": "src",
+      "coordinate": {
+        "repository": {
+          "host": "github.com",
+          "owner": "octocat",
+          "name": "Hello-World"
+        },
+        "revision": "deadbeef00deadbeef00deadbeef00deadbeef0",
+        "path": "src",
+        "symbolPath": [],
+        "symbolKind": "module",
+        "range": null,
+        "ambiguous": false
+      },
+      "groupId": null,
+      "hints": {
+        "shape": "rect",
+        "layoutPreference": "force"
+      }
+    },
+    {
+      "id": "file-app",
+      "layer": "repository",
+      "kind": "file",
+      "label": "app.py",
+      "coordinate": {
+        "repository": {
+          "host": "github.com",
+          "owner": "octocat",
+          "name": "Hello-World"
+        },
+        "revision": "deadbeef00deadbeef00deadbeef00deadbeef0",
+        "path": "src/app.py",
+        "symbolPath": [],
+        "symbolKind": "module",
+        "range": null,
+        "ambiguous": false
+      },
+      "groupId": "grp-src",
+      "hints": {
+        "shape": "circle",
+        "colorRole": "entryPoint",
+        "isEntry": true
+      }
+    },
+    {
+      "id": "file-service",
+      "layer": "repository",
+      "kind": "file",
+      "label": "service.py",
+      "coordinate": {
+        "repository": {
+          "host": "github.com",
+          "owner": "octocat",
+          "name": "Hello-World"
+        },
+        "revision": "deadbeef00deadbeef00deadbeef00deadbeef0",
+        "path": "src/service.py",
+        "symbolPath": [],
+        "symbolKind": "module",
+        "range": null,
+        "ambiguous": false
+      },
+      "groupId": "grp-src",
+      "hints": {
+        "shape": "circle",
+        "colorRole": "default"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "imports-1",
+      "layer": "repository",
+      "kind": "imports",
+      "source": "file-app",
+      "target": "file-service",
+      "hints": {
+        "colorRole": "default"
+      }
+    }
+  ]
+}

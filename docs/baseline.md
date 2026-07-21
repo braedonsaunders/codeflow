@@ -825,6 +825,47 @@ first or it will be spuriously flaky.
 not exercised by either) — not a source of nondeterminism today, but a gap
 worth knowing about if a future test starts asserting on it.
 
+## MOO-68 — shared GraphIR, source identity, and navigation contracts
+
+MOO-68 (all 7 commits) added `src/graph-ir/` — the versioned contract layer
+MOO-69/70/71 build their repository/file/function adapters against. See
+`docs/graph-ir-contract.md` for the full contract reference (module-by-
+module ownership, the repository → file → function identity flow, and
+extension rules); not duplicated here since this file is specifically the
+MOO-67 regression baseline. Summary of what landed:
+
+1. `sourceCoordinate.js` — canonical `SourceCoordinate` (repository +
+   resolved revision + path + symbol scope chain + kind + range +
+   ambiguity), structured serialization, base64url route/cache tokens.
+2. `githubContext.js` — canonical `AnalysisContext` normalizing
+   repository/branch/commit/PR requests to one resolved-SHA-pinned shape;
+   `assertContextPropagation` blocks silent revision drift on drill-down.
+3. `graphIR.js` — the shared, versioned `GraphIR` envelope (nodes, edges,
+   groups, provenance, rendering hints) all three layers validate against,
+   while keeping distinct `kind`/hint vocabularies per layer.
+4. `adapterResult.js` — `AdapterResult` envelope, the fixed 8-category
+   `ErrorCategory` set, and `sanitizeDiagnostic` (stack-stripping,
+   secret-key redaction at any depth) applied unconditionally.
+5. `navigation.js` — `createSelectionEvent`/`createDrillDownEvent`/
+   `createOpenSourceEvent` plus `NavigationHistory`; this is the real
+   dispatch MOO-67 Commit 4E's `node-activate` no-op seam was left for.
+6. `cacheKey.js` — `buildCacheKey` (stable sha256 over normalized
+   context/analyzer/schema/coordinate/depth/options), `isCacheStale`,
+   `buildProvenanceSummary`.
+7. `tests/fixtures/graph-ir/*.json` (regenerate via
+   `node scripts/gen-graph-ir-fixtures.mjs`) and
+   `examples/minimal-graphir-adapter.mjs` — a runnable adapter demonstrating
+   the full produce/consume cycle using only `src/graph-ir/index.js`, no
+   application code.
+
+**Checks:** 75 new tests across `tests/source-coordinate.test.mjs`,
+`tests/github-context.test.mjs`, `tests/graph-ir-schema.test.mjs`,
+`tests/adapter-result.test.mjs`, `tests/navigation-events.test.mjs`,
+`tests/cache-key.test.mjs`, and `tests/graph-ir-fixtures.test.mjs`. Full
+suite: 207/207 (132 pre-existing + 75 new). No UI wiring in this issue by
+design — `src/render/repositoryGraph.js`'s `activateFileRef` stays a no-op
+until MOO-69 wires a real `createDrillDownEvent` dispatch into it.
+
 ## What this baseline does not cover
 
 - Browser-only behavior (D3 rendering, drag/zoom/click interactions, local

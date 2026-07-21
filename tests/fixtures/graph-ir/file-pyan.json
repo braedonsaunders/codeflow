@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-21T00:00:00.000Z",
+  "warnings": [
+    "1 call target could not be resolved to a definite symbol"
+  ],
+  "groups": [
+    {
+      "id": "grp-service-class",
+      "layer": "file",
+      "label": "Service",
+      "parentGroupId": null
+    }
+  ],
+  "rootCoordinate": {
+    "repository": {
+      "host": "github.com",
+      "owner": "octocat",
+      "name": "Hello-World"
+    },
+    "revision": "deadbeef00deadbeef00deadbeef00deadbeef0",
+    "path": "src/service.py",
+    "symbolPath": [],
+    "symbolKind": "module",
+    "range": null,
+    "ambiguous": false
+  },
+  "layer": "file",
+  "context": {
+    "owner": "octocat",
+    "repo": "Hello-World",
+    "mode": "branch",
+    "ref": "main",
+    "resolvedSha": "deadbeef00deadbeef00deadbeef00deadbeef0",
+    "baseSha": null,
+    "headSha": null,
+    "prNumber": null
+  },
+  "analyzer": {
+    "name": "pyan3",
+    "version": "1.2.3"
+  },
+  "confidence": 0.92,
+  "nodes": [
+    {
+      "id": "fn-main",
+      "layer": "file",
+      "kind": "function",
+      "label": "main",
+      "coordinate": {
+        "repository": {
+          "host": "github.com",
+          "owner": "octocat",
+          "name": "Hello-World"
+        },
+        "revision": "deadbeef00deadbeef00deadbeef00deadbeef0",
+        "path": "src/app.py",
+        "symbolPath": [
+          "main"
+        ],
+        "symbolKind": "function",
+        "range": {
+          "startLine": 1,
+          "startColumn": 0,
+          "endLine": 6,
+          "endColumn": 0
+        },
+        "ambiguous": false
+      },
+      "groupId": null,
+      "hints": {
+        "shape": "rect",
+        "colorRole": "entryPoint",
+        "isEntry": true
+      }
+    },
+    {
+      "id": "fn-service-run",
+      "layer": "file",
+      "kind": "method",
+      "label": "run",
+      "coordinate": {
+        "repository": {
+          "host": "github.com",
+          "owner": "octocat",
+          "name": "Hello-World"
+        },
+        "revision": "deadbeef00deadbeef00deadbeef00deadbeef0",
+        "path": "src/service.py",
+        "symbolPath": [
+          "Service",
+          "run"
+        ],
+        "symbolKind": "method",
+        "range": {
+          "startLine": 10,
+          "startColumn": 4,
+          "endLine": 18,
+          "endColumn": 0
+        },
+        "ambiguous": false
+      },
+      "groupId": "grp-service-class",
+      "hints": {
+        "shape": "rect",
+        "colorRole": "default"
+      }
+    },
+    {
+      "id": "fn-unresolved-import",
+      "layer": "file",
+      "kind": "function",
+      "label": "helper (unresolved import target)",
+      "coordinate": {
+        "repository": {
+          "host": "github.com",
+          "owner": "octocat",
+          "name": "Hello-World"
+        },
+        "revision": "deadbeef00deadbeef00deadbeef00deadbeef0",
+        "path": "src/service.py",
+        "symbolPath": [
+          "helper"
+        ],
+        "symbolKind": "function",
+        "range": null,
+        "ambiguous": true
+      },
+      "groupId": null,
+      "hints": {
+        "shape": "rect",
+        "colorRole": "warning"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "call-1",
+      "layer": "file",
+      "kind": "calls",
+      "source": "fn-main",
+      "target": "fn-service-run"
+    },
+    {
+      "id": "call-2",
+      "layer": "file",
+      "kind": "calls",
+      "source": "fn-service-run",
+      "target": "fn-unresolved-import"
+    }
+  ]
+}

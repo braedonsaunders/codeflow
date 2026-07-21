@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-21T00:00:00.000Z",
+  "warnings": [],
+  "groups": [],
+  "rootCoordinate": {
+    "repository": {
+      "host": "github.com",
+      "owner": "octocat",
+      "name": "Hello-World"
+    },
+    "revision": "deadbeef00deadbeef00deadbeef00deadbeef0",
+    "path": "src/service.py",
+    "symbolPath": [
+      "Service",
+      "run"
+    ],
+    "symbolKind": "method",
+    "range": {
+      "startLine": 10,
+      "startColumn": 4,
+      "endLine": 18,
+      "endColumn": 0
+    },
+    "ambiguous": false
+  },
+  "layer": "function",
+  "context": {
+    "owner": "octocat",
+    "repo": "Hello-World",
+    "mode": "branch",
+    "ref": "main",
+    "resolvedSha": "deadbeef00deadbeef00deadbeef00deadbeef0",
+    "baseSha": null,
+    "headSha": null,
+    "prNumber": null
+  },
+  "analyzer": {
+    "name": "codevisualizer",
+    "version": "0.9.0"
+  },
+  "confidence": 1,
+  "nodes": [
+    {
+      "id": "entry",
+      "layer": "function",
+      "kind": "entry",
+      "label": "entry",
+      "coordinate": null,
+      "groupId": null,
+      "hints": {
+        "shape": "circle",
+        "isEntry": true,
+        "layoutPreference": "hierarchical"
+      }
+    },
+    {
+      "id": "stmt-check",
+      "layer": "function",
+      "kind": "branch",
+      "label": "if self.ready",
+      "coordinate": {
+        "repository": {
+          "host": "github.com",
+          "owner": "octocat",
+          "name": "Hello-World"
+        },
+        "revision": "deadbeef00deadbeef00deadbeef00deadbeef0",
+        "path": "src/service.py",
+        "symbolPath": [
+          "Service",
+          "run"
+        ],
+        "symbolKind": "method",
+        "range": {
+          "startLine": 12,
+          "startColumn": 8,
+          "endLine": 12,
+          "endColumn": 24
+        },
+        "ambiguous": false
+      },
+      "groupId": null,
+      "hints": {
+        "shape": "diamond",
+        "colorRole": "default"
+      }
+    },
+    {
+      "id": "stmt-call",
+      "layer": "function",
+      "kind": "call",
+      "label": "self.execute()",
+      "coordinate": {
+        "repository": {
+          "host": "github.com",
+          "owner": "octocat",
+          "name": "Hello-World"
+        },
+        "revision": "deadbeef00deadbeef00deadbeef00deadbeef0",
+        "path": "src/service.py",
+        "symbolPath": [
+          "Service",
+          "run"
+        ],
+        "symbolKind": "method",
+        "range": {
+          "startLine": 13,
+          "startColumn": 12,
+          "endLine": 13,
+          "endColumn": 27
+        },
+        "ambiguous": false
+      },
+      "groupId": null,
+      "hints": {
+        "shape": "rect",
+        "colorRole": "default"
+      }
+    },
+    {
+      "id": "exit",
+      "layer": "function",
+      "kind": "exit",
+      "label": "exit",
+      "coordinate": null,
+      "groupId": null,
+      "hints": {
+        "shape": "circle",
+        "isExit": true
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "flow-1",
+      "layer": "function",
+      "kind": "flow",
+      "source": "entry",
+      "target": "stmt-check"
+    },
+    {
+      "id": "flow-2",
+      "layer": "function",
+      "kind": "flow-true",
+      "source": "stmt-check",
+      "target": "stmt-call"
+    },
+    {
+      "id": "flow-3",
+      "layer": "function",
+      "kind": "flow-false",
+      "source": "stmt-check",
+      "target": "exit"
+    },
+    {
+      "id": "flow-4",
+      "layer": "function",
+      "kind": "flow",
+      "source": "stmt-call",
+      "target": "exit"
+    }
+  ]
+}
