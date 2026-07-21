@@ -388,6 +388,46 @@ server shell, split into namespaced modules:
   (the static-file logic moved modules but didn't change behavior).
 - Full suite: 79/79 (70 pre-existing + 9 new unit tests).
 
+## Fixup — GitHub.scan's missing dependencies (found while starting Commit 6)
+
+`GitHub.scanTree`/`scanRecursive` (both inside `src/analyzer.js`) call
+`shouldExcludeFile`/`shouldIgnoreDirectory`, which — it turns out — were
+never moved out of `index.html` during the Commit 3 extraction. They only
+"worked" in the browser by accident, via the exact same window-fallthrough
+mechanism that makes `TreeSitter`/`Babel`/`acorn`/`d3` resolve as ambient
+globals from a separate ES module (top-level `function` declarations in a
+classic script attach to `window`). Nothing defines them on `globalThis`
+in Node, so the first time anything actually called `GitHub.scan()`
+server-side (testing it directly, ahead of building Commit 6's real
+GitHub-backed endpoint around it), it threw
+`shouldExcludeFile is not defined` immediately.
+
+Commit 3's own verification never caught this because nothing exercised
+`GitHub.scan` specifically — the worker-path verification
+(`scripts/verify-worker-analysis.mjs`) only drives `buildAnalysisData`
+directly, and no Node test called any `GitHub` method. This is the same
+category of gap `getSecurityScanContent`/`isSanitizedPreviewRenderer` were
+in Commit 3 (external dependencies of the analyzer that lived just
+outside the marked block) — just a second, later-discovered instance of it
+involving a code path (`GitHub.scan`) nothing had actually invoked yet.
+
+Fixed by moving `IGNORE` (the ignored-directory-names `Set`),
+`normalizeExcludePath`, `matchesExcludePattern`, `shouldIgnoreDirectory`,
+and `shouldExcludeFile` into `src/analyzer.js` for real (same "fold into
+the real module" treatment), exported and re-bridged onto `window` so
+`index.html`'s own local-folder-reading code (which also calls
+`shouldExcludeFile`/`shouldIgnoreDirectory`) keeps working unchanged.
+
+**Checks:** re-ran `GitHub.scan('octocat','Hello-World',...)` +
+`GitHub.getFile(...)` directly from Node against the real public repo —
+correctly returned the 1-file tree and fetched its content. Added
+`tests/analyzer-module.test.mjs` (4 tests, no network) so this specific
+gap can't silently reappear — confirms the five functions are real
+exports and exercises their logic with synthetic inputs. Full suite
+(83/83 with the new tests), a clean build, and `tests/ui-smoke.mjs` (6/6)
+all still pass — this was a pure addition/relocation, no existing
+behavior changed.
+
 ## Baseline snapshot mechanism
 
 `tests/baseline-snapshot.test.mjs` runs the existing `tests/codeflow-repo-smoke.mjs`

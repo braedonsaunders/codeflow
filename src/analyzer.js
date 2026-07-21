@@ -2303,6 +2303,48 @@ function decodeBase64Utf8(content){
     }
 }
 
+// Fixup found while building MOO-67 Commit 6: GitHub.scanTree/scanRecursive
+// (below) call shouldExcludeFile/shouldIgnoreDirectory, which were left
+// behind in index.html during the Commit 3 extraction -- they only
+// "worked" in the browser by accident, via the same window-fallthrough
+// mechanism that made TreeSitter/Babel/acorn/d3 work as ambient globals
+// (top-level `function`/`const IGNORE` in the classic script). In Node,
+// nothing defines them on globalThis, so GitHub.scan() threw
+// "shouldExcludeFile is not defined" the first time anything actually
+// called it server-side -- Commit 3's own verification never exercised
+// GitHub.scan specifically. Moved here for real, exported, and re-bridged
+// onto window like everything else, so index.html's local-folder-reading
+// code (which also calls these) keeps working unchanged.
+var IGNORE=new Set(['node_modules','.git','vendor','dist','build','__pycache__','.next','coverage','.venv','venv','env','.env','.tox','.mypy_cache','.pytest_cache','.ruff_cache','__pypackages__','.eggs','__macosx']);
+
+function normalizeExcludePath(value){
+    return (value||'').replace(/\\/g,'/').replace(/^\/+/,'').replace(/\/{2,}/g,'/');
+}
+
+function matchesExcludePattern(compiledPatterns,path,name){
+    if(!compiledPatterns||!compiledPatterns.length)return false;
+    var normalizedPath=normalizeExcludePath(path||name).replace(/\/$/,'');
+    var lowerPath=normalizedPath.toLowerCase();
+    var lowerName=(name||normalizedPath.split('/').pop()||'').toLowerCase();
+    var lowerPathWithSlash=lowerPath?lowerPath+'/':'';
+    var segments=lowerPath.split('/').filter(Boolean);
+    return compiledPatterns.some(function(pattern){
+        if(!pattern.regex){
+            return lowerName===pattern.lower||segments.includes(pattern.lower);
+        }
+        return pattern.regex.test(lowerPath)||pattern.regex.test(lowerPathWithSlash)||pattern.regex.test(lowerName);
+    });
+}
+
+function shouldIgnoreDirectory(path,name,compiledPatterns){
+    var lowerName=(name||'').toLowerCase();
+    return IGNORE.has(lowerName)||lowerName.endsWith('.egg-info')||matchesExcludePattern(compiledPatterns,path,name);
+}
+
+function shouldExcludeFile(path,name,compiledPatterns){
+    return !Parser.isIncluded(name)||matchesExcludePattern(compiledPatterns,path,name);
+}
+
 var GitHub={
     token:'',
     appId:null,
@@ -4389,4 +4431,4 @@ function runAnalysisData(options){
 // added here or that call site will throw a ReferenceError (see the
 // window-bridge <script type="module"> in index.html, which assigns
 // exactly these exports onto window via Object.assign).
-export { getSecurityScanContent, isSanitizedPreviewRenderer, Parser, escapeHtml, renderTooltipHtml, GitHub, countFiles, getArchitectureGroupOrder, getVisibleArchitectureBlocks, computeArchitectureStats, generateMermaidBlockDiagram, buildArchitectureDiagram, buildAnalysisData, calcBlast, calcHealth, createAnalysisWorkerSource, runAnalysisData };
+export { getSecurityScanContent, isSanitizedPreviewRenderer, Parser, escapeHtml, renderTooltipHtml, GitHub, countFiles, getArchitectureGroupOrder, getVisibleArchitectureBlocks, computeArchitectureStats, generateMermaidBlockDiagram, buildArchitectureDiagram, buildAnalysisData, calcBlast, calcHealth, createAnalysisWorkerSource, runAnalysisData, shouldExcludeFile, shouldIgnoreDirectory, matchesExcludePattern, normalizeExcludePath };

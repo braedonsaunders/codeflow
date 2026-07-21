@@ -660,7 +660,6 @@ Object.assign(window, analyzer, { renderRepositoryGraph, useRepositorySelection,
 const{useState,useEffect,useRef,useMemo,useCallback}=React;
 const COLORS=['#4d9fff','#a78bfa','#22d3ee','#00ff9d','#ff9f43','#ec4899','#ff5f5f','#84cc16'];
 const LAYER_COLORS={ui:'#4d9fff',components:'#22d3ee',services:'#a78bfa',utils:'#00ff9d',data:'#ff9f43',config:'#ec4899',test:'#f59e0b',modules:'#a78bfa',forms:'#22d3ee',classes:'#ff9f43',note:'#c084fc'};
-const IGNORE=new Set(['node_modules','.git','vendor','dist','build','__pycache__','.next','coverage','.venv','venv','env','.env','.tox','.mypy_cache','.pytest_cache','.ruff_cache','__pypackages__','.eggs','__macosx']);
 const DEFAULT_EXCLUDE_CHIPS=['.git','node_modules','dist','build','coverage','__pycache__','.next','.venv','venv','.tox'];
 const ANALYSIS_LIMITS={repoSoft:300,repoMax:750,localSoft:500};
 
@@ -668,9 +667,11 @@ const ANALYSIS_LIMITS={repoSoft:300,repoMax:750,localSoft:500};
 // Shared Helpers
 // ---------------------------------------------------------------------------
 
-function normalizeExcludePath(value){
-    return (value||'').replace(/\\/g,'/').replace(/^\/+/,'').replace(/\/{2,}/g,'/');
-}
+// MOO-67 Commit 6: normalizeExcludePath, matchesExcludePattern,
+// shouldIgnoreDirectory, and shouldExcludeFile moved into src/analyzer.js
+// (bridged onto window, same as the rest of the analyzer) -- GitHub.scan
+// needs them server-side, where window-fallthrough doesn't exist. See
+// docs/baseline.md.
 
 function parseExcludePatterns(input){
     var seen=new Set();
@@ -725,30 +726,6 @@ function compileExcludePatterns(input){
             regex:(hasGlob||hasPath)?globToRegex(pattern):null
         };
     });
-}
-
-function matchesExcludePattern(compiledPatterns,path,name){
-    if(!compiledPatterns||!compiledPatterns.length)return false;
-    var normalizedPath=normalizeExcludePath(path||name).replace(/\/$/,'');
-    var lowerPath=normalizedPath.toLowerCase();
-    var lowerName=(name||normalizedPath.split('/').pop()||'').toLowerCase();
-    var lowerPathWithSlash=lowerPath?lowerPath+'/':'';
-    var segments=lowerPath.split('/').filter(Boolean);
-    return compiledPatterns.some(function(pattern){
-        if(!pattern.regex){
-            return lowerName===pattern.lower||segments.includes(pattern.lower);
-        }
-        return pattern.regex.test(lowerPath)||pattern.regex.test(lowerPathWithSlash)||pattern.regex.test(lowerName);
-    });
-}
-
-function shouldIgnoreDirectory(path,name,compiledPatterns){
-    var lowerName=(name||'').toLowerCase();
-    return IGNORE.has(lowerName)||lowerName.endsWith('.egg-info')||matchesExcludePattern(compiledPatterns,path,name);
-}
-
-function shouldExcludeFile(path,name,compiledPatterns){
-    return !Parser.isIncluded(name)||matchesExcludePattern(compiledPatterns,path,name);
 }
 
 function getArchiveRootPrefix(paths){
