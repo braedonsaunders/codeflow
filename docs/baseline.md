@@ -1,4 +1,4 @@
-# CodeFlow baseline (MOO-67, Commits 1-6)
+# CodeFlow baseline (MOO-67, Commits 1-7 — MOO-67 complete)
 
 This document is the regression-protection reference point for the Code
 Reality Layer construction work (MOO-66 and its sub-issues). It records what
@@ -529,6 +529,120 @@ mock would have hidden.
   it's unaffected by the new auth requirement — though the server process
   itself now needs `AUTH_TOKEN`/`GITHUB_TOKEN`/an allowlist entry set to
   *something* just to start, even for this browser-only test).
+
+## Commit 7 — deployed the authenticated Railway preview shell
+
+**Live at:** `https://codeviz-production.up.railway.app` (Railway-generated
+domain — not the final `codeviz.moopertonic.net`, see the DNS section
+below). Project `codeviz` (`b9f4568f-b0bd-4ebe-b54d-7978bf3c544a`), service
+`codeviz` (`f6722304-46c5-41aa-a29f-20f5035dcca6`), environment
+`production`, region `sfo`, workspace `owentanzer's Projects`.
+
+### Deployment configuration
+
+Railway auto-detected this as a Node app via its Railpack builder and
+succeeded on the very first deploy with **no config file at all** — it
+correctly ran `npm run build` during the build phase (package.json has a
+`build` script) and `npm start` to launch, confirmed by `/readyz` reporting
+`buildOutput.ok: true` on that first deployment. Added `railway.json`
+anyway, since "add Railway deployment configuration" is a real checklist
+item and relying purely on implicit auto-detection is fragile to depend on
+long-term:
+
+```json
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": { "builder": "RAILPACK" },
+  "deploy": {
+    "startCommand": "npm start",
+    "healthcheckPath": "/readyz",
+    "healthcheckTimeout": 30,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}
+```
+
+`healthcheckPath: /readyz` (rather than `/healthz`) is the one substantive
+choice here: it makes Railway itself gate traffic routing and rollout
+success on the *readiness* check (build output present, workspace
+writable), not just "the process is up" — confirmed applied by re-reading
+deployment metadata after redeploying with this file present
+(`meta.serviceManifest.deploy.healthcheckPath` changed from `null` to
+`/readyz`, `startCommand` from `null` to `npm start`).
+
+### Environment variables (set via `railway variable set`, not committed anywhere)
+
+| Variable | Value | Notes |
+|---|---|---|
+| `AUTH_TOKEN` | a generated 32-byte random secret (base64url) | **Not recorded in this repo or in Linear** — given directly to the operator in conversation when set. Rotate via `railway variable set AUTH_TOKEN=<new value>` (triggers a redeploy by default; add `--skip-deploys` to stage it and roll out separately) whenever it may have been exposed. |
+| `GITHUB_TOKEN` | the operator's existing `gh auth token` PAT | Same credential already used locally throughout Commits 5-6's verification — reused per the decision recorded in the MOO-67 environment-setup comment, not a new credential. |
+| `ALLOWED_OWNERS` | `OwenTanzer` | **A judgment call made during deployment, not an explicit prior decision** — set to the operator's own GitHub account so the deployed instance can analyze their own repos. Change anytime with `railway variable set ALLOWED_OWNERS=...` or add `ALLOWED_REPOS` for narrower per-repo scoping. |
+| `NODE_ENV` | `production` | |
+| `PORT` | *(not set)* | Railway injects its own `PORT`; `server/lib/config.js` already reads `process.env.PORT` with a fallback, so this needed no change. |
+
+### Verified against the live deployment (not just locally)
+
+- `GET /healthz` → `200 {"status":"ok",...,"nodeVersion":"v22.23.1","env":"production"}`.
+  Node v22.23.1 on Railway satisfies the `^20.19.0 || >=22.12.0` engine
+  constraint from the Commit 3 fixup — confirmed, not assumed.
+- `GET /readyz` → `200 {"status":"ready","checks":{"buildOutput":{"ok":true},"workspaceRoot":{"ok":true}}}`.
+- `GET /` → `200`, serves the built app.
+- `POST /api/analyze` with no `Authorization` header → `401`.
+- `POST /api/analyze` with a wrong token → `401`.
+- `POST /api/analyze` with the correct token, `golden-world` → `200`,
+  `files:6 functions:7` — matches the same baseline every other
+  environment (local dev, `tests/server-smoke.mjs`) produces.
+- `POST /api/analyze-repo` for `torvalds/linux` (not allowlisted) → `403`.
+- `POST /api/analyze-repo` for `OwenTanzer/CodeVisualizer` (allowlisted,
+  real repo, real GitHub fetch through the deployed instance) → `200`.
+
+### Rollback
+
+No CLI command targets a **specific past** deployment — `railway service
+redeploy` only redeploys *the latest* one (useful after a crash, not for
+rolling back to an older version). Confirmed by checking `railway service
+redeploy --help` and `railway deployment --help` directly rather than
+assuming. Two real rollback paths exist:
+
+1. **Dashboard** (the actual "pick an older version" mechanism): Railway
+   project → `codeviz` service → Deployments tab → find the last-known-good
+   deployment → "⋯" menu → Redeploy.
+2. **CLI, from source**: `git checkout <last-known-good-commit>` (or a
+   branch/tag), then `railway up --detach -y --json` from that checkout —
+   Railway deploys are just an upload of the local directory's content, so
+   redeploying from an earlier commit has the same effect. This is the
+   same command this commit's own deploys used, just pointed at older code.
+
+Both are described here rather than exercised live, to avoid burning an
+extra real deployment cycle just to prove a redeploy works — the mechanism
+itself (`railway up` succeeding) was already demonstrated twice during
+this commit's own rollout.
+
+### DNS and Moopertonic Hub cutover — recorded for later, not done now
+
+Per MOO-66/MOO-72's plan, the final production domain is
+`codeviz.moopertonic.net`, and `moopertonic.net`'s DNS is managed via
+Cloudflare (per the `viewer-wrangler-deploy` project memory;
+`CLOUDFLARE_API_TOKEN` already exists locally for this). Exact steps for
+whoever does the MOO-72 cutover:
+
+1. `railway domain codeviz.moopertonic.net` (or via the dashboard) against
+   this service — Railway will return the CNAME target to point at.
+2. In Cloudflare's DNS for `moopertonic.net`, add a CNAME record:
+   `codeviz` → the host Railway returned in step 1.
+3. `railway domain status codeviz.moopertonic.net` to confirm the custom
+   domain has verified and the certificate has issued.
+4. Add/update the CodeViz link in the Moopertonic Hub navigation once the
+   custom domain is live.
+5. Only after the custom domain is confirmed healthy, consider whether to
+   keep or remove the `codeviz-production.up.railway.app` Railway-generated
+   domain as a fallback.
+
+Not doing this now — MOO-66/MOO-67 explicitly scope the DNS/Hub cutover to
+MOO-72, after all layers (repository/file/function views) are actually
+operational. This is intentionally just the recorded procedure, not a
+blocker for MOO-68 to begin.
 
 ## Baseline snapshot mechanism
 
