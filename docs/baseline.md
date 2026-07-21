@@ -1,4 +1,4 @@
-# CodeFlow baseline (MOO-67, Commits 1-4A)
+# CodeFlow baseline (MOO-67, Commits 1-4B)
 
 This document is the regression-protection reference point for the Code
 Reality Layer construction work (MOO-66 and its sub-issues). It records what
@@ -170,6 +170,55 @@ paths instead (what I tried first) throws
 Playwright enforces the directory-path form specifically for
 `webkitdirectory` inputs; it doesn't silently degrade to flat `.name`-only
 files the way raw CDP file injection would.
+
+### Commit 4B — repository graph renderer extracted to src/render/repositoryGraph.js
+
+The 2D D3 force-graph build/update lifecycle — previously a ~150-line
+`useEffect` inline in `App()`, dependency array
+`[data,colorMap,colorMode,theme,folderFilter,graphConfig]` — is now
+`renderRepositoryGraph()` in `src/render/repositoryGraph.js`, a real ES
+module bridged onto `window` the same way `src/analyzer.js` is (see the
+Commit 3 section above; same `<script type="module">` bridge, extended to
+also import this module).
+
+**Mechanical extraction, not a rewrite:** the function body is the exact
+original D3 code (`sed`-sliced out of `index.html`, not retyped), with
+only four narrow substitutions:
+- `svgRef.current` → the `svgEl` parameter
+- `setTooltip(...)` → the `onHover(...)` parameter
+- `setSelected(null);setBlastRadius(null);` (on empty-canvas click) →
+  `onBackgroundClick()` parameter
+- everything else — `data`, `colorMap`, `colorMode`, `theme`,
+  `folderFilter`, `graphConfig`, `COLORS`, `LAYER_COLORS` — became
+  explicit parameters instead of closed-over `App()` variables/constants
+  (`COLORS`/`LAYER_COLORS` specifically needed to become parameters rather
+  than ambient globals like `d3`/`TreeSitter`/`Babel`/`acorn`, because
+  they're declared with `const` in the classic script — `const`/`let`
+  don't attach to `window` the way top-level `var`/`function` do, so an
+  ambient-global reference from a separate ES module wouldn't have found
+  them)
+
+**Why the refs stayed unchanged.** `zoomRef`, `simRef`, `linksRef`,
+`nodesRef`, and `selectFileRef` are passed into `renderRepositoryGraph()`
+as the *same* React ref objects `App()` already holds, populated by the
+renderer exactly as the inline effect did (`zoomRef.current=zoom`, etc.).
+This mattered because grepping every other use of these four refs found
+them read directly in several unrelated places — zoom in/out/reset
+buttons, blast-radius highlight reset, PDF export, the "Back to Issues"
+button — none of which needed to change, since they're still reading the
+same ref objects being populated the same way. Verified specifically
+(beyond the standing `tests/ui-smoke.mjs` suite) with an ad hoc Playwright
+probe exercising zoom in/out/reset, hover tooltip, and "Back to Issues":
+zero console errors, all three still worked. `selectFileRef` needed no
+new callback at all — node clicks already went through
+`selectFileRef.current(d.id)`, an existing ref-indirection pattern, not a
+direct `setSelected` call.
+
+**Checks:** `tests/ui-smoke.mjs` passes against both `npm run dev` and a
+production build (6/6 both times) — same suite Commit 4A added, now
+serving as this commit's regression check exactly as intended. Full Node
+suite unaffected (62/62 — this commit touches only browser-side rendering
+code, nothing under `card/` or `tests/*.test.mjs`).
 
 ## Baseline snapshot mechanism
 
