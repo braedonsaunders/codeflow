@@ -1,0 +1,16 @@
+{
+  "name": "codeflow",
+  "private": true,
+  "type": "module",
+  "description": "CodeFlow application shell — build/dev tooling. See README.md for the app itself and card/ for the GitHub Action.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server/index.js",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "vite": "8.1.5"
+  }
+}
