@@ -1,0 +1,23 @@
+{
+  "repo": "web-app-world",
+  "eligibleFiles": 17,
+  "analyzedFiles": 17,
+  "truncated": false,
+  "functions": 9,
+  "connections": 3,
+  "patterns": 0,
+  "securityIssues": 0,
+  "highSecurityIssues": 0,
+  "duplicates": 0,
+  "layerViolations": 1,
+  "highComplexityFiles": 0,
+  "loc": 64,
+  "topLanguages": [
+    { "ext": "ts", "lines": 28, "pct": 44 },
+    { "ext": "tsx", "lines": 24, "pct": 38 },
+    { "ext": "js", "lines": 6, "pct": 9 },
+    { "ext": "mjs", "lines": 4, "pct": 6 },
+    { "ext": "html", "lines": 2, "pct": 3 }
+  ],
+  "errors": []
+}
