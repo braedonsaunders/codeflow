@@ -79,15 +79,31 @@ async function resolveRef({ owner, repo, ref, pr }) {
   return { owner, repo, ref: repoData.default_branch || 'main' };
 }
 
-async function fetchTree({ owner, repo, resolvedRef, maxRepoFiles }) {
-  const data = await apiRequest(
-    `/repos/${owner}/${repo}/git/trees/${encodeURIComponent(resolvedRef)}?recursive=1`,
-    { 404: 'Ref not found (branch, commit, or PR head does not exist)' }
-  );
-  if (!data.tree) throw new GithubFetchError('Invalid tree response from GitHub');
-
+/**
+ * Pure selection logic over an already-fetched Git tree — no network
+ * calls, so this is unit-testable directly (see
+ * tests/server-github-bridge.test.mjs) instead of only reachable through
+ * a real GitHub round-trip.
+ *
+ * GitHub tree entries already carry each blob's size, so an oversized file
+ * is rejected here — before any content is ever fetched/decoded, not
+ * after. Individually-oversized files are skipped (excluded from
+ * analysis, same as an ignored directory or excluded pattern) rather than
+ * failing the whole request; the aggregate is a hard cap instead, since
+ * that's the actual memory-exhaustion risk the wildcard allowlist opened
+ * up (every accepted blob is fetched into memory and held resident before
+ * analysis runs).
+ *
+ * @param {Array<{type: string, path: string, sha: string, size?: number}>} treeEntries
+ * @param {{maxRepoFiles: number, maxFileBytes: number, maxRepoBytes: number}} limits
+ * @returns {{files: Array, skippedOversizedFiles: number}}
+ * @throws {GithubFetchError} if the aggregate or file-count limit is exceeded
+ */
+export function selectAnalyzableFiles(treeEntries, { maxRepoFiles, maxFileBytes, maxRepoBytes }) {
   const files = [];
-  for (const entry of data.tree) {
+  let skippedOversizedFiles = 0;
+  let totalBytes = 0;
+  for (const entry of treeEntries) {
     if (entry.type !== 'blob') continue;
     const name = entry.path.includes('/') ? entry.path.slice(entry.path.lastIndexOf('/') + 1) : entry.path;
     const folder = entry.path.includes('/') ? entry.path.slice(0, entry.path.lastIndexOf('/')) : 'root';
@@ -98,7 +114,20 @@ async function fetchTree({ owner, repo, resolvedRef, maxRepoFiles }) {
     });
     if (ignored) continue;
     if (shouldExcludeFile(entry.path, name, [])) continue;
-    files.push({ path: entry.path, name, folder, sha: entry.sha, isCode: Parser.isCode(name) });
+
+    const size = typeof entry.size === 'number' ? entry.size : 0;
+    if (size > maxFileBytes) {
+      skippedOversizedFiles += 1;
+      continue;
+    }
+    totalBytes += size;
+    if (totalBytes > maxRepoBytes) {
+      throw new GithubFetchError(
+        `Repository content exceeds the configured aggregate size limit of ${maxRepoBytes} bytes ` +
+          `(reached ${totalBytes} bytes and counting). Point at a narrower ref, or raise MAX_REPO_BYTES if this is expected.`
+      );
+    }
+    files.push({ path: entry.path, name, folder, sha: entry.sha, size, isCode: Parser.isCode(name) });
   }
 
   if (files.length > maxRepoFiles) {
@@ -107,7 +136,20 @@ async function fetchTree({ owner, repo, resolvedRef, maxRepoFiles }) {
         'Point at a narrower ref, or raise MAX_REPO_FILES if this is expected.'
     );
   }
-  return files;
+  return { files, skippedOversizedFiles };
+}
+
+/**
+ * @param {{owner: string, repo: string, resolvedRef: string, maxRepoFiles: number, maxFileBytes: number, maxRepoBytes: number}} options
+ * @returns {Promise<{files: Array, skippedOversizedFiles: number}>}
+ */
+async function fetchTree({ owner, repo, resolvedRef, maxRepoFiles, maxFileBytes, maxRepoBytes }) {
+  const data = await apiRequest(
+    `/repos/${owner}/${repo}/git/trees/${encodeURIComponent(resolvedRef)}?recursive=1`,
+    { 404: 'Ref not found (branch, commit, or PR head does not exist)' }
+  );
+  if (!data.tree) throw new GithubFetchError('Invalid tree response from GitHub');
+  return selectAnalyzableFiles(data.tree, { maxRepoFiles, maxFileBytes, maxRepoBytes });
 }
 
 async function fetchBlobContent(owner, repo, sha) {
@@ -134,13 +176,20 @@ async function fetchAllContents(owner, repo, files, concurrency = 8) {
 
 /**
  * @param {{owner: string, repo: string, ref: string|null, pr: number|null}} request
- * @param {{githubToken: string, maxRepoFiles: number}} config
+ * @param {{githubToken: string, maxRepoFiles: number, maxFileBytes: number, maxRepoBytes: number}} config
  */
 export async function analyzeGithubRepo(request, config) {
   GitHub.token = config.githubToken;
 
   const { owner, repo, ref: resolvedRef } = await resolveRef(request);
-  const files = await fetchTree({ owner, repo, resolvedRef, maxRepoFiles: config.maxRepoFiles });
+  const { files, skippedOversizedFiles } = await fetchTree({
+    owner,
+    repo,
+    resolvedRef,
+    maxRepoFiles: config.maxRepoFiles,
+    maxFileBytes: config.maxFileBytes,
+    maxRepoBytes: config.maxRepoBytes,
+  });
   const contents = await fetchAllContents(owner, repo, files);
 
   const analyzed = [];
@@ -176,5 +225,5 @@ export async function analyzeGithubRepo(request, config) {
     yieldFn: async () => {},
   });
 
-  return { result, resolvedRef, fileCount: files.length };
+  return { result, resolvedRef, fileCount: files.length, skippedOversizedFiles };
 }

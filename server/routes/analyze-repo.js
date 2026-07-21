@@ -10,27 +10,11 @@ import { validateRepoRequest, ValidationError } from '../lib/validate-repo-reque
 import { isRepoAllowed } from '../lib/allowlist.js';
 import { analyzeGithubRepo, GithubFetchError } from '../lib/github-analyzer-bridge.js';
 import { createRequestLogger } from '../lib/logger.js';
+import { readJsonBody, BodyTooLargeError } from '../lib/http-body.js';
 
 function sendJson(res, status, body) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
-}
-
-async function readJsonBody(req, maxBytes) {
-  let size = 0;
-  const chunks = [];
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > maxBytes) {
-      const err = new Error('Request body too large');
-      err.code = 'BODY_TOO_LARGE';
-      throw err;
-    }
-    chunks.push(chunk);
-  }
-  const raw = Buffer.concat(chunks).toString('utf8');
-  if (!raw) return {};
-  return JSON.parse(raw);
 }
 
 /** @param {{config: object}} deps */
@@ -42,7 +26,7 @@ export function createAnalyzeRepoHandler({ config }) {
     try {
       body = await readJsonBody(req, config.maxRequestBodyBytes);
     } catch (err) {
-      if (err.code === 'BODY_TOO_LARGE') {
+      if (err instanceof BodyTooLargeError) {
         return sendJson(res, 413, { error: 'Request body too large' });
       }
       return sendJson(res, 400, { error: 'Request body must be valid JSON' });
@@ -70,9 +54,14 @@ export function createAnalyzeRepoHandler({ config }) {
     log.info('analyze-repo request accepted', { owner: request.owner, repo: request.repo, ref: request.ref, pr: request.pr });
 
     try {
-      const { result, resolvedRef, fileCount } = await analyzeGithubRepo(request, config);
-      log.info('github analysis complete', { resolvedRef, fileCount, functions: result.stats.functions });
-      sendJson(res, 200, { ...result, resolvedRef });
+      const { result, resolvedRef, fileCount, skippedOversizedFiles } = await analyzeGithubRepo(request, config);
+      log.info('github analysis complete', {
+        resolvedRef,
+        fileCount,
+        functions: result.stats.functions,
+        skippedOversizedFiles,
+      });
+      sendJson(res, 200, { ...result, resolvedRef, skippedOversizedFiles });
     } catch (err) {
       if (err instanceof GithubFetchError) {
         log.warn('github fetch failed', { message: err.message });

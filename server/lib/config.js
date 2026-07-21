@@ -81,6 +81,25 @@ export function loadConfig({ repoRoot, env = process.env }) {
     errors.push(`MAX_REPO_FILES must be a positive integer, got: ${JSON.stringify(env.MAX_REPO_FILES)}`);
   }
 
+  // PR review finding: MAX_REPO_FILES caps file *count* but not byte size —
+  // the GitHub-backed path fetches every accepted blob into memory and
+  // holds it resident before analysis. That mattered less while
+  // repositories were tightly allowlisted; the wildcard follow-up means
+  // any authenticated caller can point the server at any public repo, and
+  // a repo with a few hundred enormous blobs could exhaust memory despite
+  // staying under MAX_REPO_FILES. GitHub's tree API already reports each
+  // blob's size, so oversized files are rejected before content is ever
+  // fetched/decoded (see server/lib/github-analyzer-bridge.js).
+  const maxFileBytes = env.MAX_FILE_BYTES ? Number(env.MAX_FILE_BYTES) : 1 * 1024 * 1024;
+  if (!Number.isInteger(maxFileBytes) || maxFileBytes <= 0) {
+    errors.push(`MAX_FILE_BYTES must be a positive integer, got: ${JSON.stringify(env.MAX_FILE_BYTES)}`);
+  }
+
+  const maxRepoBytes = env.MAX_REPO_BYTES ? Number(env.MAX_REPO_BYTES) : 25 * 1024 * 1024;
+  if (!Number.isInteger(maxRepoBytes) || maxRepoBytes <= 0) {
+    errors.push(`MAX_REPO_BYTES must be a positive integer, got: ${JSON.stringify(env.MAX_REPO_BYTES)}`);
+  }
+
   if (errors.length > 0) {
     throw new ConfigError(errors);
   }
@@ -98,5 +117,7 @@ export function loadConfig({ repoRoot, env = process.env }) {
     rateLimitPerMinute,
     maxRequestBodyBytes,
     maxRepoFiles,
+    maxFileBytes,
+    maxRepoBytes,
   };
 }

@@ -58,6 +58,29 @@ test('loadConfig succeeds and applies defaults when all required config is prese
     assert.equal(config.rateLimitPerMinute, 30);
     assert.equal(config.maxRequestBodyBytes, 16 * 1024);
     assert.equal(config.maxRepoFiles, 500);
+    assert.equal(config.maxFileBytes, 1 * 1024 * 1024);
+    assert.equal(config.maxRepoBytes, 25 * 1024 * 1024);
+  });
+});
+
+test('loadConfig rejects an invalid MAX_FILE_BYTES or MAX_REPO_BYTES', async () => {
+  await withBuiltRepo((repoRoot) => {
+    assert.throws(
+      () => loadConfig({ repoRoot, env: { ...VALID_ENV, MAX_FILE_BYTES: '0' } }),
+      /MAX_FILE_BYTES must be a positive integer/
+    );
+    assert.throws(
+      () => loadConfig({ repoRoot, env: { ...VALID_ENV, MAX_REPO_BYTES: 'nope' } }),
+      /MAX_REPO_BYTES must be a positive integer/
+    );
+  });
+});
+
+test('loadConfig respects MAX_FILE_BYTES/MAX_REPO_BYTES overrides', async () => {
+  await withBuiltRepo((repoRoot) => {
+    const config = loadConfig({ repoRoot, env: { ...VALID_ENV, MAX_FILE_BYTES: '2048', MAX_REPO_BYTES: '4096' } });
+    assert.equal(config.maxFileBytes, 2048);
+    assert.equal(config.maxRepoBytes, 4096);
   });
 });
 
