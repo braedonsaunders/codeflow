@@ -2833,6 +2833,26 @@ const Parser={
         var candidateSet=new Set(Object.keys(canonicalNamesByToken));
         if(!source||!candidateSet.size)return calls;
 
+        function pascalQualifierBefore(index){
+            var cursor=index-1;
+            while(cursor>=0&&/\s/.test(source[cursor]))cursor--;
+            if(source[cursor]!=='.')return'';
+            cursor--;
+            var parts=[];
+            while(cursor>=0){
+                while(cursor>=0&&/\s/.test(source[cursor]))cursor--;
+                var end=cursor+1;
+                while(cursor>=0&&/[A-Za-z0-9_]/.test(source[cursor]))cursor--;
+                var part=source.slice(cursor+1,end);
+                if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(part))break;
+                parts.unshift(part);
+                while(cursor>=0&&/\s/.test(source[cursor]))cursor--;
+                if(source[cursor]!=='.')break;
+                cursor--;
+            }
+            return parts.join('.').toLowerCase();
+        }
+
         var tokenRe=/\b[a-zA-Z_$][\w$]*\b/g;
         var match;
         while((match=tokenRe.exec(source))!==null){
@@ -2849,16 +2869,14 @@ const Parser={
             var prevChar=prev>=0?source[prev]:'';
             var lineStart=source.lastIndexOf('\n',start-1)+1;
             var prefix=source.slice(lineStart,start);
-            if(opts.isPascal){
-                var qualifierMatch=prefix.match(/(?:^|[^A-Za-z0-9_])([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\.\s*$/);
-                if(qualifierMatch){
-                    var qualifiedName=qualifierMatch[1].toLowerCase()+'.'+tokenName;
-                    if(calls[qualifiedName]===undefined){
-                        calls[qualifiedName]=0;
-                        refs[qualifiedName]=0;
-                    }
-                    matchedNames=[qualifiedName];
+            var pascalQualifier=opts.isPascal?pascalQualifierBefore(start):'';
+            if(pascalQualifier){
+                var qualifiedName=pascalQualifier+'.'+tokenName;
+                if(calls[qualifiedName]===undefined){
+                    calls[qualifiedName]=0;
+                    refs[qualifiedName]=0;
                 }
+                matchedNames=[qualifiedName];
             }
             var isDefinition=false;
             if(/\b(function|class|def)\s*$/.test(prefix))isDefinition=true;
@@ -2867,7 +2885,7 @@ const Parser={
             if(opts.isPascal&&/\b(procedure|function|constructor|destructor|operator)\s+$/i.test(prefix))isDefinition=true;
             if(nextChar==='('&&!isDefinition){
                 matchedNames.forEach(function(name){calls[name]++;});
-            }else if(opts.isPascal&&nextChar===';'&&!isDefinition&&/^(?:[A-Za-z_]\w*\.)*\s*$/.test(prefix.trim())){
+            }else if(opts.isPascal&&nextChar===';'&&!isDefinition&&(pascalQualifier||/^(?:[A-Za-z_]\w*\.)*\s*$/.test(prefix.trim()))){
                 matchedNames.forEach(function(name){calls[name]++;});
             }else if(!isDefinition&&'[,[:(={'.indexOf(prevChar)>=0&&' ,])};\n\r'.indexOf(nextChar)>=0){
                 matchedNames.forEach(function(name){refs[name]++;});

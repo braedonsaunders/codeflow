@@ -178,7 +178,9 @@ end.
     'app.lpr': `program QualifiedCaseFoldedCalls;
 uses UnitA, UnitB;
 begin
-  UnitA.RENDER;
+  UnitA . RENDER;
+  UnitA.
+    RENDER;
 end.
 `,
   });
@@ -188,5 +190,6 @@ end.
     Array.from(appConnections, (connection) => connection.source + ':' + connection.fn),
     ['UnitA.pas:Render']
   );
+  assert.equal(appConnections[0].count, 2);
   assert.equal(data.connections.some((connection) => connection.source === 'UnitB.pas'), false);
 });
