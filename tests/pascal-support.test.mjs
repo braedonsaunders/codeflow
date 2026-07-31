@@ -77,7 +77,31 @@ test('Pascal extraction uses implementation bodies and recognizes routines', asy
   );
 });
 
-test('Pascal call graph follows uses units and ignores comments and strings', async () => {
+test('Pascal extraction ignores routine-like declarations inside comments', () => {
+  const content = `program CommentedRoutines;
+
+{
+procedure CurlyGhost;
+}
+
+(*
+function ParenGhost: Integer;
+*)
+
+procedure RealRoutine;
+begin
+end;
+
+begin
+  RealRoutine;
+end.
+`;
+  const functions = Parser.extract(content, 'CommentedRoutines.lpr');
+
+  assert.deepEqual(Array.from(functions, (fn) => fn.name), ['RealRoutine']);
+});
+
+test('Pascal call graph is case-insensitive, follows uses units, and ignores non-code', async () => {
   const data = await analyzePascalFixture();
   const appConnections = data.connections
     .filter((connection) => connection.target === 'app.lpr')

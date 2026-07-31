@@ -2204,7 +2204,9 @@ const Parser={
     extractOtherLanguages:function(content,filename,addFn,extractCode){
         var lines=content.split('\n');
         var isPascal=Parser.isPascal(filename);
-        var pascalHasImplementation=isPascal&&/^\s*implementation\b/im.test(content);
+        var pascalContent=isPascal?Parser.stripPascalNonCode(content):'';
+        var pascalLines=isPascal?pascalContent.split('\n'):null;
+        var pascalHasImplementation=isPascal&&/^\s*implementation\b/im.test(pascalContent);
         var inPascalImplementation=!pascalHasImplementation;
 
         lines.forEach(function(line,idx){
@@ -2212,15 +2214,16 @@ const Parser={
             var m;
 
             if(isPascal){
-                if(/^\s*implementation\b/i.test(line)){
+                var pascalLine=pascalLines[idx];
+                if(/^\s*implementation\b/i.test(pascalLine)){
                     inPascalImplementation=true;
                     return;
                 }
                 if(!inPascalImplementation)return;
-                if(!/^\s*(?:(?:class|static)\s+)?(?:procedure|function|constructor|destructor|operator)\b/i.test(line))return;
-                var signature=line;
+                if(!/^\s*(?:(?:class|static)\s+)?(?:procedure|function|constructor|destructor|operator)\b/i.test(pascalLine))return;
+                var signature=pascalLine;
                 for(var si=idx+1;si<lines.length&&si<=idx+8&&!/;/.test(signature);si++){
-                    signature+=' '+lines[si].trim();
+                    signature+=' '+pascalLines[si].trim();
                 }
                 m=signature.match(/^\s*(?:(?:class|static)\s+)?(procedure|function|constructor|destructor|operator)\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)/i);
                 if(m&&!/\b(?:forward|external)\b/i.test(signature)){
@@ -2765,11 +2768,21 @@ const Parser={
         return{locals:localFiles,targets:targets};
     },
 
-    candidateFunctionNames:function(content,fnNames,fnIndex){
+    candidateFunctionNames:function(content,fnNames,fnIndex,options){
         if(!content||!fnNames||!fnNames.length)return[];
         if(fnNames.length<=Parser._callCandidateThreshold)return fnNames;
-        var wordSet=new Set(String(content).match(/\b[a-zA-Z_$][\w$]*\b/g)||[]);
+        var caseInsensitive=!!(options&&options.caseInsensitive);
+        var words=String(content).match(/\b[a-zA-Z_$][\w$]*\b/g)||[];
+        var wordSet=new Set(caseInsensitive?words.map(function(word){return word.toLowerCase();}):words);
         if(!wordSet.size)return[];
+        if(caseInsensitive){
+            return fnNames.filter(function(fn){
+                if(typeof fn!=='string')return false;
+                var lower=fn.toLowerCase();
+                var base=lower.indexOf('.')>=0?lower.split('.').pop():lower;
+                return wordSet.has(lower)||wordSet.has(base);
+            });
+        }
         var index=fnIndex||Parser.buildFunctionNameIndex(fnNames);
         var out=[];
         var seen=new Set();
@@ -2794,19 +2807,27 @@ const Parser={
     countCandidateCalls:function(content,fnNames,options){
         var calls=Object.create(null);
         var refs=Object.create(null);
-        var candidateSet=new Set(fnNames||[]);
         var source=String(content||'');
         var opts=options||{};
-        fnNames.forEach(function(fn){calls[fn]=0;refs[fn]=0;});
+        var canonicalNamesByToken=Object.create(null);
+        (fnNames||[]).forEach(function(fn){
+            calls[fn]=0;
+            refs[fn]=0;
+            var token=opts.isPascal?fn.toLowerCase():fn;
+            if(!canonicalNamesByToken[token])canonicalNamesByToken[token]=[];
+            canonicalNamesByToken[token].push(fn);
+        });
+        var candidateSet=new Set(Object.keys(canonicalNamesByToken));
         if(!source||!candidateSet.size)return calls;
 
         var tokenRe=/\b[a-zA-Z_$][\w$]*\b/g;
         var match;
         while((match=tokenRe.exec(source))!==null){
-            var name=match[0];
-            if(!candidateSet.has(name))continue;
+            var tokenName=opts.isPascal?match[0].toLowerCase():match[0];
+            if(!candidateSet.has(tokenName))continue;
+            var matchedNames=canonicalNamesByToken[tokenName];
             var start=match.index;
-            var end=start+name.length;
+            var end=start+match[0].length;
             var prev=start-1;
             while(prev>=0&&/\s/.test(source[prev]))prev--;
             var next=end;
@@ -2821,13 +2842,13 @@ const Parser={
             if(opts.isVBA&&/\b(Sub|Function)\s+$/i.test(prefix))isDefinition=true;
             if(opts.isPascal&&/\b(procedure|function|constructor|destructor|operator)\s+$/i.test(prefix))isDefinition=true;
             if(nextChar==='('&&!isDefinition){
-                calls[name]++;
+                matchedNames.forEach(function(name){calls[name]++;});
             }else if(opts.isPascal&&nextChar===';'&&!isDefinition&&/^(?:[A-Za-z_]\w*\.)*\s*$/.test(prefix.trim())){
-                calls[name]++;
+                matchedNames.forEach(function(name){calls[name]++;});
             }else if(!isDefinition&&'[,[:(={'.indexOf(prevChar)>=0&&' ,])};\n\r'.indexOf(nextChar)>=0){
-                refs[name]++;
+                matchedNames.forEach(function(name){refs[name]++;});
             }else if(opts.isPython&&prevChar==='@'&&!isDefinition){
-                refs[name]++;
+                matchedNames.forEach(function(name){refs[name]++;});
             }
         }
 
@@ -2865,7 +2886,8 @@ const Parser={
 
     // AST-based call detection - finds actual function calls and references
     findCalls:function(content,fnNames,definingFile,fnDefs,fnIndex){
-        fnNames=Parser.candidateFunctionNames(content,fnNames,fnIndex);
+        var pascalFile=Parser.isPascal(definingFile);
+        fnNames=Parser.candidateFunctionNames(content,fnNames,fnIndex,{caseInsensitive:pascalFile});
         var calls={};
         var refs={};  // Functions used as callbacks/references without ()
         if(!fnNames.length)return calls;
@@ -2904,7 +2926,7 @@ const Parser={
         var isPython=['py','pyw','pyi'].indexOf(ext)>=0;
         var isJS=['js','jsx','ts','tsx','mjs','cjs','vue','svelte'].indexOf(ext)>=0;
         var isVBA=['vba','bas','cls','xlsm','xlam'].indexOf(ext)>=0;
-        var isPascal=['pas','pp','dpr','dpk','lpr','inc'].indexOf(ext)>=0;
+        var isPascal=pascalFile;
 
         // Python: use tree-sitter real parser (WASM) for accurate AST-based detection
         if(isPython){

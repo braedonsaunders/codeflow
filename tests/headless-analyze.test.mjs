@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -43,6 +43,50 @@ test('headless CLI keeps stdout machine-readable', async () => {
   assert.equal(result.schemaVersion, 1);
   assert.equal(result.data.stats.files, 6);
 });
+
+test('headless analyzer rejects missing paths and regular files', async (t) => {
+  const fixture = await mkdtemp(join(tmpdir(), 'codeflow-invalid-root-'));
+  t.after(() => rm(fixture, { recursive: true, force: true }));
+  const filePath = join(fixture, 'file.js');
+  await writeFile(filePath, 'export function example() {}\n');
+
+  await assert.rejects(
+    analyze({ repoRoot: join(fixture, 'missing') }),
+    /Analysis path does not exist/
+  );
+  await assert.rejects(analyze({ repoRoot: filePath }), /Analysis path is not a directory/);
+});
+
+test('headless CLI reports invalid roots on stderr and exits unsuccessfully', async () => {
+  const missingPath = join(
+    tmpdir(),
+    'codeflow-missing-analysis-root-' + process.pid + '-' + Date.now()
+  );
+  await assert.rejects(
+    execFileAsync(process.execPath, [cliPath, '--path', missingPath]),
+    (error) => {
+      assert.equal(error.stdout, '');
+      assert.match(error.stderr, /Analysis path does not exist/);
+      assert.notEqual(error.code, 0);
+      return true;
+    }
+  );
+});
+
+test(
+  'headless analyzer rejects unreadable directories',
+  { skip: process.platform === 'win32' || (process.getuid && process.getuid() === 0) },
+  async (t) => {
+    const fixture = await mkdtemp(join(tmpdir(), 'codeflow-unreadable-root-'));
+    t.after(async () => {
+      await chmod(fixture, 0o700);
+      await rm(fixture, { recursive: true, force: true });
+    });
+    await chmod(fixture, 0o000);
+
+    await assert.rejects(analyze({ repoRoot: fixture }), /Analysis path is not readable/);
+  }
+);
 
 test('headless argument parser accepts equals and repeated forms', () => {
   const parsed = parseArgs(['--path=' + fixtureRoot, '--exclude=dist/**', '--exclude', '*.min.js']);

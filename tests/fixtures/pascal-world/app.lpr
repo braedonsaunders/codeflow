@@ -4,6 +4,6 @@ uses
   MathUtils;
 
 begin
-  WriteLn(DoubleValue(21));
-  LogValue;
+  WriteLn(doublevalue(21));
+  logvalue;
 end.

@@ -2,6 +2,7 @@
 
 'use strict';
 
+const fs = require('fs');
 const path = require('path');
 
 const { loadAnalyzer, locateIndexHtml } = require('./analyzer.js');
@@ -16,9 +17,36 @@ function normalizeExcludeInput(exclude) {
   return exclude == null ? '' : String(exclude);
 }
 
+function validateRepoRoot(repoRoot) {
+  let stats;
+  try {
+    stats = fs.statSync(repoRoot);
+  } catch (error) {
+    if (error && error.code === 'ENOENT') {
+      throw new Error('Analysis path does not exist: ' + repoRoot);
+    }
+    throw new Error(
+      'Analysis path is not accessible: ' + repoRoot +
+        (error && error.code ? ' (' + error.code + ')' : '')
+    );
+  }
+  if (!stats.isDirectory()) {
+    throw new Error('Analysis path is not a directory: ' + repoRoot);
+  }
+  try {
+    fs.accessSync(repoRoot, fs.constants.R_OK | fs.constants.X_OK);
+  } catch (error) {
+    throw new Error(
+      'Analysis path is not readable: ' + repoRoot +
+        (error && error.code ? ' (' + error.code + ')' : '')
+    );
+  }
+}
+
 async function analyze(options) {
   const opts = options || {};
   const repoRoot = path.resolve(opts.repoRoot || process.cwd());
+  validateRepoRoot(repoRoot);
   const actionDir = path.resolve(opts.actionDir || path.join(__dirname, '..'));
   const progress = typeof opts.progress === 'function' ? opts.progress : () => {};
   const indexHtmlPath = opts.indexHtmlPath || locateIndexHtml(actionDir, repoRoot);
@@ -59,4 +87,4 @@ async function analyze(options) {
   return { schemaVersion: HEADLESS_SCHEMA_VERSION, data, snapshot };
 }
 
-module.exports = { analyze, HEADLESS_SCHEMA_VERSION, normalizeExcludeInput };
+module.exports = { analyze, HEADLESS_SCHEMA_VERSION, normalizeExcludeInput, validateRepoRoot };
