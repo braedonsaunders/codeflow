@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { basename, dirname, join, relative } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import vm from 'node:vm';
@@ -30,13 +30,18 @@ const { Parser, buildAnalysisData } = context;
 
 async function analyzePascalFixture() {
   const entries = await readdir(fixtureRoot, { withFileTypes: true });
-  const analyzed = [];
-  const allFns = [];
+  const sources = {};
   for (const entry of entries) {
     if (!entry.isFile() || !Parser.isIncluded(entry.name)) continue;
-    const fullPath = join(fixtureRoot, entry.name);
-    const filePath = relative(fixtureRoot, fullPath).replace(/\\/g, '/');
-    const content = await readFile(fullPath, 'utf8');
+    sources[entry.name] = await readFile(join(fixtureRoot, entry.name), 'utf8');
+  }
+  return analyzePascalSources(sources);
+}
+
+async function analyzePascalSources(sources) {
+  const analyzed = [];
+  const allFns = [];
+  for (const [filePath, content] of Object.entries(sources)) {
     const functions = Parser.extract(content, filePath);
     const layer = Parser.detectLayer(filePath);
     analyzed.push({
@@ -112,4 +117,40 @@ test('Pascal call graph is case-insensitive, follows uses units, and ignores non
   assert.equal(data.connections.some((connection) => connection.source === 'OtherUtils.pp'), false);
   assert.equal(data.stats.files, 3);
   assert.equal(data.stats.functions, 3);
+});
+
+test('Pascal case-folded calls resolve only to the imported unit', async () => {
+  const data = await analyzePascalSources({
+    'UnitA.pas': `unit UnitA;
+interface
+procedure Render;
+implementation
+procedure Render;
+begin
+end;
+end.
+`,
+    'UnitB.pas': `unit UnitB;
+interface
+procedure render;
+implementation
+procedure render;
+begin
+end;
+end.
+`,
+    'app.lpr': `program CaseFoldedCalls;
+uses UnitA;
+begin
+  RENDER;
+end.
+`,
+  });
+
+  const appConnections = data.connections.filter((connection) => connection.target === 'app.lpr');
+  assert.deepEqual(
+    Array.from(appConnections, (connection) => connection.source + ':' + connection.fn),
+    ['UnitA.pas:Render']
+  );
+  assert.equal(data.connections.some((connection) => connection.source === 'UnitB.pas'), false);
 });

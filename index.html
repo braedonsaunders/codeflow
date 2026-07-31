@@ -2603,6 +2603,7 @@ const Parser={
 
     buildFunctionDefinitionIndex:function(fnDefs){
         var byName=Object.create(null);
+        var byPascalName=Object.create(null);
         var byKey=Object.create(null);
         (fnDefs||[]).forEach(function(fn){
             if(!fn||typeof fn.name!=='string'||!fn.name)return;
@@ -2612,8 +2613,13 @@ const Parser={
             byKey[key]=fn;
             if(!byName[fn.name])byName[fn.name]=[];
             byName[fn.name].push(fn);
+            if(Parser.isPascal(fn.file)){
+                var pascalName=fn.name.toLowerCase();
+                if(!byPascalName[pascalName])byPascalName[pascalName]=[];
+                byPascalName[pascalName].push(fn);
+            }
         });
-        return{byName:byName,byKey:byKey};
+        return{byName:byName,byPascalName:byPascalName,byKey:byKey};
     },
 
     resolveCallGraphImportPath:function(importPath,fromFile,files){
@@ -2811,11 +2817,16 @@ const Parser={
         var opts=options||{};
         var canonicalNamesByToken=Object.create(null);
         (fnNames||[]).forEach(function(fn){
-            calls[fn]=0;
-            refs[fn]=0;
             var token=opts.isPascal?fn.toLowerCase():fn;
-            if(!canonicalNamesByToken[token])canonicalNamesByToken[token]=[];
-            canonicalNamesByToken[token].push(fn);
+            if(opts.isPascal){
+                calls[token]=0;
+                refs[token]=0;
+                canonicalNamesByToken[token]=[token];
+            }else{
+                calls[fn]=0;
+                refs[fn]=0;
+                canonicalNamesByToken[token]=[fn];
+            }
         });
         var candidateSet=new Set(Object.keys(canonicalNamesByToken));
         if(!source||!candidateSet.size)return calls;
@@ -2878,7 +2889,7 @@ const Parser={
             }
         }
 
-        fnNames.forEach(function(fn){
+        Object.keys(calls).forEach(function(fn){
             calls[fn]=Math.max(0,calls[fn]||0)+(refs[fn]||0);
         });
         return calls;
@@ -4857,7 +4868,10 @@ async function buildAnalysisData(options){
     }
 
     function resolveCallDefinitions(fnName,file){
-        var defs=fnDefIndex.byName[fnName]||[];
+        var isPascalCall=Parser.isPascal(file.path);
+        var defs=isPascalCall
+            ?fnDefIndex.byPascalName[fnName.toLowerCase()]||[]
+            :fnDefIndex.byName[fnName]||[];
         if(!defs.length)return[];
         var sameFile=defs.filter(function(def){return def.file===file.path;});
         var sameFileDef=firstDefinitionFromOneFile(sameFile);
@@ -4902,7 +4916,7 @@ async function buildAnalysisData(options){
                     if(def.file===file.path){
                         stat.internal+=cnt;
                     }else{
-                        conns.push({source:def.file,target:file.path,fn:fn,count:cnt,functionKey:def.key});
+                        conns.push({source:def.file,target:file.path,fn:def.name,count:cnt,functionKey:def.key});
                         var ex=stat.callers.get(file.path);
                         if(ex)ex.count+=cnt;
                         else stat.callers.set(file.path,{file:file.path,name:file.name,count:cnt});
