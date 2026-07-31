@@ -4911,6 +4911,7 @@ async function buildAnalysisData(options){
             :fnDefIndex.byName[fnName]||[];
         if(!defs.length)return[];
         var imports=fileImportInfo[file.path]||{locals:Object.create(null),targets:new Set()};
+        var hasUnresolvedPascalQualifier=false;
         if(pascalQualifier){
             var qualifiedImports=(imports.locals&&imports.locals[pascalQualifier])||[];
             if(qualifiedImports.length){
@@ -4918,10 +4919,12 @@ async function buildAnalysisData(options){
                 var qualifiedDef=firstDefinitionFromOneFile(qualifiedMatches);
                 return qualifiedDef?[qualifiedDef]:[];
             }
+            hasUnresolvedPascalQualifier=true;
         }
         var sameFile=defs.filter(function(def){return def.file===file.path;});
         var sameFileDef=firstDefinitionFromOneFile(sameFile);
         if(sameFileDef)return[sameFileDef];
+        if(hasUnresolvedPascalQualifier)return[];
         if(defs.length===1)return[defs[0]];
 
         var directImports=(imports.locals&&imports.locals[fnName])||[];

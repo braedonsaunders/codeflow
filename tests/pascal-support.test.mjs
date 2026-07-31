@@ -261,3 +261,40 @@ end.
   assert.equal(renderStats.external, 0);
   assert.equal(renderStats.count, 0);
 });
+
+test('Pascal member calls do not use unit import precedence', async () => {
+  const data = await analyzePascalSources({
+    'UnitA.pas': `unit UnitA;
+interface
+type
+  TThing = class
+    procedure Render;
+  end;
+implementation
+procedure TThing.Render;
+begin
+end;
+end.
+`,
+    'UnitB.pas': `unit UnitB;
+interface
+procedure render;
+implementation
+procedure render;
+begin
+end;
+end.
+`,
+    'app.lpr': `program MemberCall;
+uses UnitA, UnitB;
+var
+  Obj: UnitA.TThing;
+begin
+  Obj.Render;
+end.
+`,
+  });
+
+  const appConnections = data.connections.filter((connection) => connection.target === 'app.lpr');
+  assert.deepEqual(Array.from(appConnections), []);
+});
