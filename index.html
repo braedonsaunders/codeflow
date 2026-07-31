@@ -2850,7 +2850,7 @@ const Parser={
                 if(source[cursor]!=='.')break;
                 cursor--;
             }
-            return parts.join('.').toLowerCase();
+            return parts.length?parts.join('.').toLowerCase():'@member';
         }
 
         var tokenRe=/\b[a-zA-Z_$][\w$]*\b/g;

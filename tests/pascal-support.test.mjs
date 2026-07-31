@@ -289,8 +289,11 @@ end.
 uses UnitA, UnitB;
 var
   Obj: UnitA.TThing;
+  Items: array of UnitA.TThing;
 begin
   Obj.Render;
+  GetThing().Render();
+  Items[0].Render();
 end.
 `,
   });
