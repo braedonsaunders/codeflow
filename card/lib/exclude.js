@@ -1,6 +1,6 @@
 // Exclude-pattern support for the card action. Ports the browser app's
 // pattern helpers (index.html: normalizeExcludePath / parseExcludePatterns /
-// globToRegex / matchesExcludePattern) so `exclude:` input patterns behave
+// globMatches / matchesExcludePattern) so `exclude:` input patterns behave
 // exactly like the web UI's custom excludes: `vendor/**`, `**/cache/**`,
 // `*.min.js`, or a bare name that matches any path segment.
 //
@@ -26,35 +26,58 @@ function parseExcludePatterns(input) {
     });
 }
 
-function escapeRegexChar(ch) {
-  return /[|\\{}()[\]^$+?.]/.test(ch) ? '\\' + ch : ch;
-}
+// Match the small glob dialect used by CodeFlow without turning user input
+// into executable regular expressions. Memoization keeps adjacent wildcards
+// and long paths from causing exponential backtracking.
+function globMatches(pattern, value) {
+  const glob = normalizeExcludePath(pattern).toLowerCase();
+  const candidate = normalizeExcludePath(value).toLowerCase();
+  const memo = new Map();
 
-function globToRegex(pattern) {
-  const normalized = normalizeExcludePath(pattern).toLowerCase();
-  let out = '^';
-  for (let i = 0; i < normalized.length; i++) {
-    const ch = normalized[i];
-    if (ch === '*') {
-      if (normalized[i + 1] === '*') {
-        if (normalized[i + 2] === '/') {
-          out += '(?:[^/]+/)*';
-          i += 2;
+  function match(globIndex, valueIndex) {
+    const key = globIndex + ':' + valueIndex;
+    if (memo.has(key)) return memo.get(key);
+
+    let result;
+    if (globIndex === glob.length) {
+      result = valueIndex === candidate.length;
+    } else if (glob[globIndex] === '*') {
+      if (glob[globIndex + 1] === '*') {
+        if (glob[globIndex + 2] === '/') {
+          result = match(globIndex + 3, valueIndex);
+          if (!result) {
+            const slashIndex = candidate.indexOf('/', valueIndex);
+            result = slashIndex > valueIndex && match(globIndex, slashIndex + 1);
+          }
         } else {
-          out += '.*';
-          i++;
+          result =
+            match(globIndex + 2, valueIndex) ||
+            (valueIndex < candidate.length && match(globIndex, valueIndex + 1));
         }
       } else {
-        out += '[^/]*';
+        result =
+          match(globIndex + 1, valueIndex) ||
+          (valueIndex < candidate.length &&
+            candidate[valueIndex] !== '/' &&
+            match(globIndex, valueIndex + 1));
       }
-    } else if (ch === '?') {
-      out += '[^/]';
+    } else if (glob[globIndex] === '?') {
+      result =
+        valueIndex < candidate.length &&
+        candidate[valueIndex] !== '/' &&
+        match(globIndex + 1, valueIndex + 1);
     } else {
-      out += escapeRegexChar(ch);
+      result =
+        valueIndex < candidate.length &&
+        glob[globIndex] === candidate[valueIndex] &&
+        match(globIndex + 1, valueIndex + 1);
     }
+
+    memo.set(key, result);
+    return result;
   }
-  out += '$';
-  return new RegExp(out, 'i');
+
+  return match(0, 0);
 }
 
 function compileExcludePatterns(input) {
@@ -65,7 +88,7 @@ function compileExcludePatterns(input) {
     return {
       raw: pattern,
       lower,
-      regex: hasGlob || hasPath ? globToRegex(pattern) : null,
+      useGlob: hasGlob || hasPath,
     };
   });
 }
@@ -78,13 +101,13 @@ function matchesExcludePattern(compiledPatterns, path, name) {
   const lowerPathWithSlash = lowerPath ? lowerPath + '/' : '';
   const segments = lowerPath.split('/').filter(Boolean);
   return compiledPatterns.some((pattern) => {
-    if (!pattern.regex) {
+    if (!pattern.useGlob) {
       return lowerName === pattern.lower || segments.includes(pattern.lower);
     }
     return (
-      pattern.regex.test(lowerPath) ||
-      pattern.regex.test(lowerPathWithSlash) ||
-      pattern.regex.test(lowerName)
+      globMatches(pattern.lower, lowerPath) ||
+      globMatches(pattern.lower, lowerPathWithSlash) ||
+      globMatches(pattern.lower, lowerName)
     );
   });
 }

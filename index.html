@@ -653,35 +653,39 @@ function parseExcludePatterns(input){
     });
 }
 
-function escapeRegexChar(ch){
-    return /[|\\{}()[\]^$+?.]/.test(ch)?'\\'+ch:ch;
-}
-
-function globToRegex(pattern){
-    var normalized=normalizeExcludePath(pattern).toLowerCase();
-    var out='^';
-    for(var i=0;i<normalized.length;i++){
-        var ch=normalized[i];
-        if(ch==='*'){
-            if(normalized[i+1]==='*'){
-                if(normalized[i+2]==='/'){
-                    out+='(?:[^/]+/)*';
-                    i+=2;
+function globMatches(pattern,value){
+    var glob=normalizeExcludePath(pattern).toLowerCase();
+    var candidate=normalizeExcludePath(value).toLowerCase();
+    var memo=new Map();
+    function match(globIndex,valueIndex){
+        var key=globIndex+':'+valueIndex;
+        if(memo.has(key))return memo.get(key);
+        var result;
+        if(globIndex===glob.length){
+            result=valueIndex===candidate.length;
+        }else if(glob[globIndex]==='*'){
+            if(glob[globIndex+1]==='*'){
+                if(glob[globIndex+2]==='/'){
+                    result=match(globIndex+3,valueIndex);
+                    if(!result){
+                        var slashIndex=candidate.indexOf('/',valueIndex);
+                        result=slashIndex>valueIndex&&match(globIndex,slashIndex+1);
+                    }
                 }else{
-                    out+='.*';
-                    i++;
+                    result=match(globIndex+2,valueIndex)||(valueIndex<candidate.length&&match(globIndex,valueIndex+1));
                 }
             }else{
-                out+='[^/]*';
+                result=match(globIndex+1,valueIndex)||(valueIndex<candidate.length&&candidate[valueIndex]!=='/'&&match(globIndex,valueIndex+1));
             }
-        }else if(ch==='?'){
-            out+='[^/]';
+        }else if(glob[globIndex]==='?'){
+            result=valueIndex<candidate.length&&candidate[valueIndex]!=='/'&&match(globIndex+1,valueIndex+1);
         }else{
-            out+=escapeRegexChar(ch);
+            result=valueIndex<candidate.length&&glob[globIndex]===candidate[valueIndex]&&match(globIndex+1,valueIndex+1);
         }
+        memo.set(key,result);
+        return result;
     }
-    out+='$';
-    return new RegExp(out,'i');
+    return match(0,0);
 }
 
 function compileExcludePatterns(input){
@@ -692,7 +696,7 @@ function compileExcludePatterns(input){
         return{
             raw:pattern,
             lower:lower,
-            regex:(hasGlob||hasPath)?globToRegex(pattern):null
+            useGlob:hasGlob||hasPath
         };
     });
 }
@@ -705,10 +709,10 @@ function matchesExcludePattern(compiledPatterns,path,name){
     var lowerPathWithSlash=lowerPath?lowerPath+'/':'';
     var segments=lowerPath.split('/').filter(Boolean);
     return compiledPatterns.some(function(pattern){
-        if(!pattern.regex){
+        if(!pattern.useGlob){
             return lowerName===pattern.lower||segments.includes(pattern.lower);
         }
-        return pattern.regex.test(lowerPath)||pattern.regex.test(lowerPathWithSlash)||pattern.regex.test(lowerName);
+        return globMatches(pattern.lower,lowerPath)||globMatches(pattern.lower,lowerPathWithSlash)||globMatches(pattern.lower,lowerName);
     });
 }
 
