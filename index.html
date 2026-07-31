@@ -2882,7 +2882,10 @@ const Parser={
             if(/\b(function|class|def)\s*$/.test(prefix))isDefinition=true;
             if(opts.isPython&&/\b(async\s+def|def|class)\s*$/.test(prefix))isDefinition=true;
             if(opts.isVBA&&/\b(Sub|Function)\s+$/i.test(prefix))isDefinition=true;
-            if(opts.isPascal&&/\b(procedure|function|constructor|destructor|operator)\s+$/i.test(prefix))isDefinition=true;
+            if(opts.isPascal){
+                var declarationContext=source.slice(Math.max(0,start-512),start);
+                if(/\b(?:procedure|function|constructor|destructor|operator)\s+(?:[A-Za-z_][A-Za-z0-9_]*\s*\.\s*)*$/i.test(declarationContext))isDefinition=true;
+            }
             if(nextChar==='('&&!isDefinition){
                 matchedNames.forEach(function(name){calls[name]++;});
             }else if(opts.isPascal&&nextChar===';'&&!isDefinition&&(pascalQualifier||/^(?:[A-Za-z_]\w*\.)*\s*$/.test(prefix.trim()))){

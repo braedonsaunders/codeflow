@@ -238,3 +238,26 @@ end.
     'app-ba.lpr': 'UnitA.pas',
   });
 });
+
+test('Pascal qualified routine declarations are not counted as calls', async () => {
+  const data = await analyzePascalSources({
+    'Thing.pas': `unit Thing;
+interface
+type
+  TThing = class
+    procedure Render;
+  end;
+implementation
+procedure TThing.Render;
+begin
+end;
+end.
+`,
+  });
+
+  const renderStats = Object.values(data.fnStats).find((stats) => stats.name === 'Render');
+  assert.ok(renderStats);
+  assert.equal(renderStats.internal, 0);
+  assert.equal(renderStats.external, 0);
+  assert.equal(renderStats.count, 0);
+});
