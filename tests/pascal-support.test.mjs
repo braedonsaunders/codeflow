@@ -154,3 +154,39 @@ end.
   );
   assert.equal(data.connections.some((connection) => connection.source === 'UnitB.pas'), false);
 });
+
+test('Pascal unit-qualified calls select the named unit from case-folded definitions', async () => {
+  const data = await analyzePascalSources({
+    'UnitA.pas': `unit UnitA;
+interface
+procedure Render;
+implementation
+procedure Render;
+begin
+end;
+end.
+`,
+    'UnitB.pas': `unit UnitB;
+interface
+procedure render;
+implementation
+procedure render;
+begin
+end;
+end.
+`,
+    'app.lpr': `program QualifiedCaseFoldedCalls;
+uses UnitA, UnitB;
+begin
+  UnitA.RENDER;
+end.
+`,
+  });
+
+  const appConnections = data.connections.filter((connection) => connection.target === 'app.lpr');
+  assert.deepEqual(
+    Array.from(appConnections, (connection) => connection.source + ':' + connection.fn),
+    ['UnitA.pas:Render']
+  );
+  assert.equal(data.connections.some((connection) => connection.source === 'UnitB.pas'), false);
+});

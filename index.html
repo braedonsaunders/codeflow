@@ -2762,7 +2762,9 @@ const Parser={
                 match[1].split(',').forEach(function(part){
                     var unitMatch=part.trim().match(/^([A-Za-z_][A-Za-z0-9_.]*)/);
                     if(!unitMatch)return;
-                    addTarget(Parser.resolveCallGraphImportPath(unitMatch[1],fromFile,files));
+                    var unitResolved=Parser.resolveCallGraphImportPath(unitMatch[1],fromFile,files);
+                    addTarget(unitResolved);
+                    addLocal(unitMatch[1].toLowerCase(),unitResolved);
                 });
             }
         }
@@ -2847,6 +2849,17 @@ const Parser={
             var prevChar=prev>=0?source[prev]:'';
             var lineStart=source.lastIndexOf('\n',start-1)+1;
             var prefix=source.slice(lineStart,start);
+            if(opts.isPascal){
+                var qualifierMatch=prefix.match(/(?:^|[^A-Za-z0-9_])([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\.\s*$/);
+                if(qualifierMatch){
+                    var qualifiedName=qualifierMatch[1].toLowerCase()+'.'+tokenName;
+                    if(calls[qualifiedName]===undefined){
+                        calls[qualifiedName]=0;
+                        refs[qualifiedName]=0;
+                    }
+                    matchedNames=[qualifiedName];
+                }
+            }
             var isDefinition=false;
             if(/\b(function|class|def)\s*$/.test(prefix))isDefinition=true;
             if(opts.isPython&&/\b(async\s+def|def|class)\s*$/.test(prefix))isDefinition=true;
@@ -4869,16 +4882,27 @@ async function buildAnalysisData(options){
 
     function resolveCallDefinitions(fnName,file){
         var isPascalCall=Parser.isPascal(file.path);
+        var pascalParts=isPascalCall?fnName.toLowerCase().split('.'):[];
+        var pascalBaseName=isPascalCall?pascalParts.pop():fnName;
+        var pascalQualifier=isPascalCall?pascalParts.join('.'):'';
         var defs=isPascalCall
-            ?fnDefIndex.byPascalName[fnName.toLowerCase()]||[]
+            ?fnDefIndex.byPascalName[pascalBaseName]||[]
             :fnDefIndex.byName[fnName]||[];
         if(!defs.length)return[];
+        var imports=fileImportInfo[file.path]||{locals:Object.create(null),targets:new Set()};
+        if(pascalQualifier){
+            var qualifiedImports=(imports.locals&&imports.locals[pascalQualifier])||[];
+            if(qualifiedImports.length){
+                var qualifiedMatches=defs.filter(function(def){return qualifiedImports.indexOf(def.file)>=0;});
+                var qualifiedDef=firstDefinitionFromOneFile(qualifiedMatches);
+                return qualifiedDef?[qualifiedDef]:[];
+            }
+        }
         var sameFile=defs.filter(function(def){return def.file===file.path;});
         var sameFileDef=firstDefinitionFromOneFile(sameFile);
         if(sameFileDef)return[sameFileDef];
         if(defs.length===1)return[defs[0]];
 
-        var imports=fileImportInfo[file.path]||{locals:Object.create(null),targets:new Set()};
         var directImports=(imports.locals&&imports.locals[fnName])||[];
         var matches=[];
         if(directImports.length){
