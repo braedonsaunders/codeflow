@@ -4930,6 +4930,15 @@ async function buildAnalysisData(options){
         }
 
         if(imports.targets&&typeof imports.targets.has==='function'){
+            if(isPascalCall){
+                var orderedTargets=Array.from(imports.targets);
+                for(var targetIndex=orderedTargets.length-1;targetIndex>=0;targetIndex--){
+                    matches=defs.filter(function(def){return def.file===orderedTargets[targetIndex];});
+                    var precedenceDef=firstDefinitionFromOneFile(matches);
+                    if(precedenceDef)return[precedenceDef];
+                }
+                return[];
+            }
             matches=defs.filter(function(def){return imports.targets.has(def.file);});
             var importedDef=firstDefinitionFromOneFile(matches);
             if(importedDef)return[importedDef];

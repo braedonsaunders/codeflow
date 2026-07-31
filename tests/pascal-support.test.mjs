@@ -193,3 +193,48 @@ end.
   assert.equal(appConnections[0].count, 2);
   assert.equal(data.connections.some((connection) => connection.source === 'UnitB.pas'), false);
 });
+
+test('Pascal unqualified calls use the last matching unit in the uses clause', async () => {
+  const data = await analyzePascalSources({
+    'UnitA.pas': `unit UnitA;
+interface
+procedure Render;
+implementation
+procedure Render;
+begin
+end;
+end.
+`,
+    'UnitB.pas': `unit UnitB;
+interface
+procedure render;
+implementation
+procedure render;
+begin
+end;
+end.
+`,
+    'app-ab.lpr': `program UsesAThenB;
+uses UnitA, UnitB;
+begin
+  RENDER;
+end.
+`,
+    'app-ba.lpr': `program UsesBThenA;
+uses UnitB, UnitA;
+begin
+  render;
+end.
+`,
+  });
+
+  const sourceByCaller = Object.fromEntries(
+    data.connections
+      .filter((connection) => connection.target.startsWith('app-'))
+      .map((connection) => [connection.target, connection.source])
+  );
+  assert.deepEqual(sourceByCaller, {
+    'app-ab.lpr': 'UnitB.pas',
+    'app-ba.lpr': 'UnitA.pas',
+  });
+});
