@@ -1,0 +1,3 @@
+vendor/** linguist-vendored whitespace=-trailing-space,-space-before-tab
+vendor/**/*.wasm binary
+vendor/**/*.woff2 binary

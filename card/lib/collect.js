@@ -11,6 +11,7 @@ const { matchesExcludePattern } = require('./exclude.js');
 const DEFAULT_IGNORES = new Set([
   '.git',
   'node_modules',
+  'vendor',
   '.next',
   '.nuxt',
   'dist',

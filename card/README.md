@@ -4,6 +4,22 @@ A GitHub Action that drops a slick auto-updating SVG card on your README — hea
 
 The card uses the **same analyzer** as the codeflow web app. There's no separate parser, no version drift — the Action reads codeflow's `index.html` and runs its analyzer in a Node `vm`.
 
+## Headless analysis
+
+Use the same pipeline without rendering a card, writing history, committing files, or posting PR comments:
+
+```bash
+node card/analyze.js --path /path/to/repository --exclude 'vendor/**' --exclude '*.min.js'
+```
+
+The command writes only JSON to stdout. Its versioned envelope contains the analyzer's full `data`
+object and the card-ready `snapshot`; errors go to stderr. It is also available programmatically:
+
+```js
+const { analyze } = require('./card/analyze.js');
+const result = await analyze({ repoRoot: '/path/to/repository', exclude: ['vendor/**'] });
+```
+
 ## Quick start
 
 Drop this file in `.github/workflows/codeflow-card.yml`:

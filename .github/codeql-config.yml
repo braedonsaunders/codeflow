@@ -1,0 +1,4 @@
+name: CodeFlow CodeQL configuration
+
+paths-ignore:
+  - vendor/**

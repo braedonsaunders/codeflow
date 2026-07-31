@@ -17,20 +17,23 @@
     <meta name="twitter:description" content="Turn any GitHub repo into an interactive architecture map in seconds. Zero setup, privacy-first.">
     <meta name="twitter:image" content="codeflow-social.png">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300ff9d' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M13 2 4 14h6l-1 8 9-12h-6l1-8z'/></svg>">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" integrity="sha512-8Q6Y9XnTbOE+JNvjBQwJ2H8S+UV4uA6hiRykhdtIyDYZ2TprdNmWOUaKdGzOhyr4dCyk287OejbPvwl7lrfqrQ==" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" integrity="sha512-MOCpqoRoisCTwJ8vQQiciZv0qcpROCidek3GTFS6KTk2+y7munJIlKCVkFCYY+p3ErYFXCjmFjnfTTRSC1OHWQ==" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js" integrity="sha512-BfcEFQ1SddlO+7JRhcagE5aEc/jc+KUtCsMGjzwkM4WHPgdHmGaYQPmW9snfgfU73cGW7+9sjdk70YErPPVi0w==" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js" integrity="sha512-M7nHCiNUOwFt6Us3r8alutZLm9qMt4s9951uo8jqO4UwJ1hziseL6O3ndFyigx6+LREfZqnhHxYjKRJ8ZQ69DQ==" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-sankey/0.12.3/d3-sankey.min.js" integrity="sha512-KK15oKpabNDaLpWinMtNfTqy/V7pzlc2FRG174PfASes7RRx6TAsua8HJdRTKo8+BLvPBKNIkL7kXWcz5HoqqA==" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/acorn/8.11.3/acorn.min.js" integrity="sha512-qsbZzESFnMN1Zz5cujkpYFK7wysw2sDerv2/OUYiMMfEJY6h4h7o8vWytbAnPFUUpLhKfqmF+4BixPBBnbVUyg==" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/11.1.0/jsrsasign-all-min.js" integrity="sha512-Eu9j+HZBor7muHf6IDWoWZ8FKVr6nKe9eIIVR28NEte4Y4GiYRlke26XGdR/re81XE/FfLoLYYVkvNk5GY9RvQ==" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" integrity="sha512-XMVd28F1oH/O71fzwBnV7HucLxVwtxf26XV8P4wPk26EDxuGZ91N8bsOttmnomcCD3CS5ZMRL50H0GgOHvegtg==" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/web-tree-sitter@0.20.8/tree-sitter.js" integrity="sha512-HHbWn9jEdYHHREfFtaPv+eEgSfUSWj/IMe8cOuGAaQNnr9NQiD5ihxOkj1IFu3YGYHB8DHyHfxqxI7kI0b4g5A==" crossorigin="anonymous"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js" crossorigin="anonymous"></script>
-    <script src="https://unpkg.com/3d-force-graph" defer></script>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+    <script src="./vendor/react/react.production.min.js"></script>
+    <script src="./vendor/react-dom/react-dom.production.min.js"></script>
+    <script src="./vendor/babel/babel.min.js"></script>
+    <script src="./vendor/d3/d3.min.js"></script>
+    <script src="./vendor/d3-sankey/d3-sankey.min.js"></script>
+    <script src="./vendor/acorn/acorn.min.js"></script>
+    <script src="./vendor/jsrsasign/jsrsasign-all-min.js"></script>
+    <script src="./vendor/jszip/jszip.min.js"></script>
+    <script src="./vendor/tree-sitter/tree-sitter.js"></script>
+    <script src="./vendor/jspdf/jspdf.umd.min.js"></script>
+    <script src="./vendor/mermaid/mermaid.min.js"></script>
+    <script src="./vendor/3d-force-graph/3d-force-graph.min.js" defer></script>
     <style>
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400;font-display:swap;src:url('./vendor/jetbrains-mono/jetbrains-mono-latin-400-normal.woff2') format('woff2')}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:500;font-display:swap;src:url('./vendor/jetbrains-mono/jetbrains-mono-latin-500-normal.woff2') format('woff2')}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:600;font-display:swap;src:url('./vendor/jetbrains-mono/jetbrains-mono-latin-600-normal.woff2') format('woff2')}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:700;font-display:swap;src:url('./vendor/jetbrains-mono/jetbrains-mono-latin-700-normal.woff2') format('woff2')}
 :root{--bg0:#0a0a0c;--bg1:#0f0f12;--bg2:#161619;--bg3:#1c1c21;--bg4:#252529;--hover:#2a2a30;--border:#2d2d35;--border2:#222228;--t0:#f0f0f2;--t1:#c8c8cd;--t2:#8b8b95;--t3:#5c5c66;--acc:#00ff9d;--acc2:#00cc7d;--accbg:rgba(0,255,157,0.08);--blue:#4d9fff;--purple:#a78bfa;--orange:#ff9f43;--red:#ff5f5f;--cyan:#22d3ee;--pink:#ec4899;--green:#22c55e}
 .light{--bg0:#fff;--bg1:#f8f9fa;--bg2:#f1f3f4;--bg3:#e8eaed;--bg4:#dadce0;--hover:#e2e4e8;--border:#dadce0;--border2:#e8eaed;--t0:#1a1a1a;--t1:#3c3c3c;--t2:#6c6c6c;--t3:#9c9c9c;--acc:#00a86b;--acc2:#008f5b;--accbg:rgba(0,168,107,0.08)}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -614,7 +617,8 @@ body{height:100dvh;min-height:100dvh}
 <div id="root"></div>
 <script type="text/babel">
 /*
- * CodeFlow is intentionally shipped as one HTML file.
+ * CodeFlow keeps its application code in one HTML entry point and ships its
+ * pinned browser runtime alongside it for cold offline use.
  *
  * The file is organized in five broad sections:
  * 1. Shared constants, exclusion helpers, and browser-yield utilities.
@@ -782,14 +786,14 @@ function yieldToBrowser(){
 
 // ===== CODEFLOW_ANALYZER_START =====
 const Parser={
-    // Tree-sitter parsers are loaded lazily from CDN and used when a language has
+    // Tree-sitter parsers are loaded lazily from vendored WASM and used when a language has
     // a stable grammar path. Regex remains an explicit fallback, not a silent lie.
     _tsRuntimePromise:null,
     _tsLanguagePromises:Object.create(null),
     _tsLanguages:Object.create(null),
     _tsParsers:Object.create(null),
     _callCandidateThreshold:250,
-    treeSitterWasmBase:'https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/',
+    treeSitterWasmBase:(typeof CODEFLOW_VENDOR_BASE!=='undefined'?CODEFLOW_VENDOR_BASE:'vendor/')+'tree-sitter-wasms/',
     treeSitterGrammars:{
         python:{grammar:'python',exts:['.py','.pyw','.pyi'],coverage:'calls'},
         javascript:{grammar:'javascript',exts:['.js','.jsx','.mjs','.cjs'],coverage:'available'},
@@ -824,7 +828,7 @@ const Parser={
             try{
                 await Parser._withTimeout(TreeSitter.init({
                     locateFile:function(scriptName){
-                        return 'https://cdn.jsdelivr.net/npm/web-tree-sitter@0.20.8/'+scriptName;
+                        return (typeof CODEFLOW_VENDOR_BASE!=='undefined'?CODEFLOW_VENDOR_BASE:'vendor/')+'tree-sitter/'+scriptName;
                     }
                 }),Parser.treeSitterFetchTimeoutMs);
                 return TreeSitter;
@@ -885,7 +889,7 @@ const Parser={
         if(Parser.isCode(filename))return 'heuristic-regex';
         return 'text';
     },
-    codeExts:['.js','.jsx','.ts','.tsx','.mjs','.cjs','.py','.pyw','.pyi','.java','.go','.rb','.php','.rs','.c','.cpp','.cc','.h','.hpp','.cs','.swift','.kt','.kts','.scala','.clj','.ex','.exs','.erl','.hs','.lua','.r','.R','.jl','.dart','.elm','.fs','.fsx','.ml','.pl','.pm','.sh','.bash','.zsh','.fish','.ps1','.psm1','.groovy','.gradle','.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw'],
+    codeExts:['.js','.jsx','.ts','.tsx','.mjs','.cjs','.py','.pyw','.pyi','.java','.go','.rb','.php','.rs','.c','.cpp','.cc','.h','.hpp','.cs','.swift','.kt','.kts','.scala','.clj','.ex','.exs','.erl','.hs','.lua','.r','.R','.jl','.dart','.elm','.fs','.fsx','.ml','.pl','.pm','.sh','.bash','.zsh','.fish','.ps1','.psm1','.groovy','.gradle','.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw','.pas','.pp','.dpr','.dpk','.lpr','.inc'],
     scriptContainerExts:['.html','.htm','.xhtml','.vue','.svelte'],
     textExts:['.md','.markdown','.txt','.json','.jsonl','.yaml','.yml','.toml','.xml','.html','.htm','.css','.scss','.sass','.less','.svg','.graphql','.gql','.sql','.prisma','.proto','.tf','.tfvars','.env','.env.example','.gitignore','.gitattributes','.gitmodules','.eslintrc','.prettierrc','.babelrc','.editorconfig','.ini','.cfg','.conf','.properties','.lock','.csv','.tsv','.rst','.tex','.cmake','.rake','.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw','.mod','.sum'],
     textNames:['dockerfile','containerfile','makefile','rakefile','gemfile','podfile','pipfile','procfile','brewfile','justfile','taskfile','cmakelists.txt','license','copying','notice','readme','changelog','authors','contributors','owners','codeowners','go.mod','go.sum'],
@@ -903,6 +907,7 @@ const Parser={
     isIncluded:function(n){return !Parser.isBinary(n)&&(Parser.isCode(n)||Parser.isText(n));},
     isScriptContainer:function(n){return Parser.scriptContainerExts.some(function(e){return n.toLowerCase().endsWith(e);});},
     isVBA:function(n){return ['.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw'].some(function(e){return n.toLowerCase().endsWith(e);});},
+    isPascal:function(n){return ['.pas','.pp','.dpr','.dpk','.lpr','.inc'].some(function(e){return n.toLowerCase().endsWith(e);});},
     isHTML:function(n){return ['.html','.htm','.xhtml'].some(function(e){return n.toLowerCase().endsWith(e);});},
     isCSS:function(n){return ['.css','.scss','.sass','.less'].some(function(e){return n.toLowerCase().endsWith(e);});},
     isJSON:function(n){return ['.json'].some(function(e){return n.toLowerCase().endsWith(e);});},
@@ -2049,6 +2054,44 @@ const Parser={
         return result.join('');
     },
 
+    // Strip Object Pascal strings and all three comment forms while preserving
+    // line breaks. This keeps heuristic call detection out of prose and examples.
+    stripPascalNonCode:function(content){
+        var result=[];
+        var i=0;
+        var len=content.length;
+        while(i<len){
+            if(content[i]==="'"){
+                result.push(' ');i++;
+                while(i<len){
+                    if(content[i]==="'"&&content[i+1]==="'"){
+                        result.push(' ',' ');i+=2;continue;
+                    }
+                    if(content[i]==="'"){result.push(' ');i++;break;}
+                    result.push(content[i]==='\n'?'\n':' ');i++;
+                }
+            }else if(content[i]==='/'&&content[i+1]==='/'){
+                result.push(' ',' ');i+=2;
+                while(i<len&&content[i]!=='\n'){result.push(' ');i++;}
+            }else if(content[i]==='{'){
+                result.push(' ');i++;
+                while(i<len&&content[i]!=='}'){
+                    result.push(content[i]==='\n'?'\n':' ');i++;
+                }
+                if(i<len){result.push(' ');i++;}
+            }else if(content[i]==='('&&content[i+1]==='*'){
+                result.push(' ',' ');i+=2;
+                while(i<len&&!(content[i]==='*'&&content[i+1]===')')){
+                    result.push(content[i]==='\n'?'\n':' ');i++;
+                }
+                if(i<len){result.push(' ',' ');i+=2;}
+            }else{
+                result.push(content[i]);i++;
+            }
+        }
+        return result.join('');
+    },
+
     // Strip TypeScript syntax for Acorn parsing
     stripTypeScript:function(content){
         // Process line by line for more control
@@ -2156,10 +2199,44 @@ const Parser={
     // Extract functions from other languages
     extractOtherLanguages:function(content,filename,addFn,extractCode){
         var lines=content.split('\n');
+        var isPascal=Parser.isPascal(filename);
+        var pascalHasImplementation=isPascal&&/^\s*implementation\b/im.test(content);
+        var inPascalImplementation=!pascalHasImplementation;
 
         lines.forEach(function(line,idx){
             var lineNum=idx+1;
             var m;
+
+            if(isPascal){
+                if(/^\s*implementation\b/i.test(line)){
+                    inPascalImplementation=true;
+                    return;
+                }
+                if(!inPascalImplementation)return;
+                if(!/^\s*(?:(?:class|static)\s+)?(?:procedure|function|constructor|destructor|operator)\b/i.test(line))return;
+                var signature=line;
+                for(var si=idx+1;si<lines.length&&si<=idx+8&&!/;/.test(signature);si++){
+                    signature+=' '+lines[si].trim();
+                }
+                m=signature.match(/^\s*(?:(?:class|static)\s+)?(procedure|function|constructor|destructor|operator)\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?)/i);
+                if(m&&!/\b(?:forward|external)\b/i.test(signature)){
+                    var qualifiedName=m[2];
+                    var pascalName=qualifiedName.split('.').pop();
+                    var isMethod=qualifiedName.indexOf('.')>=0;
+                    addFn({
+                        name:pascalName,
+                        file:filename,
+                        line:lineNum,
+                        code:extractCode(lineNum),
+                        isTopLevel:!isMethod,
+                        isExported:true,
+                        isClassMethod:isMethod,
+                        type:m[1].toLowerCase(),
+                        className:isMethod?qualifiedName.split('.')[0]:undefined
+                    });
+                }
+                return;
+            }
 
             // Go: func name(
             if((m=line.match(/^func\s+(?:\([^)]+\)\s*)?([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/)))
@@ -2538,6 +2615,7 @@ const Parser={
         var fromDir=fromPath.indexOf('/')>=0?fromPath.split('/').slice(0,-1).join('/'):'';
         var fromExt=(fromPath.split('.').pop()||'').toLowerCase();
         var isPython=['py','pyw','pyi'].indexOf(fromExt)>=0;
+        var isPascal=['pas','pp','dpr','dpk','lpr','inc'].indexOf(fromExt)>=0;
         var candidates=[];
         function normalizePath(path){
             var out=[];
@@ -2566,6 +2644,10 @@ const Parser={
             var modulePath=importPath.replace(/\./g,'/');
             addCandidate((fromDir?fromDir+'/':'')+modulePath);
             addCandidate(modulePath);
+        }else if(isPascal){
+            var unitPath=importPath.replace(/\./g,'/');
+            addCandidate((fromDir?fromDir+'/':'')+unitPath);
+            addCandidate(unitPath);
         }else{
             return null;
         }
@@ -2575,7 +2657,7 @@ const Parser={
             var p=String(file.path||file.name||'').replace(/\\/g,'/').replace(/^\/+/,'');
             if(p)pathMap[p.toLowerCase()]=p;
         });
-        var exts=['','.js','.jsx','.ts','.tsx','.mjs','.cjs','.vue','.svelte','.py','.pyw','.pyi','.vba','.bas','.cls','/index.js','/index.jsx','/index.ts','/index.tsx','/__init__.py'];
+        var exts=['','.js','.jsx','.ts','.tsx','.mjs','.cjs','.vue','.svelte','.py','.pyw','.pyi','.vba','.bas','.cls','.pas','.pp','.inc','/index.js','/index.jsx','/index.ts','/index.tsx','/__init__.py'];
         for(var i=0;i<candidates.length;i++){
             for(var j=0;j<exts.length;j++){
                 var candidate=normalizePath(candidates[i]+exts[j]).toLowerCase();
@@ -2660,6 +2742,18 @@ const Parser={
             });
         }
 
+        if(Parser.isPascal(fromFile)){
+            var pascalSource=Parser.stripPascalNonCode(source);
+            var pascalUsesRe=/\buses\s+([\s\S]*?);/gi;
+            while((match=pascalUsesRe.exec(pascalSource))!==null){
+                match[1].split(',').forEach(function(part){
+                    var unitMatch=part.trim().match(/^([A-Za-z_][A-Za-z0-9_.]*)/);
+                    if(!unitMatch)return;
+                    addTarget(Parser.resolveCallGraphImportPath(unitMatch[1],fromFile,files));
+                });
+            }
+        }
+
         var localFiles=Object.create(null);
         Object.keys(locals).forEach(function(name){
             localFiles[name]=Array.from(locals[name]);
@@ -2721,7 +2815,10 @@ const Parser={
             if(/\b(function|class|def)\s*$/.test(prefix))isDefinition=true;
             if(opts.isPython&&/\b(async\s+def|def|class)\s*$/.test(prefix))isDefinition=true;
             if(opts.isVBA&&/\b(Sub|Function)\s+$/i.test(prefix))isDefinition=true;
+            if(opts.isPascal&&/\b(procedure|function|constructor|destructor|operator)\s+$/i.test(prefix))isDefinition=true;
             if(nextChar==='('&&!isDefinition){
+                calls[name]++;
+            }else if(opts.isPascal&&nextChar===';'&&!isDefinition&&/^(?:[A-Za-z_]\w*\.)*\s*$/.test(prefix.trim())){
                 calls[name]++;
             }else if(!isDefinition&&'[,[:(={'.indexOf(prevChar)>=0&&' ,])};\n\r'.indexOf(nextChar)>=0){
                 refs[name]++;
@@ -2803,6 +2900,7 @@ const Parser={
         var isPython=['py','pyw','pyi'].indexOf(ext)>=0;
         var isJS=['js','jsx','ts','tsx','mjs','cjs','vue','svelte'].indexOf(ext)>=0;
         var isVBA=['vba','bas','cls','xlsm','xlam'].indexOf(ext)>=0;
+        var isPascal=['pas','pp','dpr','dpk','lpr','inc'].indexOf(ext)>=0;
 
         // Python: use tree-sitter real parser (WASM) for accurate AST-based detection
         if(isPython){
@@ -2859,6 +2957,11 @@ const Parser={
             // Fallback: token-level analysis with string/comment stripping
             var cleanContent=Parser.stripPythonNonCode(content);
             return Parser.countCandidateCalls(cleanContent,fnNames,{isPython:true});
+        }
+
+        if(isPascal){
+            var cleanPascal=Parser.stripPascalNonCode(content);
+            return Parser.countCandidateCalls(cleanPascal,fnNames,{isPascal:true});
         }
 
         if(isJS&&typeof acorn!=='undefined'){
@@ -4925,6 +5028,7 @@ var analysisWorkerSourcePromise=null;
 
 function createAnalysisWorkerSource(){
     if(analysisWorkerSourcePromise)return analysisWorkerSourcePromise;
+    var vendorBase=new URL('vendor/',document.baseURI).href;
     analysisWorkerSourcePromise=fetch(window.location.href,{cache:'no-store'}).then(function(response){
         if(!response.ok)throw new Error('Unable to load analyzer source');
         return response.text();
@@ -4938,12 +5042,13 @@ function createAnalysisWorkerSource(){
         var analyzerSource=html.slice(parserStart,parserEnd);
         return [
             'self.window=self;',
+            'self.CODEFLOW_VENDOR_BASE='+JSON.stringify(vendorBase)+';',
             'function getSecurityScanContent(file){return file&&file.content?file.content:\"\";}',
             'function isSanitizedPreviewRenderer(){return false;}',
             'function yieldToBrowser(){return Promise.resolve();}',
-            'try{importScripts(\"https://cdnjs.cloudflare.com/ajax/libs/acorn/8.11.3/acorn.min.js\");}catch(e){}',
-            'try{importScripts(\"https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js\");}catch(e){}',
-            'try{importScripts(\"https://cdn.jsdelivr.net/npm/web-tree-sitter@0.20.8/tree-sitter.js\");}catch(e){}',
+            'try{importScripts('+JSON.stringify(vendorBase+'acorn/acorn.min.js')+');}catch(e){}',
+            'try{importScripts('+JSON.stringify(vendorBase+'babel/babel.min.js')+');}catch(e){}',
+            'try{importScripts('+JSON.stringify(vendorBase+'tree-sitter/tree-sitter.js')+');}catch(e){}',
             analyzerSource,
             'self.onmessage=async function(event){',
             '  var payload=event.data||{};',
@@ -9194,7 +9299,7 @@ function App(){
                     ),
                     React.createElement('div',{className:'privacy-item'},
                         React.createElement('div',{className:'privacy-icon'},React.createElement(Icon,{name:'ban',size:'l'})),
-                        React.createElement('div',null,React.createElement('div',{className:'privacy-title'},'Nothing Persisted'),React.createElement('div',{className:'privacy-text'},'Close the tab and everything is gone. No cookies, no local storage, no tracking. Check the source code - it\'s all in one HTML file!'))
+                        React.createElement('div',null,React.createElement('div',{className:'privacy-title'},'Nothing Persisted'),React.createElement('div',{className:'privacy-text'},'Close the tab and everything is gone. No cookies, no local storage, no tracking. The application code remains inspectable in index.html.'))
                     ),
                     React.createElement('div',{style:{marginTop:16,padding:12,background:'var(--accbg)',borderRadius:8,fontSize:10,color:'var(--t1)'}},
                         React.createElement(Icon,{name:'spark',size:'s'}),

@@ -1,0 +1,250 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "package": "3d-force-graph",
+      "version": "1.80.0",
+      "file": "3d-force-graph/3d-force-graph.min.js",
+      "source": "https://unpkg.com/3d-force-graph@1.80.0/dist/3d-force-graph.min.js",
+      "sha256": "d96e738edcca580edd524730c1c6b05ed2efce028c23ca95db1bf43033a72e42"
+    },
+    {
+      "package": "acorn",
+      "version": "8.11.3",
+      "file": "acorn/acorn.min.js",
+      "source": "https://cdnjs.cloudflare.com/ajax/libs/acorn/8.11.3/acorn.min.js",
+      "sha256": "e40ac454808df477d96548c60c1ab0c1bee27418d5b98017738a6a4cafcc471a"
+    },
+    {
+      "package": "@babel/standalone",
+      "version": "7.23.5",
+      "file": "babel/babel.min.js",
+      "source": "https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js",
+      "sha256": "558a1f7f5ffe218499dcfe5e4fe28d8c890553131b2f718fd4c547be2e09c484"
+    },
+    {
+      "package": "d3-sankey",
+      "version": "0.12.3",
+      "file": "d3-sankey/d3-sankey.min.js",
+      "source": "https://cdnjs.cloudflare.com/ajax/libs/d3-sankey/0.12.3/d3-sankey.min.js",
+      "sha256": "8286db5d6aa049cc6e8a546708943b79dfb4daaefb0ccf42af674ec0ee4c86be"
+    },
+    {
+      "package": "d3",
+      "version": "7.8.5",
+      "file": "d3/d3.min.js",
+      "source": "https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js",
+      "sha256": "d6b03aefc9f6c44c7bc78713679c78c295028fa914319119e5cc4b4954855b1c"
+    },
+    {
+      "package": "@fontsource/jetbrains-mono",
+      "version": "5.3.0",
+      "file": "jetbrains-mono/jetbrains-mono-latin-400-normal.woff2",
+      "source": "https://unpkg.com/@fontsource/jetbrains-mono@5.3.0/files/jetbrains-mono-latin-400-normal.woff2",
+      "sha256": "14425ba9c695763c1547f48a206b7aa60350a33ae23de09f0407877f3fcd89eb"
+    },
+    {
+      "package": "@fontsource/jetbrains-mono",
+      "version": "5.3.0",
+      "file": "jetbrains-mono/jetbrains-mono-latin-500-normal.woff2",
+      "source": "https://unpkg.com/@fontsource/jetbrains-mono@5.3.0/files/jetbrains-mono-latin-500-normal.woff2",
+      "sha256": "cb182feeed4d798ff6961d3c79f7026279448fca0676438aaecb21f3fc39553a"
+    },
+    {
+      "package": "@fontsource/jetbrains-mono",
+      "version": "5.3.0",
+      "file": "jetbrains-mono/jetbrains-mono-latin-600-normal.woff2",
+      "source": "https://unpkg.com/@fontsource/jetbrains-mono@5.3.0/files/jetbrains-mono-latin-600-normal.woff2",
+      "sha256": "400c6bfda18d5d14acad1c15d6dcb9f8e13c015e7286317e0b9a482539bef147"
+    },
+    {
+      "package": "@fontsource/jetbrains-mono",
+      "version": "5.3.0",
+      "file": "jetbrains-mono/jetbrains-mono-latin-700-normal.woff2",
+      "source": "https://unpkg.com/@fontsource/jetbrains-mono@5.3.0/files/jetbrains-mono-latin-700-normal.woff2",
+      "sha256": "d0d4e818808f2a0ba39b2b09d1989366f63494e295f003c7ef436697378507e8"
+    },
+    {
+      "package": "jspdf",
+      "version": "2.5.1",
+      "file": "jspdf/jspdf.umd.min.js",
+      "source": "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
+      "sha256": "98ccf17aa10c20bb1301762618fcc9b6ab3a4e7f26b6071d64d0b41154df3875"
+    },
+    {
+      "package": "jsrsasign",
+      "version": "11.1.0",
+      "file": "jsrsasign/jsrsasign-all-min.js",
+      "source": "https://cdnjs.cloudflare.com/ajax/libs/jsrsasign/11.1.0/jsrsasign-all-min.js",
+      "sha256": "6ccedfb9896ef454a92b081f29c229ca2a4969189661dcfa43f0eac12cb981a6"
+    },
+    {
+      "package": "jszip",
+      "version": "3.10.1",
+      "file": "jszip/jszip.min.js",
+      "source": "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js",
+      "sha256": "acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e"
+    },
+    {
+      "package": "mermaid",
+      "version": "10.9.1",
+      "file": "mermaid/mermaid.min.js",
+      "source": "https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js",
+      "sha256": "61b335a46df05a7ce1c98378f60e5f3e77a7fb608a1056997e8a649304a936d6"
+    },
+    {
+      "package": "react-dom",
+      "version": "18.2.0",
+      "file": "react-dom/react-dom.production.min.js",
+      "source": "https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js",
+      "sha256": "21758ed084cd0e37e735722ee4f3957ea960628a29dfa6c3ce1a1d47a2d6e4f7"
+    },
+    {
+      "package": "react",
+      "version": "18.2.0",
+      "file": "react/react.production.min.js",
+      "source": "https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js",
+      "sha256": "4b4969fa4ef3594324da2c6d78ce8766fbbc2fd121fff395aedf997db0a99a06"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-bash.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-bash.wasm",
+      "sha256": "807dcdb1380a59befb112ed8fbd3d3872c7fadaf5903a769282b50973b30696d"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-c_sharp.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-c_sharp.wasm",
+      "sha256": "6266a7e32d68a3459104d994dc848df15d5672b0ea8e86d327274b694f8e6991"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-c.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-c.wasm",
+      "sha256": "056b25072382f72deee2c64ec238ffc4bb8cf42844ef21502c0e70f03a8a0d66"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-cpp.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-cpp.wasm",
+      "sha256": "f6afdf53bfd6de76557bb7edb624a3a3869e14d9a83b78433f93617ecee42527"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-elixir.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-elixir.wasm",
+      "sha256": "82e91b9759ddca30d8978ebbfa8e347b4451b64c931f9ae62112e6db9b8fac20"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-go.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-go.wasm",
+      "sha256": "9963ca89b616eaf04b08a43bc1fb0f07b85395bec313330851f1f1ead2f755b6"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-java.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-java.wasm",
+      "sha256": "637aac4415fb39a211a4f4292d63c66b5ce9c32fa2cd35464af4f681d91b9a1f"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-javascript.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-javascript.wasm",
+      "sha256": "63812b9e275d26851264734868d27a1656bd44a2ef6eb3e85e6b03728c595ab5"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-kotlin.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-kotlin.wasm",
+      "sha256": "b5cb00c8d06ed0f10f1dbe497205b437809d7e87db1f638721a8cfb30e044449"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-lua.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-lua.wasm",
+      "sha256": "75ef809136d610068c5b2135741d89f5df62690a3d55169203351cb7cc85727d"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-php.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-php.wasm",
+      "sha256": "55bb617b6f01e14bab997861f0b20a2420cf6ba3199ffeb295b9ec398966d8a3"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-python.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-python.wasm",
+      "sha256": "9056d0fb0c337810d019fae350e8167786119da98f0f282aceae7ab89ee8253b"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-ruby.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-ruby.wasm",
+      "sha256": "93a5022855314cdb45458c7bb026a24a0ebc3a5ff6439e542e881f14dfa13a39"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-rust.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-rust.wasm",
+      "sha256": "4409921a70d0aa5bec7d1d7ce809a557a8ee1cf6ace901e3ac6a76e62cfea903"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-scala.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-scala.wasm",
+      "sha256": "160cfbb8ff7220886e99ed9699abceb6d837b4cd28993b9282c7f445a0554abd"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-swift.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-swift.wasm",
+      "sha256": "41c4fdb2249a3aa6d87eed0d383081ff09725c2248b4977043a43825980ffcc7"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-tsx.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-tsx.wasm",
+      "sha256": "6aa3b2c70e76f5d48eafef1093e9c4de383e13f2fdde2f4e9b98a378f6a8f1b6"
+    },
+    {
+      "package": "tree-sitter-wasms",
+      "version": "0.1.13",
+      "file": "tree-sitter-wasms/tree-sitter-typescript.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/tree-sitter-wasms@0.1.13/out/tree-sitter-typescript.wasm",
+      "sha256": "8515404dceed38e1ed86aa34b09fcf3379fff1b4ff9dd3967bcd6d1eb5ac3d8f"
+    },
+    {
+      "package": "web-tree-sitter",
+      "version": "0.20.8",
+      "file": "tree-sitter/tree-sitter.js",
+      "source": "https://cdn.jsdelivr.net/npm/web-tree-sitter@0.20.8/tree-sitter.js",
+      "sha256": "0d94b84976dc199f7cdfecf2ed4489758bf62dc4633169081fa500932a56c244"
+    },
+    {
+      "package": "web-tree-sitter",
+      "version": "0.20.8",
+      "file": "tree-sitter/tree-sitter.wasm",
+      "source": "https://cdn.jsdelivr.net/npm/web-tree-sitter@0.20.8/tree-sitter.wasm",
+      "sha256": "17382e1a69bd628107e8dfe37d31d57f7ba948e5f2da77e56a8aa010488dc5ae"
+    }
+  ]
+}

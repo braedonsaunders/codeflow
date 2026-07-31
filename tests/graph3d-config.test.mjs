@@ -8,7 +8,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(__dirname, '..', 'index.html'), 'utf8');
 
 test('index.html contains 3d-force-graph dependency', () => {
-  assert.ok(html.includes('https://unpkg.com/3d-force-graph'), '3d-force-graph script tag is missing in index.html');
+  assert.ok(html.includes('./vendor/3d-force-graph/3d-force-graph.min.js'), 'vendored 3d-force-graph script tag is missing in index.html');
 });
 
 test('index.html includes graph3d selector and container element', () => {

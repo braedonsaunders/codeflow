@@ -49,6 +49,7 @@ async function collectRepoFiles(root) {
   const ignored = new Set([
     '.git',
     'node_modules',
+    'vendor',
     'dist',
     'build',
     'coverage',
@@ -169,7 +170,8 @@ test('codeflow architecture diagram uses semantic module dependencies', async ()
   const data = await analyzeCodeflowRepo();
   const diagram = data.architectureDiagram;
 
-  assert.ok(hasDependency(diagram, 'card/index.js', 'card/lib/collect.js'));
+  assert.ok(hasDependency(diagram, 'card/index.js', 'card/lib/analysis.js'));
+  assert.ok(hasDependency(diagram, 'card/lib/analysis.js', 'card/lib/collect.js'));
   assert.ok(hasDependency(diagram, 'card/index.js', 'card/lib/git.js'));
   assert.ok(hasDependency(diagram, 'card/lib/collect.js', 'card/lib/git.js', 'uses GitHub API'));
   assert.ok(hasDependency(diagram, 'card/lib/analyzer.js', 'card/lib/state.js', 'stores derived state'));

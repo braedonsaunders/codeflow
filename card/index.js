@@ -9,10 +9,8 @@ const fs = require('fs');
 const path = require('path');
 
 const { loadInputs } = require('./lib/inputs.js');
-const { loadAnalyzer, locateIndexHtml } = require('./lib/analyzer.js');
-const { buildAnalyzed } = require('./lib/collect.js');
-const { compileExcludePatterns } = require('./lib/exclude.js');
-const { readState, appendRun, writeState, snapshotFromAnalysis } = require('./lib/state.js');
+const { analyze } = require('./lib/analysis.js');
+const { readState, appendRun, writeState } = require('./lib/state.js');
 const { renderCard } = require('./render/card.js');
 const { renderReceiptMarkdown } = require('./render/receipt-md.js');
 const { commitAndPush } = require('./lib/git.js');
@@ -47,29 +45,6 @@ async function run() {
   const repoRoot = process.env.GITHUB_WORKSPACE || process.cwd();
   log('analyzing ' + repoRoot);
 
-  const actionDir = __dirname;
-  const indexHtmlPath = locateIndexHtml(actionDir, repoRoot);
-  log('analyzer source: ' + indexHtmlPath);
-
-  const { Parser, buildAnalysisData, calcBlast, calcHealth } = loadAnalyzer(indexHtmlPath);
-
-  const excludePatterns = compileExcludePatterns(inputs.exclude);
-  if (excludePatterns.length > 0) {
-    log('exclude patterns: ' + excludePatterns.map((p) => p.raw).join(', '));
-  }
-
-  const { analyzed, allFns } = await buildAnalyzed(repoRoot, Parser, excludePatterns);
-  log('collected ' + analyzed.length + ' files (' + allFns.length + ' functions)');
-
-  const data = await buildAnalysisData({
-    analyzed,
-    allFns,
-    excludePatterns: excludePatterns.map((p) => p.raw),
-    progress: () => {},
-    yieldFn: async () => {},
-  });
-  log('analysis: files=' + data.stats.files + ' fns=' + data.stats.functions + ' loc=' + data.stats.loc);
-
   const event = loadEvent();
   const sha = process.env.GITHUB_SHA || null;
   const actor = process.env.GITHUB_ACTOR || null;
@@ -78,9 +53,13 @@ async function run() {
     (event && event.number) ||
     null;
   const ctx = { sha, actor, pr: prNumber };
-
-  const snapshot = snapshotFromAnalysis(data, { calcBlast, calcHealth }, ctx);
-  log('grade=' + (snapshot.grade || '?') + ' score=' + (snapshot.score == null ? '?' : snapshot.score));
+  const { data, snapshot } = await analyze({
+    repoRoot,
+    actionDir: __dirname,
+    exclude: inputs.exclude,
+    context: ctx,
+    progress: log,
+  });
 
   const stateAbs = path.resolve(repoRoot, inputs.state);
   const state = readState(stateAbs);

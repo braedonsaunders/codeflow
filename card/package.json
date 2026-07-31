@@ -9,6 +9,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "analyze": "node analyze.js",
     "dry-run": "node index.js"
   },
   "license": "MIT"

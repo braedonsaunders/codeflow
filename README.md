@@ -130,7 +130,8 @@ git clone https://github.com/braedonsaunders/codeflow.git
 open index.html
 ```
 
-No build process. No npm install. It is a single `index.html` app that loads pinned browser dependencies from CDNs.
+No build process. No npm install. Clone the whole repository: `index.html` loads pinned,
+checked-in browser dependencies from `vendor/`, so a fresh local launch works without a network connection.
 
 ### Option 3: Analyze Local Files
 You can now analyze code directly from your local machine without uploading to GitHub:
@@ -236,6 +237,10 @@ CodeFlow extracts functions and analyzes dependencies for:
 | Clojure | `.clj`, `.cljs`, `.cljc` |
 | Elm | `.elm` |
 | VBA | `.vba`, `.bas`, `.cls`, `.xlsm`, `.xlsb`, `.xlam` |
+| Delphi / FreePascal / Object Pascal | `.pas`, `.pp`, `.dpr`, `.dpk`, `.lpr`, `.inc` |
+
+Pascal support is heuristic. It recognizes routines and `uses` unit dependencies while filtering
+strings and Pascal comment forms; unsupported language features fall back gracefully.
 
 ---
 
@@ -308,12 +313,19 @@ For larger repositories or team usage, we recommend using GitHub App authenticat
 │                       │                         │
 │              ┌────────▼────────┐                │
 │              │   React App     │                │
-│              │  (Single File)  │                │
+│              │ (Static Assets) │                │
 │              └─────────────────┘                │
 └─────────────────────────────────────────────────┘
 ```
 
-**Zero build dependencies to install.** Everything runs from pinned CDNs:
+**Zero build dependencies to install.** Browser libraries and required Tree-sitter WASM files are
+pinned under `vendor/`, with source URLs, SHA-256 digests, and license notices. To refresh them:
+
+```bash
+node scripts/vendor-browser-deps.mjs
+```
+
+The vendored runtime includes:
 - React 18
 - D3.js 7
 - Babel (for JSX)
@@ -329,10 +341,10 @@ We love contributions! Here's how:
 3. Test locally (just open in browser)
 4. Submit a PR
 
-If you're editing the markdown / wiki-link parser, Node.js unit tests live under `tests/` and run with no dependencies:
+Node.js unit tests live under `tests/` and run with no dependencies:
 
 ```bash
-node --test tests/
+node --test tests/*.test.mjs tests/*.smoke.js
 ```
 
 `tests/verify-brain-vault.mjs` is an optional end-to-end script that always verifies the bundled fixtures and will also scan a real local vault when you explicitly set `BRAIN_VAULT=/path/to/vault`.
@@ -352,10 +364,10 @@ node --test tests/
 > CodeFlow runs entirely in your browser. It calls the GitHub API directly from your browser and processes everything client-side.
 
 **Q: Is my code safe?**
-> Yes. Your code is fetched directly from GitHub to your browser. Nothing is sent to any server we control. Check the source — it's one file!
+> Yes. Your code is fetched directly from GitHub to your browser. Nothing is sent to any server we control. The app and its pinned browser dependencies are checked into this repository for inspection.
 
 **Q: Can I use it offline?**
-> Yes. With the local file analysis feature, you can analyze code from your computer without any internet connection. Click the "Open Folder" button and select your files. All processing happens entirely in your browser.
+> Yes. Clone the complete repository, open `index.html`, then use the local file analysis feature. All required browser and parser assets are checked in, so even a cold first load works without internet. GitHub URL analysis still requires access to GitHub's API.
 
 **Q: Why is analysis slow?**
 > We make individual API calls for each file to get content. With a token, you get higher rate limits and faster analysis.
@@ -422,7 +434,7 @@ If you find CodeFlow useful, please star the repo.
 
 ## License
 
-MIT License — use it however you want.
+[MIT License](./LICENSE) — use it however you want.
 
 ---
 
