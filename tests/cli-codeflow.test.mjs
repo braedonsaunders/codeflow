@@ -66,4 +66,8 @@ test('CLI server serves the same UI and folder files', async (t) => {
   assert.match(await file.text(), /function/);
   const denied = await fetch(base + '/__codeflow/file?path=../package.json');
   assert.equal(denied.status, 404);
+  const asDir = await fetch(base + '/__codeflow/file?path=src');
+  assert.equal(asDir.status, 404);
+  const stillUp = await fetch(base + '/__codeflow/status');
+  assert.equal(stillUp.status, 200);
 });

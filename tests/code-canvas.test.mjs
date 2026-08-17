@@ -103,6 +103,25 @@ test('CLI path helper rejects traversal', () => {
   assert.equal(context.resolveSafeCliPath('/tmp/proj', 'src/app.js'), '/tmp/proj/src/app.js');
 });
 
+test('folder cache keys differ per selected directory', () => {
+  const a = context.localFolderCacheMeta({ title: 'alpha', paths: ['src/app.js', 'src/math.js'] });
+  const b = context.localFolderCacheMeta({ title: 'beta', paths: ['src/app.js', 'src/math.js'] });
+  const c = context.localFolderCacheMeta({ title: 'alpha', paths: ['lib/app.js'] });
+  assert.equal(a.title, 'alpha');
+  assert.notEqual(a.sourceKey, b.sourceKey);
+  assert.notEqual(a.sourceKey, c.sourceKey);
+  assert.equal(context.analysisCacheKey('folder', a.sourceKey), 'folder:' + a.sourceKey);
+});
+
+test('HTML attribute sanitizer encodes quotes before they reach data-sym', () => {
+  assert.equal(context.escapeHtmlAttr('say "hi"'), 'say &quot;hi&quot;');
+  assert.match(context.escapeHtmlAttr('a"onclick="alert(1)'), /&quot;/);
+  assert.doesNotMatch(context.escapeHtmlAttr('a"onclick="alert(1)'), /data-sym="[^"]*"/);
+  const out = context.annotateHtmlWithSymbols('shared', [{ name: 'shared', kind: 'fn"onclick="alert(1)' }], null);
+  assert.match(out, /class="sym-mark var"/);
+  assert.doesNotMatch(out, /onclick=/);
+});
+
 test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /value:'code'/);
   assert.match(htmlSource, /function renderCodeView\(/);

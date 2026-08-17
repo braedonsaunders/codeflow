@@ -5571,6 +5571,26 @@ function isValidSymbolName(name){
     return /^[A-Za-z_$][\w$]*$/.test(String(name||''));
 }
 
+function escapeHtmlAttr(value){
+    return String(value||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function safeSymbolKind(kind){
+    return kind==='fn'||kind==='import'||kind==='export'||kind==='var'?kind:'var';
+}
+
+function localFolderCacheMeta(options){
+    options=options||{};
+    var title=String(options.title||'').trim();
+    var paths=(options.paths||[]).map(function(p){return String(p||'').replace(/\\/g,'/');}).filter(Boolean).slice().sort();
+    if(!title){
+        var raw=String(options.rootPrefix||'').replace(/\\/g,'/');
+        title=(raw.split('/').filter(Boolean)[0]||'').trim();
+    }
+    if(!title)title='Local Folder';
+    return{sourceKey:title+'|'+paths.length+'|'+paths.slice(0,12).join('|'),title:title};
+}
+
 function readableLabelScale(k){
     var zoom=Number(k);
     if(!isFinite(zoom)||zoom<=0)return 1;
@@ -5712,9 +5732,10 @@ function annotateHtmlWithSymbols(html,symbols,activeSymbol){
         var lastGt=before.lastIndexOf('>');
         if(lastLt>lastGt)continue;
         out+=source.slice(last,idx);
-        var kind=kindByName[match[1]]||'var';
+        var kind=safeSymbolKind(kindByName[match[1]]||'var');
         var active=activeSymbol&&activeSymbol===match[1]?' active':'';
-        out+='<span class="sym-mark '+kind+active+'" data-sym="'+match[1]+'">'+match[1]+'</span>';
+        var safeName=escapeHtmlAttr(match[1]);
+        out+='<span class="sym-mark '+kind+active+'" data-sym="'+safeName+'">'+safeName+'</span>';
         last=idx+match[0].length;
     }
     return out+source.slice(last);
@@ -6490,7 +6511,7 @@ function App(){
 
     function currentAnalysisSource(){
         if(cliStatus&&cliStatus.ok)return{sourceType:'cli',sourceKey:cliStatus.root||'cli',title:cliStatus.name||'Local watch',repoUrl:'',localSourceKind:'cli'};
-        if(localSourceKind==='folder')return{sourceType:'folder',sourceKey:(repoInfo&&repoInfo.name)||'local-folder',title:(repoInfo&&repoInfo.name)||'Local Folder',repoUrl:'',localSourceKind:'folder'};
+        if(localSourceKind==='folder')return{sourceType:'folder',sourceKey:(repoInfo&&(repoInfo.folderKey||repoInfo.name))||'local-folder',title:(repoInfo&&repoInfo.name)||'Local Folder',repoUrl:'',localSourceKind:'folder'};
         if(localSourceKind==='zip')return{sourceType:'zip',sourceKey:(repoInfo&&repoInfo.name)||'zip',title:(repoInfo&&repoInfo.name)||'ZIP Archive',repoUrl:'',localSourceKind:'zip'};
         if(repoInfo&&repoInfo.owner&&repoInfo.repo&&repoInfo.owner!=='local')return{sourceType:'github',sourceKey:repoInfo.owner+'/'+repoInfo.repo,title:repoInfo.owner+'/'+repoInfo.repo,repoUrl:repoInfo.owner+'/'+repoInfo.repo,localSourceKind:null};
         var parsed=parseUrl(repoUrl);
@@ -6556,9 +6577,17 @@ function App(){
     }
 
     function loadRecentAnalysis(id){
-        getRecentAnalysis(id).then(function(record){
-            if(!record){showNotification('That analysis is no longer cached.','warning');refreshRecentList();return;}
+        return getRecentAnalysis(id).then(function(record){
+            if(!record){showNotification('That analysis is no longer cached.','warning');refreshRecentList();return null;}
             applyCachedAnalysis(record);
+            return record;
+        }).catch(function(){showNotification('Could not open cached analysis.','error');return null;});
+    }
+
+    function reanalyzeRecent(id){
+        return getRecentAnalysis(id).then(function(record){
+            if(!record){showNotification('That analysis is no longer cached.','warning');refreshRecentList();return;}
+            refreshAnalysis(record);
         }).catch(function(){showNotification('Could not open cached analysis.','error');});
     }
 
@@ -6640,11 +6669,15 @@ function App(){
                 var f=files[i];
                 if(i>0&&i%40===0)await yieldToBrowser();
                 setProgress('Analyzing '+(i+1)+'/'+files.length+': '+f.name);
+                var isCodeFile=Parser.isCode(f.name);
+                if(Parser.isOversized(Number(f.size))){
+                    analyzed.push(makeOversizedAnalysisFile(f,f.size,isCodeFile));
+                    continue;
+                }
                 var fileRes=await fetch('/__codeflow/file?path='+encodeURIComponent(f.path));
                 var content=fileRes.ok?await fileRes.text():'';
-                var isCodeFile=Parser.isCode(f.name);
-                if(Parser.isOversized(f.size||content.length)){
-                    analyzed.push(makeOversizedAnalysisFile(f,f.size||content.length,isCodeFile));
+                if(Parser.isOversized(content.length)){
+                    analyzed.push(makeOversizedAnalysisFile(f,content.length,isCodeFile));
                     continue;
                 }
                 var layer=Parser.detectLayer(f.path);
@@ -6732,9 +6765,10 @@ function App(){
         setMobilePanel(function(prev){return prev===panel?null:panel;});
     }
 
-    function analyze(forceRefresh){
-        var p=parseUrl(repoUrl);
+    function analyze(forceRefresh,explicitUrl){
+        var p=parseUrl(explicitUrl||repoUrl);
         if(!p){setError('Invalid URL. Use format: owner/repo');return;}
+        if(explicitUrl)setRepoUrl(explicitUrl);
         var shouldForce=forceRefresh===true||forceRefreshRef.current;
         forceRefreshRef.current=false;
         var cacheId=analysisCacheKey('github',p.owner+'/'+p.repo);
@@ -7033,32 +7067,37 @@ function App(){
         readLocalFolderFromFiles(files,pendingExcludePatternsRef.current||activeExcludePatterns);
     }
 
-    function refreshAnalysis(){
+    function refreshAnalysis(record){
+        var source=record&&record.sourceType?record:null;
+        var kind=source?source.sourceType:(localSourceKind||(parseUrl(repoUrl)?'github':null));
+        var githubUrl=source?(source.repoUrl||source.sourceKey):repoUrl;
         setCachedFromId(null);
-        if(localSourceKind==='cli'||(cliStatus&&cliStatus.ok&&localSourceKind==='cli')){
+        if(kind==='cli'||(!source&&cliStatus&&cliStatus.ok&&localSourceKind==='cli')){
             analyzeFromCli(true);
             return;
         }
-        if(localSourceKind==='folder'&&localDirHandle){
-            resetAnalysisState();
-            setLoading(true);
-            setProgress('Reading local folder...');
-            readLocalFolder(localDirHandle,activeExcludePatterns);
-            return;
-        }
-        if(localSourceKind==='folder'&&localFilesRef.current){
-            resetAnalysisState();
-            setLoading(true);
-            setProgress('Reading local folder...');
-            readLocalFolderFromFiles(localFilesRef.current,activeExcludePatterns);
-            return;
-        }
-        if(localSourceKind==='folder'&&!localDirHandle&&!localFilesRef.current){
+        if(kind==='folder'){
+            if(localDirHandle){
+                resetAnalysisState();
+                setLoading(true);
+                setProgress('Reading local folder...');
+                readLocalFolder(localDirHandle,activeExcludePatterns);
+                return;
+            }
+            if(localFilesRef.current){
+                resetAnalysisState();
+                setLoading(true);
+                setProgress('Reading local folder...');
+                readLocalFolderFromFiles(localFilesRef.current,activeExcludePatterns);
+                return;
+            }
+            if(source)applyCachedAnalysis(source);
             showNotification('Open Folder again to re-analyze this local tree.','warning');
             return;
         }
-        if(localSourceKind==='zip'){
+        if(kind==='zip'){
             if(!zipFileRef.current){
+                if(source)applyCachedAnalysis(source);
                 showNotification('ZIP archive is no longer available. Load it again to refresh.','warning');
                 return;
             }
@@ -7069,6 +7108,10 @@ function App(){
             setLoading(true);
             setProgress('Reading ZIP archive...');
             readZipArchive(zipFileRef.current,activeExcludePatterns);
+            return;
+        }
+        if(kind==='github'||parseUrl(githubUrl)){
+            analyze(true,githubUrl);
             return;
         }
         analyze(true);
@@ -7175,11 +7218,13 @@ function App(){
                     progress:setProgress,
                     yieldFn:yieldToBrowser
                 });
+                var folderMeta=localFolderCacheMeta({title:dirHandle&&dirHandle.name,paths:analyzed.map(function(af){return af.path;})});
+                var folderInfo={owner:'local',repo:'folder',name:folderMeta.title,folderKey:folderMeta.sourceKey};
                 setData(dataObj);
                 setExpandedPaths(new Set(['']));
-                setRepoInfo({owner:'local',repo:'folder',name:'Local Folder'});
+                setRepoInfo(folderInfo);
                 setCachedFromId(null);
-                persistCurrentAnalysis(dataObj,{sourceType:'folder',sourceKey:'local-folder',title:'Local Folder',repoUrl:'',repoInfo:{owner:'local',repo:'folder',name:'Local Folder'},localSourceKind:'folder'});
+                persistCurrentAnalysis(dataObj,{sourceType:'folder',sourceKey:folderMeta.sourceKey,title:folderMeta.title,repoUrl:'',repoInfo:folderInfo,localSourceKind:'folder'});
                 setLoading(false);
             }catch(err){
                 setError('Analysis failed: '+(err.message||err)+'. Try a smaller folder or subfolder.');
@@ -7283,11 +7328,13 @@ function App(){
                 progress:setProgress,
                 yieldFn:yieldToBrowser
             });
+            var folderMeta=localFolderCacheMeta({title:'',rootPrefix:rootPrefix,paths:analyzed.map(function(af){return af.path;})});
+            var folderInfo={owner:'local',repo:'folder',name:folderMeta.title,folderKey:folderMeta.sourceKey};
             setData(dataObj);
             setExpandedPaths(new Set(['']));
-            setRepoInfo({owner:'local',repo:'folder',name:'Local Folder'});
+            setRepoInfo(folderInfo);
             setCachedFromId(null);
-            persistCurrentAnalysis(dataObj,{sourceType:'folder',sourceKey:'local-folder',title:'Local Folder',repoUrl:'',repoInfo:{owner:'local',repo:'folder',name:'Local Folder'},localSourceKind:'folder'});
+            persistCurrentAnalysis(dataObj,{sourceType:'folder',sourceKey:folderMeta.sourceKey,title:folderMeta.title,repoUrl:'',repoInfo:folderInfo,localSourceKind:'folder'});
             setLoading(false);
         }catch(err){
             setError('Analysis failed: '+(err.message||err)+'. Try a smaller folder or subfolder.');
@@ -8918,7 +8965,7 @@ function App(){
     }
     function exportJSON(){if(!data)return;var blob=new Blob([JSON.stringify({stats:data.stats,files:data.files.map(function(f){return{path:f.path,fns:f.functions.length,layer:f.layer,lines:f.lines,dependencies:f.dependencies||[]};}),connections:data.connections,issues:data.issues,patterns:data.patterns,security:data.securityIssues,architectureDiagram:data.architectureDiagram},null,2)],{type:'application/json'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='codeflow-analysis.json';a.click();URL.revokeObjectURL(url);}
     function getAnalysisSourceLabel(){
-        if(localSourceKind==='folder')return'Local Folder';
+        if(localSourceKind==='folder')return(repoInfo&&repoInfo.name)||'Local Folder';
         if(localSourceKind==='zip')return repoInfo&&repoInfo.name?repoInfo.name:'ZIP Archive';
         return repoInfo?repoInfo.owner+'/'+repoInfo.repo:'Unknown Repository';
     }
@@ -9174,7 +9221,7 @@ function App(){
                             React.createElement('div',{className:'recent-item-meta'},item.sourceType,' · ',item.fileCount,' files · ',formatRecentTime(item.savedAt))
                         ),
                         React.createElement('div',{className:'recent-item-actions'},
-                            React.createElement('button',{className:'recent-mini-btn',title:'Re-analyze',onClick:function(e){e.stopPropagation();loadRecentAnalysis(item.id);setTimeout(function(){refreshAnalysis();},0);}},'Re-analyze'),
+                            React.createElement('button',{className:'recent-mini-btn',title:'Re-analyze',onClick:function(e){e.stopPropagation();reanalyzeRecent(item.id);}},'Re-analyze'),
                             React.createElement('button',{className:'recent-mini-btn danger',title:'Delete cached analysis',onClick:function(e){removeRecentAnalysis(item.id,e);}},'Delete')
                         )
                     );

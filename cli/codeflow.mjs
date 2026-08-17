@@ -122,6 +122,37 @@ function sendJson(res, status, body) {
   res.end(payload);
 }
 
+function sendPublicError(res, status, message) {
+  sendJson(res, status, { error: message });
+}
+
+function pipeSafeFile(res, filePath, contentType) {
+  return fs.stat(filePath).then((st) => {
+    if (!st.isFile()) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Not found');
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'Cache-Control': 'no-store'
+    });
+    const stream = createReadStream(filePath);
+    stream.on('error', () => {
+      if (res.writableEnded) return;
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      }
+      res.end('Read failed');
+    });
+    stream.pipe(res);
+  }).catch(() => {
+    if (res.headersSent) return;
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Not found');
+  });
+}
+
 function openBrowser(url) {
   const platform = process.platform;
   const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'cmd' : 'xdg-open';
@@ -145,20 +176,20 @@ export function createCodeflowServer(options) {
     if (url.pathname === '/__codeflow/files') {
       try {
         sendJson(res, 200, { files: await listWatchFiles(watchRoot) });
-      } catch (e) {
-        sendJson(res, 500, { error: e.message || String(e) });
+      } catch {
+        console.error('codeflow: failed to list watched files');
+        sendPublicError(res, 500, 'Could not list files');
       }
       return;
     }
     if (url.pathname === '/__codeflow/file') {
       const safe = resolveSafeCliPath(watchRoot, url.searchParams.get('path') || '');
-      if (!safe || !existsSync(safe)) {
+      if (!safe) {
         res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Not found');
         return;
       }
-      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
-      createReadStream(safe).pipe(res);
+      await pipeSafeFile(res, safe, 'text/plain; charset=utf-8');
       return;
     }
     if (url.pathname === '/__codeflow/events') {
@@ -176,13 +207,12 @@ export function createCodeflowServer(options) {
     let rel = decodeURIComponent(url.pathname);
     if (rel === '/') rel = '/index.html';
     const safeUi = resolveSafeCliPath(uiRoot, rel.replace(/^\//, ''));
-    if (!safeUi || !existsSync(safeUi)) {
+    if (!safeUi) {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
       res.end('Not found');
       return;
     }
-    res.writeHead(200, { 'Content-Type': mimeFor(safeUi) });
-    createReadStream(safeUi).pipe(res);
+    await pipeSafeFile(res, safeUi, mimeFor(safeUi));
   });
 
   let watcher;
