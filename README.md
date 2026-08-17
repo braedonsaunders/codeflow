@@ -35,7 +35,7 @@ Paste URL / Select Files -> See Architecture -> Make Better Decisions
 ## Features
 
 ### Interactive Dependency Graph
-See how your files connect at a glance. Click any node to highlight its dependencies. Drag, zoom, and explore.
+See how your files connect at a glance. Click any node to highlight its dependencies. Drag, zoom, and explore. The **Code** view keeps that map and shows the selected file plus its connected files beside it.
 
 ### Blast Radius Analysis
 *"If I change this file, what breaks?"* — CodeFlow answers this instantly. Select any file and see exactly how many files would be affected by changes.
@@ -133,7 +133,10 @@ open index.html
 No build process. No npm install. Clone the whole repository: `index.html` loads pinned,
 checked-in browser dependencies from `vendor/`, so a fresh local launch works without a network connection.
 
-### Option 3: Analyze Local Files
+### Option 3: Local CLI
+From this repo (or `npx` once published): `npx codeflow .` serves the same `index.html` UI, watches the folder, and opens it in your browser.
+
+### Option 4: Analyze Local Files
 You can now analyze code directly from your local machine without uploading to GitHub:
 
 1. Open CodeFlow in your browser
@@ -254,6 +257,7 @@ strings and Pascal comment forms; unsupported language features fall back gracef
 | **Layer** | Color by architectural layer (UI, Services, Utils, etc.) |
 | **Churn** | Color by commit frequency (hot spots) |
 | **Blast** | Color by impact when a file is selected |
+| **Code** | Same graph, with file source and cross-file symbol highlights beside it |
 
 ---
 

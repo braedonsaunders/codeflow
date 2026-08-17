@@ -1,0 +1,26 @@
+{
+  "name": "codeflow",
+  "version": "1.0.0",
+  "description": "Visualize codebase architecture in the browser. A thin CLI opens that same UI.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "codeflow": "./cli/codeflow.mjs"
+  },
+  "files": [
+    "index.html",
+    "vendor",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/braedonsaunders/codeflow.git"
+  },
+  "scripts": {
+    "start": "node cli/codeflow.mjs .",
+    "test": "node --test tests/*.test.mjs tests/*.smoke.js"
+  }
+}
