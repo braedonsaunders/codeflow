@@ -153,6 +153,98 @@ function pipeSafeFile(res, filePath, contentType) {
   });
 }
 
+export function safeRequestPath(rawUrl) {
+  let url;
+  try {
+    url = new URL(rawUrl || '/', 'http://127.0.0.1');
+  } catch {
+    return { ok: false, status: 400 };
+  }
+  let pathname;
+  try {
+    pathname = decodeURIComponent(url.pathname);
+  } catch {
+    return { ok: false, status: 400 };
+  }
+  return { ok: true, url, pathname };
+}
+
+export function startFileWatchers(root, onRelPath, watchFn) {
+  const run = typeof watchFn === 'function' ? watchFn : watch;
+  const watchers = [];
+  const watched = new Set();
+  let watching = false;
+  let closed = false;
+
+  function emit(rel) {
+    if (closed || !rel) return;
+    const norm = String(rel).replace(/\\/g, '/');
+    if (norm.split('/').some(shouldSkipName)) return;
+    onRelPath(norm);
+  }
+
+  function add(dir, rel, recursive) {
+    if (closed) return false;
+    const key = path.resolve(String(dir || ''));
+    if (watched.has(key)) return true;
+    try {
+      const w = run(dir, recursive ? { recursive: true } : {}, (_event, filename) => {
+        if (!filename) return;
+        const childRel = rel ? rel + '/' + String(filename).replace(/\\/g, '/') : String(filename).replace(/\\/g, '/');
+        emit(childRel);
+        if (!recursive) {
+          const childPath = path.join(dir, String(filename));
+          fs.stat(childPath).then((st) => {
+            if (closed || !st.isDirectory() || shouldSkipName(path.basename(childPath))) return;
+            add(childPath, childRel, false);
+          }).catch(() => {});
+        }
+      });
+      watched.add(key);
+      watchers.push(w);
+      watching = true;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  if (!add(root, '', true)) {
+    add(root, '', false);
+    (async function walk(dir, rel) {
+      if (closed) return;
+      let entries;
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (closed) return;
+        if (!entry.isDirectory() || shouldSkipName(entry.name)) continue;
+        const childRel = rel ? rel + '/' + entry.name : entry.name;
+        const childPath = path.join(dir, entry.name);
+        add(childPath, childRel, false);
+        await walk(childPath, childRel);
+      }
+    })();
+  }
+
+  return {
+    get watching() {
+      return watching && !closed;
+    },
+    close() {
+      closed = true;
+      for (const w of watchers) {
+        try { w.close(); } catch {}
+      }
+      watchers.length = 0;
+      watching = false;
+    }
+  };
+}
+
 export function openBrowser(url, spawnFn) {
   const platform = process.platform;
   const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'cmd' : 'xdg-open';
@@ -175,71 +267,76 @@ export function createCodeflowServer(options) {
   const name = path.basename(watchRoot);
   const clients = new Set();
 
+  const watchSession = startFileWatchers(watchRoot, (rel) => {
+    const payload = `data: ${JSON.stringify({ type: 'change', path: rel })}\n\n`;
+    for (const client of clients) client.write(payload);
+  });
+
   const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url || '/', 'http://127.0.0.1');
-    if (url.pathname === '/__codeflow/status') {
-      sendJson(res, 200, { ok: true, root: watchRoot, name, watch: true });
-      return;
-    }
-    if (url.pathname === '/__codeflow/files') {
-      try {
-        sendJson(res, 200, { files: await listWatchFiles(watchRoot) });
-      } catch {
-        console.error('codeflow: failed to list watched files');
-        sendPublicError(res, 500, 'Could not list files');
+    try {
+      const parsed = safeRequestPath(req.url);
+      if (!parsed.ok) {
+        res.writeHead(parsed.status, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end(parsed.status === 400 ? 'Bad request' : 'Not found');
+        return;
       }
-      return;
-    }
-    if (url.pathname === '/__codeflow/file') {
-      const safe = resolveSafeCliPath(watchRoot, url.searchParams.get('path') || '');
-      if (!safe) {
+      const url = parsed.url;
+      if (url.pathname === '/__codeflow/status') {
+        sendJson(res, 200, { ok: true, root: watchRoot, name, watch: !!watchSession.watching });
+        return;
+      }
+      if (url.pathname === '/__codeflow/files') {
+        try {
+          sendJson(res, 200, { files: await listWatchFiles(watchRoot) });
+        } catch {
+          console.error('codeflow: failed to list watched files');
+          sendPublicError(res, 500, 'Could not list files');
+        }
+        return;
+      }
+      if (url.pathname === '/__codeflow/file') {
+        const safe = resolveSafeCliPath(watchRoot, url.searchParams.get('path') || '');
+        if (!safe) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('Not found');
+          return;
+        }
+        await pipeSafeFile(res, safe, 'text/plain; charset=utf-8');
+        return;
+      }
+      if (url.pathname === '/__codeflow/events') {
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive'
+        });
+        res.write(':\n\n');
+        clients.add(res);
+        req.on('close', () => clients.delete(res));
+        return;
+      }
+
+      let rel = parsed.pathname;
+      if (rel === '/') rel = '/index.html';
+      const safeUi = resolveSafeCliPath(uiRoot, rel.replace(/^\//, ''));
+      if (!safeUi) {
         res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Not found');
         return;
       }
-      await pipeSafeFile(res, safe, 'text/plain; charset=utf-8');
-      return;
+      await pipeSafeFile(res, safeUi, mimeFor(safeUi));
+    } catch {
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+      }
+      if (!res.writableEnded) res.end('Request failed');
     }
-    if (url.pathname === '/__codeflow/events') {
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive'
-      });
-      res.write(':\n\n');
-      clients.add(res);
-      req.on('close', () => clients.delete(res));
-      return;
-    }
-
-    let rel = decodeURIComponent(url.pathname);
-    if (rel === '/') rel = '/index.html';
-    const safeUi = resolveSafeCliPath(uiRoot, rel.replace(/^\//, ''));
-    if (!safeUi) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('Not found');
-      return;
-    }
-    await pipeSafeFile(res, safeUi, mimeFor(safeUi));
   });
-
-  let watcher;
-  try {
-    watcher = watch(watchRoot, { recursive: true }, (_event, filename) => {
-      if (!filename) return;
-      const rel = String(filename).replace(/\\/g, '/');
-      if (rel.split('/').some(shouldSkipName)) return;
-      const payload = `data: ${JSON.stringify({ type: 'change', path: rel })}\n\n`;
-      for (const client of clients) client.write(payload);
-    });
-  } catch (e) {
-    watcher = null;
-  }
 
   return {
     server,
     close() {
-      if (watcher) watcher.close();
+      watchSession.close();
       for (const client of clients) client.end();
       return new Promise((resolve) => server.close(resolve));
     }

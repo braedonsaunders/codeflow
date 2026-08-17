@@ -5579,6 +5579,10 @@ function safeSymbolKind(kind){
     return kind==='fn'||kind==='import'||kind==='export'||kind==='var'?kind:'var';
 }
 
+function newLocalSelectionId(){
+    return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10);
+}
+
 function localFolderCacheMeta(options){
     options=options||{};
     var title=String(options.title||'').trim();
@@ -5588,7 +5592,8 @@ function localFolderCacheMeta(options){
         title=(raw.split('/').filter(Boolean)[0]||'').trim();
     }
     if(!title)title='Local Folder';
-    return{sourceKey:title+'|'+paths.length+'|'+paths.slice(0,12).join('|'),title:title};
+    var selectionId=String(options.selectionId||'').trim()||newLocalSelectionId();
+    return{sourceKey:title+'|sel:'+selectionId,title:title,selectionId:selectionId};
 }
 
 function cliWatchCacheMeta(status){
@@ -5615,6 +5620,60 @@ function retainedFolderMatchesRecord(record,retained){
     if(!record||!record.sourceKey)return true;
     retained=retained||{};
     return String(retained.sourceKey||'')===String(record.sourceKey);
+}
+
+function normalizeCliRoot(root){
+    return String(root||'').replace(/\\/g,'/').replace(/\/+$/,'');
+}
+
+function cliRecordMatchesStatus(record,status){
+    if(!record||!record.sourceKey)return true;
+    if(!status||!status.ok)return false;
+    return normalizeCliRoot(status.root)===normalizeCliRoot(record.sourceKey);
+}
+
+function zipFileIdentity(zipFile){
+    if(!zipFile)return'';
+    var title=String(zipFile.name||'').trim()||'ZIP Archive';
+    var size=Number(zipFile.size);
+    if(!isFinite(size)||size<0)size=0;
+    var modified=Number(zipFile.lastModified);
+    if(!isFinite(modified)||modified<0)modified=0;
+    return title+'|'+size+'|'+modified;
+}
+
+function retainedZipMatchesRecord(record,retained){
+    if(!record||!record.sourceKey)return true;
+    retained=retained||{};
+    if(retained.sourceKey&&String(retained.sourceKey)===String(record.sourceKey))return true;
+    var identity=String(retained.identity||'');
+    return!!identity&&String(record.sourceKey).indexOf(identity+'|')===0;
+}
+
+function normalizeExcludeKey(patterns){
+    var list=[];
+    (patterns||[]).forEach(function(p){
+        var raw=typeof p==='string'?p:(p&&p.raw);
+        raw=String(raw||'').trim();
+        if(raw&&list.indexOf(raw)<0)list.push(raw);
+    });
+    list.sort();
+    return list.join('\n');
+}
+
+function githubCacheSourceKey(owner,repo,patterns){
+    var base=String(owner||'')+'/'+String(repo||'');
+    var excl=normalizeExcludeKey(patterns);
+    return excl?base+'|excl:'+excl:base;
+}
+
+function cachedAnalysisMatchesExcludes(record,patterns){
+    if(!record)return false;
+    var wanted=normalizeExcludeKey(patterns);
+    var key=String(record.sourceKey||'');
+    var marker=key.indexOf('|excl:');
+    if(marker>=0)return key.slice(marker+6)===wanted;
+    return normalizeExcludeKey(record.data&&record.data.excludePatterns)===wanted;
 }
 
 function readableLabelScale(k){
@@ -6365,6 +6424,8 @@ function App(){
     var folderInputRef=useRef(null);
     var localFilesRef=useRef(null);
     var localFolderKeyRef=useRef(null);
+    var localFolderSelectionRef=useRef(null);
+    var zipKeyRef=useRef(null);
     var pendingExcludePatternsRef=useRef(null);
     var confirmResolverRef=useRef(null);
     var forceRefreshRef=useRef(false);
@@ -6540,9 +6601,9 @@ function App(){
         if(cliStatus&&cliStatus.ok)return{sourceType:'cli',sourceKey:cliStatus.root||'cli',title:cliStatus.name||'Local watch',repoUrl:'',localSourceKind:'cli'};
         if(localSourceKind==='folder')return{sourceType:'folder',sourceKey:(repoInfo&&(repoInfo.folderKey||repoInfo.name))||'local-folder',title:(repoInfo&&repoInfo.name)||'Local Folder',repoUrl:'',localSourceKind:'folder'};
         if(localSourceKind==='zip')return{sourceType:'zip',sourceKey:(repoInfo&&(repoInfo.zipKey||repoInfo.name))||'zip',title:(repoInfo&&repoInfo.name)||'ZIP Archive',repoUrl:'',localSourceKind:'zip'};
-        if(repoInfo&&repoInfo.owner&&repoInfo.repo&&repoInfo.owner!=='local')return{sourceType:'github',sourceKey:repoInfo.owner+'/'+repoInfo.repo,title:repoInfo.owner+'/'+repoInfo.repo,repoUrl:repoInfo.owner+'/'+repoInfo.repo,localSourceKind:null};
+        if(repoInfo&&repoInfo.owner&&repoInfo.repo&&repoInfo.owner!=='local')return{sourceType:'github',sourceKey:githubCacheSourceKey(repoInfo.owner,repoInfo.repo,activeExcludePatterns),title:repoInfo.owner+'/'+repoInfo.repo,repoUrl:repoInfo.owner+'/'+repoInfo.repo,localSourceKind:null};
         var parsed=parseUrl(repoUrl);
-        if(parsed)return{sourceType:'github',sourceKey:parsed.owner+'/'+parsed.repo,title:parsed.owner+'/'+parsed.repo,repoUrl:parsed.owner+'/'+parsed.repo,localSourceKind:null};
+        if(parsed)return{sourceType:'github',sourceKey:githubCacheSourceKey(parsed.owner,parsed.repo,activeExcludePatterns),title:parsed.owner+'/'+parsed.repo,repoUrl:parsed.owner+'/'+parsed.repo,localSourceKind:null};
         return null;
     }
 
@@ -6666,7 +6727,7 @@ function App(){
         }).catch(function(){});
     }
 
-    async function analyzeFromCli(force,statusHint){
+    async function analyzeFromCli(force,statusHint,wantedRoot){
         var status=statusHint||cliStatus;
         if(!status||!status.ok){
             try{
@@ -6678,14 +6739,20 @@ function App(){
             }catch(e){}
             if((!status||!status.ok)&&!force)return;
         }
+        if(wantedRoot&&!cliRecordMatchesStatus({sourceKey:wantedRoot},status)){
+            showNotification('Restart the CLI in that folder to re-analyze it.','warning');
+            return false;
+        }
         if(status&&status.ok)setCliStatus(status);
         var cliMeta=cliWatchCacheMeta(status);
         resetAnalysisState();
         setLocalDirHandle(null);
         localFolderKeyRef.current=null;
+        localFolderSelectionRef.current=null;
         setLocalSourceKind('cli');
         zipArchiveRef.current=null;
         zipFileRef.current=null;
+        zipKeyRef.current=null;
         setLoading(true);
         setProgress('Reading local folder from CLI...');
         try{
@@ -6733,6 +6800,7 @@ function App(){
             setCliDirty([]);
             persistCurrentAnalysis(dataObj,{sourceType:'cli',sourceKey:cliMeta.sourceKey,title:cliMeta.title,repoUrl:'',repoInfo:cliInfo,localSourceKind:'cli'});
             setLoading(false);
+            return true;
         }catch(err){
             setError('CLI analysis failed: '+(err.message||err));
             setLoading(false);
@@ -6804,10 +6872,11 @@ function App(){
         if(explicitUrl)setRepoUrl(explicitUrl);
         var shouldForce=forceRefresh===true||forceRefreshRef.current;
         forceRefreshRef.current=false;
-        var cacheId=analysisCacheKey('github',p.owner+'/'+p.repo);
+        var githubKey=githubCacheSourceKey(p.owner,p.repo,activeExcludePatterns);
+        var cacheId=analysisCacheKey('github',githubKey);
         if(!shouldForce){
             getRecentAnalysis(cacheId).then(function(record){
-                if(record&&record.data){
+                if(record&&record.data&&cachedAnalysisMatchesExcludes(record,activeExcludePatterns)){
                     applyCachedAnalysis(record);
                     return;
                 }
@@ -6972,7 +7041,7 @@ function App(){
                         setData(dataObj);
                         setExpandedPaths(new Set(['']));
                         setCachedFromId(null);
-                        persistCurrentAnalysis(dataObj,{sourceType:'github',sourceKey:p.owner+'/'+p.repo,title:p.owner+'/'+p.repo,repoUrl:p.owner+'/'+p.repo,repoInfo:p,localSourceKind:null});
+                        persistCurrentAnalysis(dataObj,{sourceType:'github',sourceKey:githubKey,title:p.owner+'/'+p.repo,repoUrl:p.owner+'/'+p.repo,repoInfo:p,localSourceKind:null});
                         window.history.replaceState({},'',buildAppUrl(p.owner+'/'+p.repo,false));
                         setLoading(false);
                     }catch(err){
@@ -7042,6 +7111,7 @@ function App(){
             resetAnalysisState();
             setRepoInfo(null);
             localFolderKeyRef.current=null;
+            localFolderSelectionRef.current=newLocalSelectionId();
             setLocalDirHandle(dirHandle);
             setLocalSourceKind('folder');
             zipArchiveRef.current=null;
@@ -7080,6 +7150,7 @@ function App(){
         setLocalSourceKind('zip');
         zipArchiveRef.current=null;
         zipFileRef.current=file;
+        zipKeyRef.current=null;
         setLoading(true);
         setProgress('Reading ZIP archive...');
         readZipArchive(file,activeExcludePatterns);
@@ -7093,6 +7164,7 @@ function App(){
         resetAnalysisState();
         setRepoInfo(null);
         localFolderKeyRef.current=null;
+        localFolderSelectionRef.current=newLocalSelectionId();
         setLocalDirHandle(null);
         setLocalSourceKind('folder');
         zipArchiveRef.current=null;
@@ -7108,7 +7180,15 @@ function App(){
         var githubUrl=source?(source.repoUrl||source.sourceKey):repoUrl;
         setCachedFromId(null);
         if(kind==='cli'||(!source&&cliStatus&&cliStatus.ok&&localSourceKind==='cli')){
-            analyzeFromCli(true,source&&source.sourceType==='cli'?{ok:true,root:source.sourceKey,name:source.title}:null);
+            var wantedRoot=source&&source.sourceType==='cli'?source.sourceKey:'';
+            if(wantedRoot&&cliStatus&&cliStatus.ok&&!cliRecordMatchesStatus(source,cliStatus)){
+                applyCachedAnalysis(source);
+                showNotification('Restart the CLI in that folder to re-analyze it.','warning');
+                return;
+            }
+            Promise.resolve(analyzeFromCli(true,cliStatus,wantedRoot||null)).then(function(ok){
+                if(ok===false&&source)applyCachedAnalysis(source);
+            });
             return;
         }
         if(kind==='folder'){
@@ -7133,9 +7213,13 @@ function App(){
             return;
         }
         if(kind==='zip'){
-            if(!zipFileRef.current){
+            var zipMatches=!source||retainedZipMatchesRecord(source,{
+                sourceKey:zipKeyRef.current,
+                identity:zipFileIdentity(zipFileRef.current)
+            });
+            if(!zipFileRef.current||!zipMatches){
                 if(source)applyCachedAnalysis(source);
-                showNotification('ZIP archive is no longer available. Load it again to refresh.','warning');
+                showNotification('Open ZIP again to re-analyze this archive.','warning');
                 return;
             }
             resetAnalysisState();
@@ -7255,8 +7339,9 @@ function App(){
                     progress:setProgress,
                     yieldFn:yieldToBrowser
                 });
-                var folderMeta=localFolderCacheMeta({title:dirHandle&&dirHandle.name,paths:analyzed.map(function(af){return af.path;})});
-                var folderInfo={owner:'local',repo:'folder',name:folderMeta.title,folderKey:folderMeta.sourceKey};
+                if(!localFolderSelectionRef.current)localFolderSelectionRef.current=newLocalSelectionId();
+                var folderMeta=localFolderCacheMeta({title:dirHandle&&dirHandle.name,paths:analyzed.map(function(af){return af.path;}),selectionId:localFolderSelectionRef.current});
+                var folderInfo={owner:'local',repo:'folder',name:folderMeta.title,folderKey:folderMeta.sourceKey,folderSelectionId:folderMeta.selectionId};
                 localFolderKeyRef.current=folderMeta.sourceKey;
                 setData(dataObj);
                 setExpandedPaths(new Set(['']));
@@ -7366,8 +7451,9 @@ function App(){
                 progress:setProgress,
                 yieldFn:yieldToBrowser
             });
-            var folderMeta=localFolderCacheMeta({title:'',rootPrefix:rootPrefix,paths:analyzed.map(function(af){return af.path;})});
-            var folderInfo={owner:'local',repo:'folder',name:folderMeta.title,folderKey:folderMeta.sourceKey};
+            if(!localFolderSelectionRef.current)localFolderSelectionRef.current=newLocalSelectionId();
+            var folderMeta=localFolderCacheMeta({title:'',rootPrefix:rootPrefix,paths:analyzed.map(function(af){return af.path;}),selectionId:localFolderSelectionRef.current});
+            var folderInfo={owner:'local',repo:'folder',name:folderMeta.title,folderKey:folderMeta.sourceKey,folderSelectionId:folderMeta.selectionId};
             localFolderKeyRef.current=folderMeta.sourceKey;
             setData(dataObj);
             setExpandedPaths(new Set(['']));
@@ -7481,6 +7567,7 @@ function App(){
                 paths:analyzed.map(function(af){return af.path;})
             });
             var zipInfo={owner:'local',repo:'zip',name:zipMeta.title,zipKey:zipMeta.sourceKey};
+            zipKeyRef.current=zipMeta.sourceKey;
             setData(dataObj);
             setExpandedPaths(new Set(['']));
             setRepoInfo(zipInfo);
@@ -9253,7 +9340,7 @@ function App(){
         navigator.clipboard.writeText(shareUrl).then(function(){showNotification('Link copied to clipboard!');}).catch(function(){showNotification('Failed to copy link','error');});
     }
     function analyzePR(){if(!prUrl||!repoInfo)return;var m=prUrl.match(/\/pull\/(\d+)/);if(!m){showNotification('Invalid PR URL','error');return;}GitHub.getPR(repoInfo.owner,repoInfo.repo,m[1]).then(function(pr){if(pr)setPrData(pr);else showNotification('Could not load PR','error');});}
-    function resetAnalysis(){setData(null);setSelected(null);setBlastRadius(null);setOwnership(null);setRepoInfo(null);setRepoUrl('');setPrData(null);setFolderFilter(null);setLocalDirHandle(null);setLocalSourceKind(null);setArchitectureIncludeTests(false);setArchitectureIncludeBuildOutput(false);setCachedFromId(null);setActiveSymbol(null);setCliDirty([]);localFolderKeyRef.current=null;localFilesRef.current=null;zipArchiveRef.current=null;zipFileRef.current=null;window.history.replaceState({},'',window.location.pathname);}
+    function resetAnalysis(){setData(null);setSelected(null);setBlastRadius(null);setOwnership(null);setRepoInfo(null);setRepoUrl('');setPrData(null);setFolderFilter(null);setLocalDirHandle(null);setLocalSourceKind(null);setArchitectureIncludeTests(false);setArchitectureIncludeBuildOutput(false);setCachedFromId(null);setActiveSymbol(null);setCliDirty([]);localFolderKeyRef.current=null;localFolderSelectionRef.current=null;localFilesRef.current=null;zipKeyRef.current=null;zipArchiveRef.current=null;zipFileRef.current=null;window.history.replaceState({},'',window.location.pathname);}
     function filterByFolder(path){setFolderFilter(function(prev){return prev===path?null:path;});}
     function renderRecentsList(){
         return React.createElement('div',{className:'sidebar-section'},

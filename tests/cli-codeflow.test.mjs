@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
+import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +12,9 @@ import {
   resolveSafeCliPath,
   shouldSkipName,
   createCodeflowServer,
-  openBrowser
+  openBrowser,
+  safeRequestPath,
+  startFileWatchers
 } from '../cli/codeflow.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -85,4 +88,45 @@ test('CLI server serves the same UI and folder files', async (t) => {
   assert.equal(asDir.status, 404);
   const stillUp = await fetch(base + '/__codeflow/status');
   assert.equal(stillUp.status, 200);
+  assert.equal(typeof (await stillUp.json()).watch, 'boolean');
+  const badEscape = await new Promise((resolve, reject) => {
+    const req = http.request({ hostname: '127.0.0.1', port, path: '/%', method: 'GET' }, (res) => {
+      res.resume();
+      res.on('end', () => resolve(res.statusCode));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+  assert.equal(badEscape, 400);
+  const afterBad = await fetch(base + '/__codeflow/status');
+  assert.equal(afterBad.status, 200);
+});
+
+test('safeRequestPath rejects malformed escapes', () => {
+  assert.equal(safeRequestPath('/%').ok, false);
+  assert.equal(safeRequestPath('/%').status, 400);
+  assert.equal(safeRequestPath('/index.html').ok, true);
+  assert.equal(safeRequestPath('/index.html').pathname, '/index.html');
+});
+
+test('file watchers fall back or report watch:false', async () => {
+  const unavailable = startFileWatchers('/tmp', () => {}, () => {
+    throw Object.assign(new Error('watch unavailable'), { code: 'ERR_FEATURE_UNAVAILABLE_ON_PLATFORM' });
+  });
+  assert.equal(unavailable.watching, false);
+  unavailable.close();
+
+  const watched = [];
+  const fallback = startFileWatchers(join(__dirname, 'fixtures', 'golden-world'), () => {}, (dir, opts) => {
+    if (opts && opts.recursive) {
+      throw Object.assign(new Error('recursive unavailable'), { code: 'ERR_FEATURE_UNAVAILABLE_ON_PLATFORM' });
+    }
+    watched.push(dir);
+    return { close() {} };
+  });
+  assert.equal(fallback.watching, true);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  assert.ok(watched.length >= 1);
+  fallback.close();
+  assert.equal(fallback.watching, false);
 });

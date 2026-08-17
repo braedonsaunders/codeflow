@@ -104,13 +104,41 @@ test('CLI path helper rejects traversal', () => {
 });
 
 test('folder cache keys differ per selected directory', () => {
-  const a = context.localFolderCacheMeta({ title: 'alpha', paths: ['src/app.js', 'src/math.js'] });
-  const b = context.localFolderCacheMeta({ title: 'beta', paths: ['src/app.js', 'src/math.js'] });
-  const c = context.localFolderCacheMeta({ title: 'alpha', paths: ['lib/app.js'] });
-  assert.equal(a.title, 'alpha');
+  const samePaths = ['src/app.js', 'src/math.js'];
+  const a = context.localFolderCacheMeta({ title: 'project', paths: samePaths, selectionId: 'sel-a' });
+  const b = context.localFolderCacheMeta({ title: 'project', paths: samePaths, selectionId: 'sel-b' });
+  const again = context.localFolderCacheMeta({ title: 'project', paths: samePaths, selectionId: 'sel-a' });
+  assert.equal(a.title, 'project');
   assert.notEqual(a.sourceKey, b.sourceKey);
-  assert.notEqual(a.sourceKey, c.sourceKey);
+  assert.equal(a.sourceKey, again.sourceKey);
   assert.equal(context.analysisCacheKey('folder', a.sourceKey), 'folder:' + a.sourceKey);
+});
+
+test('CLI re-analyze only matches the active watch root', () => {
+  const record = { sourceType: 'cli', sourceKey: '/tmp/alpha' };
+  assert.equal(context.cliRecordMatchesStatus(record, { ok: true, root: '/tmp/alpha' }), true);
+  assert.equal(context.cliRecordMatchesStatus(record, { ok: true, root: '/tmp/beta' }), false);
+  assert.equal(context.cliRecordMatchesStatus(record, null), false);
+});
+
+test('retained ZIP only matches its own recent record', () => {
+  const recordA = { sourceType: 'zip', sourceKey: 'main.zip|100|10|1|src/app.js' };
+  const recordB = { sourceType: 'zip', sourceKey: 'main.zip|200|20|1|src/app.js' };
+  assert.equal(context.retainedZipMatchesRecord(recordA, { identity: 'main.zip|100|10' }), true);
+  assert.equal(context.retainedZipMatchesRecord(recordB, { identity: 'main.zip|100|10' }), false);
+  assert.equal(context.retainedZipMatchesRecord(recordA, { sourceKey: recordA.sourceKey }), true);
+});
+
+test('GitHub cache keys include the exclude pattern set', () => {
+  const none = context.githubCacheSourceKey('owner', 'repo', []);
+  const tests = context.githubCacheSourceKey('owner', 'repo', [{ raw: 'tests/**' }]);
+  const vendor = context.githubCacheSourceKey('owner', 'repo', ['vendor/**']);
+  assert.equal(none, 'owner/repo');
+  assert.notEqual(none, tests);
+  assert.notEqual(tests, vendor);
+  assert.equal(context.cachedAnalysisMatchesExcludes({ sourceKey: tests, data: { excludePatterns: ['tests/**'] } }, [{ raw: 'tests/**' }]), true);
+  assert.equal(context.cachedAnalysisMatchesExcludes({ sourceKey: tests, data: { excludePatterns: ['tests/**'] } }, [{ raw: 'vendor/**' }]), false);
+  assert.equal(context.analysisCacheKey('github', tests), 'github:' + tests);
 });
 
 test('CLI cache keys use the watched root instead of a shared fallback', () => {
@@ -161,6 +189,9 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /__codeflow\/status/);
   assert.match(htmlSource, /analyzeFromCli\(false,status\)/);
   assert.match(htmlSource, /retainedFolderMatchesRecord/);
+  assert.match(htmlSource, /retainedZipMatchesRecord/);
+  assert.match(htmlSource, /cliRecordMatchesStatus/);
+  assert.match(htmlSource, /githubCacheSourceKey/);
   assert.match(htmlSource, /zipArchiveCacheMeta/);
   assert.match(htmlSource, /The folder picker is faster when the API is rate-limited/);
 });
