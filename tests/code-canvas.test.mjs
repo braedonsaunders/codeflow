@@ -207,7 +207,7 @@ test('compactAnalysisForCache drops raw source and keeps graph metadata', () => 
 });
 
 test('hydrated sources stay in memory and are not treated as cached source', () => {
-  const cached = { files: [{ path: 'src/a.js', name: 'a.js', content: undefined, functions: [{ name: 'hello', line: 1 }] }] };
+  const cached = { files: [{ path: 'src/a.js', name: 'a.js', functions: [{ name: 'hello', line: 1 }] }] };
   assert.equal(context.analysisFileNeedsSource(cached.files[0]), true);
   const merged = context.mergeHydratedFileSources(cached, [{ path: 'src/a.js', content: 'export function hello(){ return 1; }\n' }]);
   assert.equal(merged.files[0].content.includes('hello'), true);
@@ -215,6 +215,17 @@ test('hydrated sources stay in memory and are not treated as cached source', () 
   assert.equal(context.fileSourceDisplayState(merged.files[0], true), 'ready');
   assert.equal(context.fileSourceDisplayState({ path: 'big.js', analysisSkipped: 'oversized' }, false), 'skipped');
   assert.equal(context.fileSourceDisplayState({ path: 'src/a.js' }, false), 'unavailable');
+});
+
+test('empty source files count as loaded after hydration', () => {
+  const cached = { files: [{ path: 'src/empty.js', name: 'empty.js' }] };
+  assert.equal(context.fileHasLoadedSource(cached.files[0]), false);
+  assert.equal(context.fileSourceDisplayState(cached.files[0], true), 'loading');
+  const merged = context.mergeHydratedFileSources(cached, [{ path: 'src/empty.js', content: '' }]);
+  assert.equal(merged.files[0].content, '');
+  assert.equal(context.fileHasLoadedSource(merged.files[0]), true);
+  assert.equal(context.analysisFileNeedsSource(merged.files[0]), false);
+  assert.equal(context.fileSourceDisplayState(merged.files[0], true), 'ready');
 });
 
 test('code split percent uses the stacked axis', () => {
@@ -257,6 +268,7 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /asCodeLines\(highlightSyntax/);
   assert.match(htmlSource, /zipArchiveCacheMeta/);
   assert.match(htmlSource, /compactAnalysisForCache/);
+  assert.match(htmlSource, /fileHasLoadedSource/);
   assert.match(htmlSource, /codeSplitPanePercent/);
   assert.match(htmlSource, /onPointerDown/);
   assert.match(htmlSource, /__codeflow\/file\?path=/);

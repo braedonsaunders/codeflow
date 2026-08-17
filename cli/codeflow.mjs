@@ -29,14 +29,66 @@ const TEXT_EXT = new Set([
   'json', 'yml', 'yaml', 'toml', 'css', 'scss', 'sql'
 ]);
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
+export function pathStaysInRoot(root, candidate) {
+  const rootPath = path.resolve(String(root || ''));
+  const full = path.resolve(String(candidate || ''));
+  const prefix = rootPath.endsWith(path.sep) ? rootPath : rootPath + path.sep;
+  return full === rootPath || full.startsWith(prefix);
+}
+
 export function resolveSafeCliPath(root, relPath) {
   const rootPath = path.resolve(String(root || ''));
   const rel = String(relPath || '').replace(/\\/g, '/');
   if (!rel || rel.startsWith('/') || rel.split('/').includes('..')) return null;
   const full = path.resolve(rootPath, rel);
-  const prefix = rootPath.endsWith(path.sep) ? rootPath : rootPath + path.sep;
-  if (full !== rootPath && !full.startsWith(prefix)) return null;
+  if (!pathStaysInRoot(rootPath, full)) return null;
   return full;
+}
+
+export async function resolveSafeExistingPath(root, relPath) {
+  const lexical = resolveSafeCliPath(root, relPath);
+  if (!lexical) return null;
+  try {
+    const realRoot = await fs.realpath(root);
+    const realFile = await fs.realpath(lexical);
+    if (!pathStaysInRoot(realRoot, realFile)) return null;
+    return realFile;
+  } catch {
+    return null;
+  }
+}
+
+export function loopbackHostName(hostHeader) {
+  let host = String(hostHeader || '').trim().toLowerCase();
+  if (!host) return '';
+  if (host.startsWith('[')) {
+    const end = host.indexOf(']');
+    if (end < 0) return '';
+    host = host.slice(1, end);
+  } else {
+    const colon = host.lastIndexOf(':');
+    if (colon > 0 && host.indexOf(':') === colon) host = host.slice(0, colon);
+  }
+  if (host.endsWith('.')) host = host.slice(0, -1);
+  return host;
+}
+
+export function isLoopbackHost(hostHeader) {
+  return LOOPBACK_HOSTS.has(loopbackHostName(hostHeader));
+}
+
+export function isAllowedCliRequest(req) {
+  const headers = req && req.headers ? req.headers : (req || {});
+  if (!isLoopbackHost(headers.host || headers.Host)) return false;
+  const origin = headers.origin || headers.Origin;
+  if (origin == null || origin === '') return true;
+  try {
+    return isLoopbackHost(new URL(String(origin)).host);
+  } catch {
+    return false;
+  }
 }
 
 export function shouldSkipName(name) {
@@ -171,8 +223,7 @@ export function safeRequestPath(rawUrl) {
 
 export function startFileWatchers(root, onRelPath, watchFn) {
   const run = typeof watchFn === 'function' ? watchFn : watch;
-  const watchers = [];
-  const watched = new Set();
+  const watched = new Map();
   let watching = false;
   let closed = false;
 
@@ -181,6 +232,17 @@ export function startFileWatchers(root, onRelPath, watchFn) {
     const norm = String(rel).replace(/\\/g, '/');
     if (norm.split('/').some(shouldSkipName)) return;
     onRelPath(norm);
+  }
+
+  function forgetTree(dir) {
+    const key = path.resolve(String(dir || ''));
+    const prefix = key + path.sep;
+    for (const childKey of [...watched.keys()]) {
+      if (childKey !== key && !childKey.startsWith(prefix)) continue;
+      const rec = watched.get(childKey);
+      try { if (rec && rec.watcher) rec.watcher.close(); } catch {}
+      watched.delete(childKey);
+    }
   }
 
   function add(dir, rel, recursive) {
@@ -195,14 +257,18 @@ export function startFileWatchers(root, onRelPath, watchFn) {
         if (!recursive) {
           const childPath = path.join(dir, String(filename));
           fs.stat(childPath).then((st) => {
-            if (closed || !st.isDirectory() || shouldSkipName(path.basename(childPath))) return;
+            if (closed || shouldSkipName(path.basename(childPath))) return;
+            if (!st.isDirectory()) return;
+            forgetTree(childPath);
             add(childPath, childRel, false);
             watchExistingTree(childPath, childRel);
-          }).catch(() => {});
+          }).catch((err) => {
+            if (closed) return;
+            if (err && (err.code === 'ENOENT' || err.code === 'ENOTDIR')) forgetTree(childPath);
+          });
         }
       });
-      watched.add(key);
-      watchers.push(w);
+      watched.set(key, { watcher: w, rel });
       watching = true;
       return true;
     } catch {
@@ -239,10 +305,10 @@ export function startFileWatchers(root, onRelPath, watchFn) {
     },
     close() {
       closed = true;
-      for (const w of watchers) {
-        try { w.close(); } catch {}
+      for (const rec of watched.values()) {
+        try { if (rec && rec.watcher) rec.watcher.close(); } catch {}
       }
-      watchers.length = 0;
+      watched.clear();
       watching = false;
     }
   };
@@ -277,6 +343,11 @@ export function createCodeflowServer(options) {
 
   const server = http.createServer(async (req, res) => {
     try {
+      if (!isAllowedCliRequest(req)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Forbidden');
+        return;
+      }
       const parsed = safeRequestPath(req.url);
       if (!parsed.ok) {
         res.writeHead(parsed.status, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -298,7 +369,7 @@ export function createCodeflowServer(options) {
         return;
       }
       if (url.pathname === '/__codeflow/file') {
-        const safe = resolveSafeCliPath(watchRoot, url.searchParams.get('path') || '');
+        const safe = await resolveSafeExistingPath(watchRoot, url.searchParams.get('path') || '');
         if (!safe) {
           res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
           res.end('Not found');
@@ -321,7 +392,7 @@ export function createCodeflowServer(options) {
 
       let rel = parsed.pathname;
       if (rel === '/') rel = '/index.html';
-      const safeUi = resolveSafeCliPath(uiRoot, rel.replace(/^\//, ''));
+      const safeUi = await resolveSafeExistingPath(uiRoot, rel.replace(/^\//, ''));
       if (!safeUi) {
         res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Not found');

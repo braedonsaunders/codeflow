@@ -5879,18 +5879,22 @@ function omitSnippetCode(item){
     return copy;
 }
 
+function fileHasLoadedSource(file){
+    return !!(file&&Object.prototype.hasOwnProperty.call(file,'content')&&typeof file.content==='string');
+}
+
 function fileHasPersistedSource(file){
-    return !!(file&&typeof file.content==='string'&&file.content.length);
+    return fileHasLoadedSource(file);
 }
 
 function analysisFileNeedsSource(file){
-    return !!(file&&!file.analysisSkipped&&!fileHasPersistedSource(file));
+    return !!(file&&!file.analysisSkipped&&!fileHasLoadedSource(file));
 }
 
 function fileSourceDisplayState(file,canFetch){
     if(!file)return 'empty';
     if(file.analysisSkipped)return 'skipped';
-    if(fileHasPersistedSource(file))return 'ready';
+    if(fileHasLoadedSource(file))return 'ready';
     return canFetch?'loading':'unavailable';
 }
 
@@ -5906,7 +5910,7 @@ function mergeHydratedFileSources(data,updates){
     });
     var changed=false;
     var files=data.files.map(function(file){
-        if(byPath[file.path]==null||fileHasPersistedSource(file))return file;
+        if(byPath[file.path]==null||fileHasLoadedSource(file))return file;
         changed=true;
         return Object.assign({},file,{content:byPath[file.path]});
     });
@@ -7838,22 +7842,22 @@ function App(){
 
     function readLiveFileSource(path){
         var kind=liveSourceKindForRead();
-        if(!path||!kind)return Promise.resolve('');
+        if(!path||!kind)return Promise.resolve(null);
         if(kind==='cli'){
             return fetch('/__codeflow/file?path='+encodeURIComponent(path))
-                .then(function(res){return res.ok?res.text():'';})
-                .catch(function(){return '';});
+                .then(function(res){return res.ok?res.text():null;})
+                .catch(function(){return null;});
         }
         if(kind==='folder'){
-            return readFolderFileByPath(localDirHandle,path).catch(function(){return '';});
+            return readFolderFileByPath(localDirHandle,path).catch(function(){return null;});
         }
         if(kind==='zip'){
             var archive=zipArchiveRef.current;
             var entry=archive&&archive.entriesByPath?archive.entriesByPath[path]:null;
-            if(!entry||typeof entry.async!=='function')return Promise.resolve('');
-            return entry.async('string').catch(function(){return '';});
+            if(!entry||typeof entry.async!=='function')return Promise.resolve(null);
+            return entry.async('string').catch(function(){return null;});
         }
-        return GitHub.getFile(repoInfo.owner,repoInfo.repo,path).then(function(content){return content||'';}).catch(function(){return '';});
+        return GitHub.getFile(repoInfo.owner,repoInfo.repo,path).then(function(content){return typeof content==='string'?content:null;}).catch(function(){return null;});
     }
 
     function rememberHydratedSources(updates){
@@ -7871,12 +7875,12 @@ function App(){
             setFilePreview({path:path,filename:filename,content:'',line:line||null,loading:false,error:existingFile.analysisSkipped==='oversized'?'Skipped during analysis (file too large)':'File was not fetched during analysis'});
             return;
         }
-        if(existingFile&&fileHasPersistedSource(existingFile)){
+        if(existingFile&&fileHasLoadedSource(existingFile)){
             setFilePreview({path:path,filename:filename,content:existingFile.content,line:line||null,loading:false,error:null});
             return;
         }
         readLiveFileSource(path).then(function(content){
-            if(content){
+            if(typeof content==='string'){
                 setFilePreview({path:path,filename:filename,content:content,line:line||null,loading:false,error:null});
                 rememberHydratedSources([{path:path,content:content}]);
                 return;
@@ -7926,7 +7930,7 @@ function App(){
             });
         })).then(function(updates){
             if(cancelled)return;
-            rememberHydratedSources(updates.filter(function(update){return update&&typeof update.content==='string'&&update.content.length;}));
+            rememberHydratedSources(updates.filter(function(update){return update&&typeof update.content==='string';}));
         });
         return function(){cancelled=true;};
     },[codeViewFiles,localSourceKind,cliStatus,repoInfo,localDirHandle]);

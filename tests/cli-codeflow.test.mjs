@@ -1,15 +1,18 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, writeFile, mkdir, rm, symlink } from 'node:fs/promises';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import {
+  isAllowedCliRequest,
+  isLoopbackHost,
   isWatchableFile,
   listWatchFiles,
   parseCliArgs,
   resolveSafeCliPath,
+  resolveSafeExistingPath,
   shouldSkipName,
   createCodeflowServer,
   openBrowser,
@@ -35,6 +38,32 @@ test('CLI skips junk directories and binary-looking names', () => {
 test('CLI path resolver stays inside the watch root', () => {
   assert.equal(resolveSafeCliPath('/tmp/proj', '../secret'), null);
   assert.ok(resolveSafeCliPath('/tmp/proj', 'src/app.js').endsWith('/src/app.js'));
+});
+
+test('CLI request guard only allows loopback Host and Origin', () => {
+  assert.equal(isLoopbackHost('127.0.0.1:4173'), true);
+  assert.equal(isLoopbackHost('localhost:4173'), true);
+  assert.equal(isLoopbackHost('[::1]:4173'), true);
+  assert.equal(isLoopbackHost('evil.example'), false);
+  assert.equal(isAllowedCliRequest({ headers: { host: '127.0.0.1:4173' } }), true);
+  assert.equal(isAllowedCliRequest({ headers: { host: '127.0.0.1:4173', origin: 'http://127.0.0.1:4173' } }), true);
+  assert.equal(isAllowedCliRequest({ headers: { host: 'evil.example', origin: 'http://evil.example' } }), false);
+  assert.equal(isAllowedCliRequest({ headers: { host: '127.0.0.1:4173', origin: 'http://evil.example' } }), false);
+});
+
+test('CLI rejects escaping symlinks after resolving the real path', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'codeflow-link-'));
+  const outside = await mkdtemp(join(tmpdir(), 'codeflow-secret-'));
+  await mkdir(join(root, 'src'));
+  await writeFile(join(root, 'src', 'app.js'), 'export const ok = 1;\n');
+  await writeFile(join(outside, 'id_rsa'), 'SECRET\n');
+  await symlink(join(outside, 'id_rsa'), join(root, 'src', 'config.js'));
+  await symlink(join(root, 'src', 'app.js'), join(root, 'src', 'alias.js'));
+  assert.equal(await resolveSafeExistingPath(root, 'src/config.js'), null);
+  const inside = await resolveSafeExistingPath(root, 'src/alias.js');
+  assert.ok(inside && inside.endsWith('app.js'));
+  await rm(root, { recursive: true, force: true });
+  await rm(outside, { recursive: true, force: true });
 });
 
 test('CLI lists source files from a folder', async (t) => {
@@ -100,6 +129,60 @@ test('CLI server serves the same UI and folder files', async (t) => {
   assert.equal(badEscape, 400);
   const afterBad = await fetch(base + '/__codeflow/status');
   assert.equal(afterBad.status, 200);
+  const rebound = await new Promise((resolveReq, reject) => {
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port,
+      path: '/__codeflow/files',
+      headers: { Host: 'evil.example', Origin: 'http://evil.example' }
+    }, (res) => {
+      res.resume();
+      res.on('end', () => resolveReq(res.statusCode));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+  assert.equal(rebound, 403);
+  const crossOrigin = await new Promise((resolveReq, reject) => {
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port,
+      path: '/__codeflow/file?path=src/app.js',
+      headers: { Host: '127.0.0.1:' + port, Origin: 'http://evil.example' }
+    }, (res) => {
+      res.resume();
+      res.on('end', () => resolveReq(res.statusCode));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+  assert.equal(crossOrigin, 403);
+});
+
+test('CLI file endpoint does not follow escaping symlinks', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'codeflow-serve-'));
+  const outside = await mkdtemp(join(tmpdir(), 'codeflow-secret-'));
+  t.after(async () => {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  });
+  await mkdir(join(root, 'src'));
+  await writeFile(join(root, 'src', 'app.js'), 'export const ok = 1;\n');
+  await writeFile(join(outside, 'id_rsa'), 'SECRET\n');
+  await symlink(join(outside, 'id_rsa'), join(root, 'src', 'config.js'));
+  const { server, close } = createCodeflowServer({ uiRoot: repoRoot, watchRoot: root });
+  t.after(() => close());
+  await new Promise((resolveListen, reject) => {
+    server.listen(0, '127.0.0.1', resolveListen);
+    server.once('error', reject);
+  });
+  const { port } = server.address();
+  const escaped = await fetch('http://127.0.0.1:' + port + '/__codeflow/file?path=src/config.js');
+  assert.equal(escaped.status, 404);
+  assert.doesNotMatch(await escaped.text(), /SECRET/);
+  const ok = await fetch('http://127.0.0.1:' + port + '/__codeflow/file?path=src/app.js');
+  assert.equal(ok.status, 200);
+  assert.match(await ok.text(), /export const ok/);
 });
 
 test('safeRequestPath rejects malformed escapes', () => {
@@ -162,4 +245,52 @@ test('Node 18 fallback watches nested dirs when a pre-populated tree appears', a
   assert.ok(listeners.has(resolve(root, 'newTree')));
   assert.ok(listeners.has(resolve(root, 'newTree', 'nested')));
   watcher.close();
+});
+
+test('Node 18 fallback re-watches a directory that is deleted and recreated', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'codeflow-rewatch-'));
+  const listeners = new Map();
+  let watchCalls = 0;
+  const patchedWatch = (dir, opts, listener) => {
+    if (opts && opts.recursive) {
+      throw Object.assign(new Error('recursive unavailable'), { code: 'ERR_FEATURE_UNAVAILABLE_ON_PLATFORM' });
+    }
+    watchCalls += 1;
+    const rec = { dir, listener, closed: false, close() { rec.closed = true; } };
+    listeners.set(resolve(dir), rec);
+    return rec;
+  };
+  const watcher = startFileWatchers(root, () => {}, patchedWatch);
+  const rootWatch = listeners.get(resolve(root));
+  await mkdir(join(root, 'gone'));
+  rootWatch.listener('rename', 'gone');
+  const createdDeadline = Date.now() + 500;
+  while (Date.now() < createdDeadline && !listeners.has(resolve(root, 'gone'))) {
+    await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+  }
+  const first = listeners.get(resolve(root, 'gone'));
+  assert.ok(first);
+  const callsAfterCreate = watchCalls;
+  await rm(join(root, 'gone'), { recursive: true, force: true });
+  rootWatch.listener('rename', 'gone');
+  const goneDeadline = Date.now() + 500;
+  while (Date.now() < goneDeadline && !first.closed) {
+    await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+  }
+  assert.equal(first.closed, true);
+  await mkdir(join(root, 'gone', 'nested'), { recursive: true });
+  await writeFile(join(root, 'gone', 'nested', 'file.js'), 'export const y = 2;\n');
+  rootWatch.listener('rename', 'gone');
+  const againDeadline = Date.now() + 500;
+  while (Date.now() < againDeadline && (watchCalls <= callsAfterCreate || !listeners.has(resolve(root, 'gone', 'nested')))) {
+    await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+  }
+  const second = listeners.get(resolve(root, 'gone'));
+  assert.ok(second);
+  assert.notEqual(second, first);
+  assert.equal(second.closed, false);
+  assert.ok(watchCalls > callsAfterCreate);
+  assert.ok(listeners.has(resolve(root, 'gone', 'nested')));
+  watcher.close();
+  await rm(root, { recursive: true, force: true });
 });
