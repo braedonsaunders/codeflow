@@ -153,12 +153,20 @@ function pipeSafeFile(res, filePath, contentType) {
   });
 }
 
-function openBrowser(url) {
+export function openBrowser(url, spawnFn) {
   const platform = process.platform;
   const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'cmd' : 'xdg-open';
   const args = platform === 'win32' ? ['/c', 'start', '', url] : [url];
-  const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
-  child.unref();
+  const run = typeof spawnFn === 'function' ? spawnFn : spawn;
+  try {
+    const child = run(cmd, args, { detached: true, stdio: 'ignore' });
+    child.on('error', () => {
+      console.log('Could not open a browser automatically. Open this URL manually: ' + url);
+    });
+    if (typeof child.unref === 'function') child.unref();
+  } catch {
+    console.log('Could not open a browser automatically. Open this URL manually: ' + url);
+  }
 }
 
 export function createCodeflowServer(options) {

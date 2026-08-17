@@ -10,7 +10,8 @@ import {
   parseCliArgs,
   resolveSafeCliPath,
   shouldSkipName,
-  createCodeflowServer
+  createCodeflowServer,
+  openBrowser
 } from '../cli/codeflow.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -41,6 +42,20 @@ test('CLI lists source files from a folder', async (t) => {
   await writeFile(join(root, 'node_modules', 'left-pad', 'index.js'), 'export default 1\n');
   const files = await listWatchFiles(root);
   assert.deepEqual(files.map((f) => f.path), ['src/app.js']);
+});
+
+test('openBrowser keeps running when the opener is missing', () => {
+  const events = {};
+  const fakeSpawn = () => ({
+    on(name, fn) {
+      events[name] = fn;
+      return this;
+    },
+    unref() {}
+  });
+  assert.doesNotThrow(() => openBrowser('http://127.0.0.1:4173/?cli=1', fakeSpawn));
+  assert.equal(typeof events.error, 'function');
+  assert.doesNotThrow(() => events.error(Object.assign(new Error('spawn xdg-open ENOENT'), { code: 'ENOENT' })));
 });
 
 test('CLI server serves the same UI and folder files', async (t) => {

@@ -113,6 +113,35 @@ test('folder cache keys differ per selected directory', () => {
   assert.equal(context.analysisCacheKey('folder', a.sourceKey), 'folder:' + a.sourceKey);
 });
 
+test('CLI cache keys use the watched root instead of a shared fallback', () => {
+  const a = context.cliWatchCacheMeta({ ok: true, root: '/tmp/alpha', name: 'alpha' });
+  const b = context.cliWatchCacheMeta({ ok: true, root: '/tmp/beta', name: 'beta' });
+  const missing = context.cliWatchCacheMeta(null);
+  assert.equal(a.sourceKey, '/tmp/alpha');
+  assert.equal(a.title, 'alpha');
+  assert.notEqual(a.sourceKey, b.sourceKey);
+  assert.equal(missing.sourceKey, 'cli');
+  assert.equal(context.analysisCacheKey('cli', a.sourceKey), 'cli:/tmp/alpha');
+});
+
+test('ZIP cache keys include archive metadata, not only the filename', () => {
+  const a = context.zipArchiveCacheMeta({ name: 'main.zip', size: 100, lastModified: 10, paths: ['repo-a/src/app.js'] });
+  const b = context.zipArchiveCacheMeta({ name: 'main.zip', size: 200, lastModified: 20, paths: ['repo-b/src/app.js'] });
+  const sameNameDifferentPaths = context.zipArchiveCacheMeta({ name: 'main.zip', size: 100, lastModified: 10, paths: ['other/src/app.js'] });
+  assert.equal(a.title, 'main.zip');
+  assert.notEqual(a.sourceKey, b.sourceKey);
+  assert.notEqual(a.sourceKey, sameNameDifferentPaths.sourceKey);
+  assert.equal(context.analysisCacheKey('zip', a.sourceKey), 'zip:' + a.sourceKey);
+});
+
+test('retained folder handle only matches its own recent record', () => {
+  const recordA = { sourceType: 'folder', sourceKey: 'alpha|1|src/app.js' };
+  const recordB = { sourceType: 'folder', sourceKey: 'beta|1|src/app.js' };
+  assert.equal(context.retainedFolderMatchesRecord(recordA, { sourceKey: recordA.sourceKey }), true);
+  assert.equal(context.retainedFolderMatchesRecord(recordB, { sourceKey: recordA.sourceKey }), false);
+  assert.equal(context.retainedFolderMatchesRecord(null, { sourceKey: recordA.sourceKey }), true);
+});
+
 test('HTML attribute sanitizer encodes quotes before they reach data-sym', () => {
   assert.equal(context.escapeHtmlAttr('say "hi"'), 'say &quot;hi&quot;');
   assert.match(context.escapeHtmlAttr('a"onclick="alert(1)'), /&quot;/);
@@ -130,5 +159,8 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /readableLabelScale/);
   assert.match(htmlSource, /listRecentAnalyses/);
   assert.match(htmlSource, /__codeflow\/status/);
+  assert.match(htmlSource, /analyzeFromCli\(false,status\)/);
+  assert.match(htmlSource, /retainedFolderMatchesRecord/);
+  assert.match(htmlSource, /zipArchiveCacheMeta/);
   assert.match(htmlSource, /The folder picker is faster when the API is rate-limited/);
 });
