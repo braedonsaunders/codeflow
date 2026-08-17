@@ -16,6 +16,7 @@ if (start < 0 || end < 0) throw new Error('Could not locate canvas helpers in in
 const context = { console };
 vm.createContext(context);
 vm.runInContext(htmlSource.slice(start, end + endMarker.length), context);
+const J = (v) => JSON.parse(JSON.stringify(v));
 
 test('readable labels grow only when zoomed out', () => {
   assert.equal(context.readableLabelScale(1), 1);
@@ -29,7 +30,7 @@ test('connected files include both directions', () => {
     { source: 'src/math.js', target: 'src/app.js', fn: 'add' },
     { source: 'src/app.js', target: 'src/ui.js', fn: 'render' }
   ]);
-  assert.deepEqual(paths.sort(), ['src/math.js', 'src/ui.js']);
+  assert.deepEqual(J(paths).sort(), ['src/math.js', 'src/ui.js']);
 });
 
 test('symbol extraction finds imports, exports, and functions', () => {
@@ -39,7 +40,7 @@ test('symbol extraction finds imports, exports, and functions', () => {
     functions: [{ name: 'render', isExported: true }]
   };
   const symbols = context.extractFileSymbols(file, [{ source: 'src/math.js', target: 'src/app.js', fn: 'add' }]);
-  const names = symbols.map((s) => s.name).sort();
+  const names = J(symbols).map((s) => s.name).sort();
   assert.deepEqual(names, ['add', 'render']);
   assert.equal(symbols.find((s) => s.name === 'add').kind, 'import');
   assert.equal(symbols.find((s) => s.name === 'render').kind, 'export');
@@ -73,7 +74,7 @@ test('visible code files prefer the selection and its neighbors', () => {
     connections: [{ source: 'a.js', target: 'b.js', fn: 'a' }]
   };
   const visible = context.collectVisibleCodeFiles('a.js', data, 'src', 4);
-  assert.deepEqual(visible.map((f) => f.path), ['a.js', 'b.js']);
+  assert.deepEqual(J(visible).map((f) => f.path), ['a.js', 'b.js']);
 });
 
 test('cache keys and records stay stable', () => {

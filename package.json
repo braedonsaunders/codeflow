@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Visualize codebase architecture in the browser. A thin CLI opens that same UI.",
   "license": "MIT",
-  "type": "module",
   "bin": {
     "codeflow": "./cli/codeflow.mjs"
   },
