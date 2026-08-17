@@ -170,6 +170,60 @@ test('retained folder handle only matches its own recent record', () => {
   assert.equal(context.retainedFolderMatchesRecord(null, { sourceKey: recordA.sourceKey }), true);
 });
 
+test('compactAnalysisForCache drops raw source and keeps graph metadata', () => {
+  const compact = context.compactAnalysisForCache({
+    files: [{
+      path: 'src/a.js',
+      name: 'a.js',
+      language: 'javascript',
+      lines: 3,
+      size: 40,
+      content: 'function hello(){ return 1; }\n',
+      functions: [{ name: 'hello', line: 1, code: 'function hello(){ return 1; }' }],
+      deadFunctions: [{ name: 'unused', line: 2, code: 'function unused(){}' }],
+      securityIssues: [{ type: 'eval', line: 1, code: 'eval(x)' }],
+      connections: [{ from: 'hello', to: 'other' }]
+    }],
+    functions: [{ name: 'hello', file: 'src/a.js', line: 1, code: 'function hello(){ return 1; }' }],
+    deadFunctions: [{ name: 'unused', file: 'src/a.js', line: 2, code: 'function unused(){}' }],
+    connections: [{ source: 'src/a.js', target: 'src/b.js', fn: 'hello' }],
+    issues: [{ title: 'Unused Functions', items: [{ name: 'unused', file: 'src/a.js', line: 2, code: 'function unused(){}' }] }],
+    securityIssues: [{ title: 'eval', file: 'src/a.js', code: 'eval(x)' }],
+    fnStats: { hello: { name: 'hello', file: 'src/a.js', code: 'function hello(){ return 1; }' } }
+  });
+  assert.equal(Object.prototype.hasOwnProperty.call(compact.files[0], 'content'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(compact.files[0].functions[0], 'code'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(compact.functions[0], 'code'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(compact.deadFunctions[0], 'code'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(compact.issues[0].items[0], 'code'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(compact.securityIssues[0], 'code'), false);
+  assert.equal(Object.prototype.hasOwnProperty.call(compact.fnStats.hello, 'code'), false);
+  assert.equal(compact.files[0].path, 'src/a.js');
+  assert.equal(compact.files[0].functions[0].name, 'hello');
+  assert.equal(compact.files[0].functions[0].line, 1);
+  assert.equal(compact.files[0].size, 40);
+  assert.deepEqual(J(compact.connections), [{ source: 'src/a.js', target: 'src/b.js', fn: 'hello' }]);
+  assert.equal(compact.issues[0].title, 'Unused Functions');
+});
+
+test('hydrated sources stay in memory and are not treated as cached source', () => {
+  const cached = { files: [{ path: 'src/a.js', name: 'a.js', content: undefined, functions: [{ name: 'hello', line: 1 }] }] };
+  assert.equal(context.analysisFileNeedsSource(cached.files[0]), true);
+  const merged = context.mergeHydratedFileSources(cached, [{ path: 'src/a.js', content: 'export function hello(){ return 1; }\n' }]);
+  assert.equal(merged.files[0].content.includes('hello'), true);
+  assert.equal(context.fileSourceDisplayState(cached.files[0], true), 'loading');
+  assert.equal(context.fileSourceDisplayState(merged.files[0], true), 'ready');
+  assert.equal(context.fileSourceDisplayState({ path: 'big.js', analysisSkipped: 'oversized' }, false), 'skipped');
+  assert.equal(context.fileSourceDisplayState({ path: 'src/a.js' }, false), 'unavailable');
+});
+
+test('code split percent uses the stacked axis', () => {
+  const rect = { width: 1000, height: 800, right: 1000, bottom: 800 };
+  assert.equal(context.codeSplitPanePercent(rect, { clientX: 400, clientY: 200 }, false), 60);
+  assert.equal(context.codeSplitPanePercent(rect, { clientX: 400, clientY: 200 }, true), 72);
+  assert.equal(context.codeSplitPanePercent(rect, { clientX: 900, clientY: 600 }, true), 28);
+});
+
 test('empty code cards always render from an array of lines', () => {
   assert.deepEqual(J(context.asCodeLines('')), ['']);
   assert.deepEqual(J(context.asCodeLines(null)), ['']);
@@ -202,5 +256,9 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /filterAnalyzableLocalFiles\(/);
   assert.match(htmlSource, /asCodeLines\(highlightSyntax/);
   assert.match(htmlSource, /zipArchiveCacheMeta/);
+  assert.match(htmlSource, /compactAnalysisForCache/);
+  assert.match(htmlSource, /codeSplitPanePercent/);
+  assert.match(htmlSource, /onPointerDown/);
+  assert.match(htmlSource, /__codeflow\/file\?path=/);
   assert.match(htmlSource, /The folder picker is faster when the API is rate-limited/);
 });

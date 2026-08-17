@@ -197,6 +197,7 @@ export function startFileWatchers(root, onRelPath, watchFn) {
           fs.stat(childPath).then((st) => {
             if (closed || !st.isDirectory() || shouldSkipName(path.basename(childPath))) return;
             add(childPath, childRel, false);
+            watchExistingTree(childPath, childRel);
           }).catch(() => {});
         }
       });
@@ -209,25 +210,27 @@ export function startFileWatchers(root, onRelPath, watchFn) {
     }
   }
 
+  async function watchExistingTree(dir, rel) {
+    if (closed || !dir) return;
+    let entries;
+    try {
+      entries = await fs.readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (closed) return;
+      if (!entry.isDirectory() || shouldSkipName(entry.name)) continue;
+      const childRel = rel ? rel + '/' + entry.name : entry.name;
+      const childPath = path.join(dir, entry.name);
+      add(childPath, childRel, false);
+      await watchExistingTree(childPath, childRel);
+    }
+  }
+
   if (!add(root, '', true)) {
     add(root, '', false);
-    (async function walk(dir, rel) {
-      if (closed) return;
-      let entries;
-      try {
-        entries = await fs.readdir(dir, { withFileTypes: true });
-      } catch {
-        return;
-      }
-      for (const entry of entries) {
-        if (closed) return;
-        if (!entry.isDirectory() || shouldSkipName(entry.name)) continue;
-        const childRel = rel ? rel + '/' + entry.name : entry.name;
-        const childPath = path.join(dir, entry.name);
-        add(childPath, childRel, false);
-        await walk(childPath, childRel);
-      }
-    })();
+    watchExistingTree(root, '');
   }
 
   return {

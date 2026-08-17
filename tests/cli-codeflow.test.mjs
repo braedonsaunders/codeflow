@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import {
@@ -126,7 +126,40 @@ test('file watchers fall back or report watch:false', async () => {
   });
   assert.equal(fallback.watching, true);
   await new Promise((resolve) => setTimeout(resolve, 40));
-  assert.ok(watched.length >= 1);
+  assert.ok(watched.some((dir) => dir.endsWith('golden-world')));
+  assert.ok(watched.some((dir) => dir.endsWith(join('golden-world', 'src')) || dir.endsWith('golden-world/src')));
   fallback.close();
   assert.equal(fallback.watching, false);
+});
+
+test('Node 18 fallback watches nested dirs when a pre-populated tree appears', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'codeflow-watch-'));
+  const listeners = new Map();
+  const fakeWatch = (dir, opts) => {
+    if (opts && opts.recursive) {
+      throw Object.assign(new Error('recursive unavailable'), { code: 'ERR_FEATURE_UNAVAILABLE_ON_PLATFORM' });
+    }
+    const rec = { dir, listener: null, close() {} };
+    listeners.set(resolve(dir), rec);
+    return rec;
+  };
+  const patchedWatch = (dir, opts, listener) => {
+    const rec = fakeWatch(dir, opts);
+    rec.listener = listener;
+    return rec;
+  };
+  const watcher = startFileWatchers(root, () => {}, patchedWatch);
+  assert.equal(watcher.watching, true);
+  await mkdir(join(root, 'newTree', 'nested'), { recursive: true });
+  await writeFile(join(root, 'newTree', 'nested', 'file.js'), 'export const x = 1;\n');
+  const rootWatch = listeners.get(resolve(root));
+  assert.equal(typeof rootWatch.listener, 'function');
+  rootWatch.listener('rename', 'newTree');
+  const deadline = Date.now() + 500;
+  while (Date.now() < deadline && (!listeners.has(resolve(root, 'newTree')) || !listeners.has(resolve(root, 'newTree', 'nested')))) {
+    await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+  }
+  assert.ok(listeners.has(resolve(root, 'newTree')));
+  assert.ok(listeners.has(resolve(root, 'newTree', 'nested')));
+  watcher.close();
 });

@@ -457,7 +457,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .code-split{display:flex;width:100%;height:100%;min-width:0;min-height:0}
 .code-split-graph{flex:1 1 48%;min-width:180px;position:relative;overflow:hidden}
 .code-split-graph svg{width:100%;height:100%;display:block}
-.code-split-resize{width:8px;flex-shrink:0;cursor:col-resize;background:var(--border);position:relative;z-index:20}
+.code-split-resize{width:8px;flex-shrink:0;cursor:col-resize;background:var(--border);position:relative;z-index:20;touch-action:none}
 .code-split-resize:hover,.code-split-resize.active{background:var(--acc)}
 .code-split-pane{flex:1 1 52%;min-width:220px;max-width:70%;display:flex;flex-direction:column;background:var(--bg1);border-left:1px solid var(--border);min-height:0}
 .code-split-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);flex-shrink:0}
@@ -5573,7 +5573,7 @@ function calcHealth(data){
 // ===== CODEFLOW_CANVAS_START =====
 var ANALYSIS_CACHE_DB='codeflow-recents';
 var ANALYSIS_CACHE_STORE='analyses';
-var ANALYSIS_CACHE_VERSION=1;
+var ANALYSIS_CACHE_VERSION=2;
 var ANALYSIS_CACHE_MAX=12;
 var ANALYSIS_CACHE_MAX_BYTES=18*1024*1024;
 
@@ -5871,13 +5871,102 @@ function estimateAnalysisRecordBytes(record){
     }
 }
 
-function compactAnalysisForCache(data){
-    if(!data||!data.files)return data;
-    return Object.assign({},data,{
-        files:data.files.map(function(f){
-            return Object.assign({},f,{content:typeof f.content==='string'?f.content:''});
-        })
+function omitSnippetCode(item){
+    if(!item||typeof item!=='object'||Array.isArray(item))return item;
+    if(!Object.prototype.hasOwnProperty.call(item,'code'))return item;
+    var copy=Object.assign({},item);
+    delete copy.code;
+    return copy;
+}
+
+function fileHasPersistedSource(file){
+    return !!(file&&typeof file.content==='string'&&file.content.length);
+}
+
+function analysisFileNeedsSource(file){
+    return !!(file&&!file.analysisSkipped&&!fileHasPersistedSource(file));
+}
+
+function fileSourceDisplayState(file,canFetch){
+    if(!file)return 'empty';
+    if(file.analysisSkipped)return 'skipped';
+    if(fileHasPersistedSource(file))return 'ready';
+    return canFetch?'loading':'unavailable';
+}
+
+function filesNeedingSource(files){
+    return (files||[]).filter(analysisFileNeedsSource);
+}
+
+function mergeHydratedFileSources(data,updates){
+    if(!data||!data.files||!updates||!updates.length)return data;
+    var byPath=Object.create(null);
+    updates.forEach(function(update){
+        if(update&&update.path&&typeof update.content==='string')byPath[update.path]=update.content;
     });
+    var changed=false;
+    var files=data.files.map(function(file){
+        if(byPath[file.path]==null||fileHasPersistedSource(file))return file;
+        changed=true;
+        return Object.assign({},file,{content:byPath[file.path]});
+    });
+    return changed?Object.assign({},data,{files:files}):data;
+}
+
+function compactAnalysisForCache(data){
+    if(!data||typeof data!=='object')return data;
+    var copy=Object.assign({},data);
+    if(Array.isArray(copy.files)){
+        copy.files=copy.files.map(function(file){
+            var next=Object.assign({},file);
+            delete next.content;
+            if(Array.isArray(next.functions))next.functions=next.functions.map(omitSnippetCode);
+            if(Array.isArray(next.deadFunctions))next.deadFunctions=next.deadFunctions.map(omitSnippetCode);
+            if(Array.isArray(next.securityIssues))next.securityIssues=next.securityIssues.map(omitSnippetCode);
+            return next;
+        });
+    }
+    if(Array.isArray(copy.functions))copy.functions=copy.functions.map(omitSnippetCode);
+    if(Array.isArray(copy.deadFunctions))copy.deadFunctions=copy.deadFunctions.map(omitSnippetCode);
+    if(Array.isArray(copy.securityIssues))copy.securityIssues=copy.securityIssues.map(omitSnippetCode);
+    if(Array.isArray(copy.issues)){
+        copy.issues=copy.issues.map(function(issue){
+            var next=Object.assign({},issue);
+            if(Array.isArray(next.items))next.items=next.items.map(omitSnippetCode);
+            return next;
+        });
+    }
+    if(copy.fnStats&&typeof copy.fnStats==='object'){
+        var stats=Object.create(null);
+        Object.keys(copy.fnStats).forEach(function(key){
+            stats[key]=omitSnippetCode(copy.fnStats[key]);
+        });
+        copy.fnStats=stats;
+    }
+    return copy;
+}
+
+function codeSplitIsStacked(wrap){
+    if(!wrap||typeof getComputedStyle!=='function')return false;
+    try{
+        return getComputedStyle(wrap).flexDirection==='column';
+    }catch(e){
+        return false;
+    }
+}
+
+function codeSplitPanePercent(rect,point,stacked){
+    if(!rect||!point)return 42;
+    var next;
+    if(stacked){
+        var height=rect.height||1;
+        next=((rect.bottom-point.clientY)/height)*100;
+    }else{
+        var width=rect.width||1;
+        next=((rect.right-point.clientX)/width)*100;
+    }
+    if(!isFinite(next))return 42;
+    return Math.max(28,Math.min(72,next));
 }
 
 function openAnalysisCacheDb(){
@@ -5886,10 +5975,9 @@ function openAnalysisCacheDb(){
         var req=indexedDB.open(ANALYSIS_CACHE_DB,ANALYSIS_CACHE_VERSION);
         req.onupgradeneeded=function(){
             var db=req.result;
-            if(!db.objectStoreNames.contains(ANALYSIS_CACHE_STORE)){
-                var store=db.createObjectStore(ANALYSIS_CACHE_STORE,{keyPath:'id'});
-                store.createIndex('savedAt','savedAt');
-            }
+            if(db.objectStoreNames.contains(ANALYSIS_CACHE_STORE))db.deleteObjectStore(ANALYSIS_CACHE_STORE);
+            var store=db.createObjectStore(ANALYSIS_CACHE_STORE,{keyPath:'id'});
+            store.createIndex('savedAt','savedAt');
         };
         req.onsuccess=function(){resolve(req.result);};
         req.onerror=function(){reject(req.error||new Error('Failed to open analysis cache'));};
@@ -6663,7 +6751,7 @@ function App(){
 
     function applyCachedAnalysis(record){
         if(!record||!record.data)return;
-        setData(record.data);
+        setData(compactAnalysisForCache(record.data));
         setExpandedPaths(new Set(['']));
         setSelected(null);
         setBlastRadius(null);
@@ -7712,63 +7800,89 @@ function App(){
         return result;
     }
 
+    function folderSourceIsLive(){
+        var currentSource=currentAnalysisSource();
+        return !!(localSourceKind==='folder'&&localDirHandle&&(!currentSource||currentSource.sourceType!=='folder'||retainedFolderMatchesRecord(currentSource,{sourceKey:localFolderKeyRef.current})));
+    }
+
+    function zipSourceIsLive(){
+        var currentSource=currentAnalysisSource();
+        return !!(localSourceKind==='zip'&&zipFileRef.current&&(!currentSource||currentSource.sourceType!=='zip'||retainedZipMatchesRecord(currentSource,{sourceKey:zipKeyRef.current,identity:zipFileIdentity(zipFileRef.current)})));
+    }
+
+    function liveSourceKindForRead(){
+        if(localSourceKind==='cli'&&cliStatus&&cliStatus.ok)return 'cli';
+        if(folderSourceIsLive())return 'folder';
+        if(zipSourceIsLive())return 'zip';
+        if(repoInfo&&repoInfo.owner&&repoInfo.repo&&repoInfo.owner!=='local')return 'github';
+        if(cliStatus&&cliStatus.ok&&localSourceKind!=='folder'&&localSourceKind!=='zip')return 'cli';
+        return null;
+    }
+
+    function canReadLiveFileSource(){
+        return !!liveSourceKindForRead();
+    }
+
+    function readFolderFileByPath(rootHandle,filePath){
+        var parts=String(filePath||'').split('/').filter(Boolean);
+        if(!parts.length||!rootHandle)return Promise.reject(new Error('File is not available in the open folder'));
+        var dirPromise=Promise.resolve(rootHandle);
+        var fileName=parts.pop();
+        parts.forEach(function(part){
+            dirPromise=dirPromise.then(function(dir){return dir.getDirectoryHandle(part);});
+        });
+        return dirPromise.then(function(dir){return dir.getFileHandle(fileName);})
+            .then(function(handle){return handle.getFile();})
+            .then(function(fileObj){return fileObj.text();});
+    }
+
+    function readLiveFileSource(path){
+        var kind=liveSourceKindForRead();
+        if(!path||!kind)return Promise.resolve('');
+        if(kind==='cli'){
+            return fetch('/__codeflow/file?path='+encodeURIComponent(path))
+                .then(function(res){return res.ok?res.text():'';})
+                .catch(function(){return '';});
+        }
+        if(kind==='folder'){
+            return readFolderFileByPath(localDirHandle,path).catch(function(){return '';});
+        }
+        if(kind==='zip'){
+            var archive=zipArchiveRef.current;
+            var entry=archive&&archive.entriesByPath?archive.entriesByPath[path]:null;
+            if(!entry||typeof entry.async!=='function')return Promise.resolve('');
+            return entry.async('string').catch(function(){return '';});
+        }
+        return GitHub.getFile(repoInfo.owner,repoInfo.repo,path).then(function(content){return content||'';}).catch(function(){return '';});
+    }
+
+    function rememberHydratedSources(updates){
+        if(!updates||!updates.length)return;
+        setData(function(prev){return mergeHydratedFileSources(prev,updates);});
+    }
+
     // Open file preview
     function openFilePreview(path,line){
         if(!repoInfo)return;
         var filename=path.split('/').pop();
         setFilePreview({path:path,filename:filename,content:null,line:line||null,loading:true,error:null});
-        var currentSource=currentAnalysisSource();
-        var folderLive=localSourceKind==='folder'&&localDirHandle&&(!currentSource||currentSource.sourceType!=='folder'||retainedFolderMatchesRecord(currentSource,{sourceKey:localFolderKeyRef.current}));
-        var zipLive=localSourceKind==='zip'&&zipFileRef.current&&(!currentSource||currentSource.sourceType!=='zip'||retainedZipMatchesRecord(currentSource,{sourceKey:zipKeyRef.current,identity:zipFileIdentity(zipFileRef.current)}));
-        if(data){
-            var existingFile=data.files.find(function(f){return f.path===path;});
-            if(existingFile&&(existingFile.content||existingFile.analysisSkipped||!(folderLive||zipLive))){
-                setFilePreview({path:path,filename:filename,content:existingFile.content||'',line:line||null,loading:false,error:null});
+        var existingFile=data&&data.files?data.files.find(function(f){return f.path===path;}):null;
+        if(existingFile&&existingFile.analysisSkipped){
+            setFilePreview({path:path,filename:filename,content:'',line:line||null,loading:false,error:existingFile.analysisSkipped==='oversized'?'Skipped during analysis (file too large)':'File was not fetched during analysis'});
+            return;
+        }
+        if(existingFile&&fileHasPersistedSource(existingFile)){
+            setFilePreview({path:path,filename:filename,content:existingFile.content,line:line||null,loading:false,error:null});
+            return;
+        }
+        readLiveFileSource(path).then(function(content){
+            if(content){
+                setFilePreview({path:path,filename:filename,content:content,line:line||null,loading:false,error:null});
+                rememberHydratedSources([{path:path,content:content}]);
                 return;
             }
-        }
-        // Fetch from GitHub, local directory, or ZIP archive
-        if(folderLive){
-            // Read from a local directory using async traversal
-            (async function(){
-                try{
-                    var parts=path.split('/');
-                    var currentHandle=localDirHandle;
-                    for(var i=0;i<parts.length-1;i++){
-                        currentHandle=await currentHandle.getDirectoryHandle(parts[i]);
-                    }
-                    var fileHandle=await currentHandle.getFileHandle(parts[parts.length-1]);
-                    var fileObj=await fileHandle.getFile();
-                    var content=await fileObj.text();
-                    setFilePreview({path:path,filename:filename,content:content,line:line||null,loading:false,error:null});
-                }catch(e){
-                    setFilePreview({path:path,filename:filename,content:null,line:line||null,loading:false,error:e.message||'Failed to load file'});
-                }
-            })();
-        }else if(zipLive){
-            (async function(){
-                try{
-                    var archive=zipArchiveRef.current;
-                    var entry=archive&&archive.entriesByPath?archive.entriesByPath[path]:null;
-                    if(!entry)throw new Error('File is not available in the loaded ZIP archive');
-                    var content=await entry.async('string');
-                    setFilePreview({path:path,filename:filename,content:content,line:line||null,loading:false,error:null});
-                }catch(e){
-                    setFilePreview({path:path,filename:filename,content:null,line:line||null,loading:false,error:e.message||'Failed to load ZIP file'});
-                }
-            })();
-        }else{
-            // Fetch from GitHub
-            GitHub.getFile(repoInfo.owner,repoInfo.repo,path).then(function(content){
-                if(content){
-                    setFilePreview({path:path,filename:filename,content:content,line:line||null,loading:false,error:null});
-                }else{
-                    setFilePreview({path:path,filename:filename,content:null,line:line||null,loading:false,error:'Could not load file content'});
-                }
-            }).catch(function(e){
-                setFilePreview({path:path,filename:filename,content:null,line:line||null,loading:false,error:e.message||'Failed to load file'});
-            });
-        }
+            setFilePreview({path:path,filename:filename,content:null,line:line||null,loading:false,error:canReadLiveFileSource()?'Could not load file content':'Reopen this project to preview source'});
+        });
     }
 
     // Scroll to highlighted line after file preview loads
@@ -7801,6 +7915,21 @@ function App(){
     var codeViewSymbols=useMemo(function(){
         return collectCrossFileSymbols(codeViewFiles,data?data.connections:[]);
     },[codeViewFiles,data]);
+
+    useEffect(function(){
+        var missing=filesNeedingSource(codeViewFiles);
+        if(!missing.length||!canReadLiveFileSource())return;
+        var cancelled=false;
+        Promise.all(missing.map(function(file){
+            return readLiveFileSource(file.path).then(function(content){
+                return {path:file.path,content:content};
+            });
+        })).then(function(updates){
+            if(cancelled)return;
+            rememberHydratedSources(updates.filter(function(update){return update&&typeof update.content==='string'&&update.content.length;}));
+        });
+        return function(){cancelled=true;};
+    },[codeViewFiles,localSourceKind,cliStatus,repoInfo,localDirHandle]);
 
     useEffect(function(){
         if(!data||!svgRef.current)return;
@@ -9401,7 +9530,24 @@ function App(){
     }
     function renderCodeFileCard(file,isPrimary){
         if(!file)return null;
-        var lines=asCodeLines(highlightSyntax(file.content||'',file.name));
+        var sourceState=fileSourceDisplayState(file,canReadLiveFileSource());
+        var body;
+        if(sourceState==='ready'){
+            var lines=asCodeLines(highlightSyntax(file.content||'',file.name));
+            body=React.createElement('pre',{className:'file-preview-code'},
+                lines.map(function(lineHtml,i){
+                    return React.createElement('div',{key:i,className:'file-preview-line'},
+                        React.createElement('span',{className:'file-preview-linenum'},i+1),
+                        React.createElement('span',{className:'file-preview-text',dangerouslySetInnerHTML:{__html:annotateHtmlWithSymbols(lineHtml||' ',codeViewSymbols,activeSymbol)}})
+                    );
+                })
+            );
+        }else{
+            var message=sourceState==='skipped'
+                ?(file.analysisSkipped==='oversized'?'Skipped during analysis (file too large)':'File was not fetched during analysis')
+                :(sourceState==='loading'?'Loading source...':'Reopen this project to read source');
+            body=React.createElement('div',{className:'empty-desc',style:{padding:'12px'}},message);
+        }
         return React.createElement('div',{key:file.path,className:'code-card'+(isPrimary?' primary':' linked'),onClick:function(){if(selected&&selected.path!==file.path)selectFile(file.path);}},
             React.createElement('div',{className:'code-card-head',onClick:function(e){e.stopPropagation();selectFile(file.path);}},
                 React.createElement('div',null,
@@ -9417,16 +9563,7 @@ function App(){
                     var name=mark.getAttribute('data-sym');
                     setActiveSymbol(function(prev){return prev===name?null:name;});
                 }
-            }},
-                React.createElement('pre',{className:'file-preview-code'},
-                    lines.map(function(lineHtml,i){
-                        return React.createElement('div',{key:i,className:'file-preview-line'},
-                            React.createElement('span',{className:'file-preview-linenum'},i+1),
-                            React.createElement('span',{className:'file-preview-text',dangerouslySetInnerHTML:{__html:annotateHtmlWithSymbols(lineHtml||' ',codeViewSymbols,activeSymbol)}})
-                        );
-                    })
-                )
-            )
+            }},body)
         );
     }
     function renderCodeView(){
@@ -9436,16 +9573,27 @@ function App(){
             React.createElement('div',{className:'code-split-graph',style:{flexBasis:(100-codePanePercent)+'%'}},
                 React.createElement('svg',{ref:svgRef})
             ),
-            React.createElement('div',{className:'code-split-resize',onMouseDown:function(e){
+            React.createElement('div',{className:'code-split-resize',onPointerDown:function(e){
+                if(e.pointerType==='mouse'&&e.button!==0)return;
                 e.preventDefault();
-                var startX=e.clientX,start=codePanePercent,wrap=e.currentTarget.parentNode;
+                var handle=e.currentTarget;
+                var wrap=handle.parentNode;
+                var stacked=codeSplitIsStacked(wrap);
+                handle.classList.add('active');
+                try{if(handle.setPointerCapture)handle.setPointerCapture(e.pointerId);}catch(err){}
                 function onMove(ev){
-                    var rect=wrap.getBoundingClientRect();
-                    var next=Math.max(28,Math.min(72,((rect.right-ev.clientX)/rect.width)*100));
-                    setCodePanePercent(next);
+                    if(!wrap)return;
+                    setCodePanePercent(codeSplitPanePercent(wrap.getBoundingClientRect(),ev,stacked));
                 }
-                function onUp(){document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);}
-                document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
+                function onUp(){
+                    handle.classList.remove('active');
+                    window.removeEventListener('pointermove',onMove);
+                    window.removeEventListener('pointerup',onUp);
+                    window.removeEventListener('pointercancel',onUp);
+                }
+                window.addEventListener('pointermove',onMove);
+                window.addEventListener('pointerup',onUp);
+                window.addEventListener('pointercancel',onUp);
             }}),
             React.createElement('div',{className:'code-split-pane',style:{flexBasis:codePanePercent+'%'}},
                 React.createElement('div',{className:'code-split-head'},
