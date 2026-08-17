@@ -826,6 +826,20 @@ function getArchiveRootPrefix(paths){
     return hasSingleRoot?firstSegment+'/':'';
 }
 
+function filterAnalyzableLocalFiles(files,compiledPatterns){
+    var patterns=compiledPatterns||[];
+    var dirCache=new Map();
+    return (files||[]).filter(function(f){
+        var entryPath=normalizeExcludePath(f&&f.path);
+        if(!entryPath||entryPath.endsWith('/'))return false;
+        var name=(f&&f.name)||entryPath.split('/').filter(Boolean).pop()||'';
+        if(!name||name==='.DS_Store')return false;
+        if(shouldSkipArchivePath(entryPath,patterns,dirCache))return false;
+        if(shouldExcludeFile(entryPath,name,patterns))return false;
+        return true;
+    });
+}
+
 function shouldSkipArchivePath(path,compiledPatterns,dirCache){
     var segments=normalizeExcludePath(path).split('/').filter(Boolean);
     var current='';
@@ -5676,6 +5690,11 @@ function cachedAnalysisMatchesExcludes(record,patterns){
     return normalizeExcludeKey(record.data&&record.data.excludePatterns)===wanted;
 }
 
+function asCodeLines(lines){
+    if(Array.isArray(lines))return lines.length?lines:[''];
+    return[String(lines||'')];
+}
+
 function readableLabelScale(k){
     var zoom=Number(k);
     if(!isFinite(zoom)||zoom<=0)return 1;
@@ -6654,8 +6673,24 @@ function App(){
         setActiveSymbol(null);
         if(record.repoInfo)setRepoInfo(record.repoInfo);
         if(record.repoUrl)setRepoUrl(record.repoUrl);
-        if(record.sourceType==='github'){
-            setLocalSourceKind(null);
+        var folderMatches=record.sourceType==='folder'&&retainedFolderMatchesRecord(record,{sourceKey:localFolderKeyRef.current});
+        var zipMatches=record.sourceType==='zip'&&retainedZipMatchesRecord(record,{
+            sourceKey:zipKeyRef.current,
+            identity:zipFileIdentity(zipFileRef.current)
+        });
+        if(!folderMatches){
+            setLocalDirHandle(null);
+            localFolderKeyRef.current=null;
+            localFolderSelectionRef.current=null;
+            localFilesRef.current=null;
+        }
+        if(!zipMatches){
+            zipArchiveRef.current=null;
+            zipFileRef.current=null;
+            zipKeyRef.current=null;
+        }
+        if(record.sourceType==='github'||record.sourceType==='cli'){
+            setLocalSourceKind(record.sourceType==='cli'?'cli':null);
             setLocalDirHandle(null);
         }else{
             setLocalSourceKind(record.localSourceKind||record.sourceType);
@@ -6760,8 +6795,8 @@ function App(){
             var listRes=await fetch('/__codeflow/files');
             if(!listRes.ok)throw new Error('CLI file list failed');
             var list=await listRes.json();
-            var files=list&&list.files?list.files:[];
-            if(!files.length)throw new Error('No code files found in the watched folder');
+            var files=filterAnalyzableLocalFiles(list&&list.files?list.files:[],activeExcludePatterns);
+            if(!files.length)throw new Error(activeExcludePatterns.length?'No code files found in the watched folder after applying exclude patterns':'No code files found in the watched folder');
             var analyzed=[];
             var allFns=[];
             for(var i=0;i<files.length;i++){
@@ -7632,7 +7667,7 @@ function App(){
 
     // Syntax highlighting function
     function highlightSyntax(code,filename){
-        if(!code)return'';
+        if(!code)return[''];
         var ext=(filename||'').split('.').pop().toLowerCase();
         var isJS=['js','jsx','ts','tsx','mjs','cjs'].includes(ext);
         var isPy=['py','pyw','pyi'].indexOf(ext)>=0;
@@ -7682,16 +7717,18 @@ function App(){
         if(!repoInfo)return;
         var filename=path.split('/').pop();
         setFilePreview({path:path,filename:filename,content:null,line:line||null,loading:true,error:null});
-        // Check if we already have the content in data
+        var currentSource=currentAnalysisSource();
+        var folderLive=localSourceKind==='folder'&&localDirHandle&&(!currentSource||currentSource.sourceType!=='folder'||retainedFolderMatchesRecord(currentSource,{sourceKey:localFolderKeyRef.current}));
+        var zipLive=localSourceKind==='zip'&&zipFileRef.current&&(!currentSource||currentSource.sourceType!=='zip'||retainedZipMatchesRecord(currentSource,{sourceKey:zipKeyRef.current,identity:zipFileIdentity(zipFileRef.current)}));
         if(data){
             var existingFile=data.files.find(function(f){return f.path===path;});
-            if(existingFile&&existingFile.content){
-                setFilePreview({path:path,filename:filename,content:existingFile.content,line:line||null,loading:false,error:null});
+            if(existingFile&&(existingFile.content||existingFile.analysisSkipped||!(folderLive||zipLive))){
+                setFilePreview({path:path,filename:filename,content:existingFile.content||'',line:line||null,loading:false,error:null});
                 return;
             }
         }
         // Fetch from GitHub, local directory, or ZIP archive
-        if(localSourceKind==='folder'&&localDirHandle){
+        if(folderLive){
             // Read from a local directory using async traversal
             (async function(){
                 try{
@@ -7708,7 +7745,7 @@ function App(){
                     setFilePreview({path:path,filename:filename,content:null,line:line||null,loading:false,error:e.message||'Failed to load file'});
                 }
             })();
-        }else if(localSourceKind==='zip'){
+        }else if(zipLive){
             (async function(){
                 try{
                     var archive=zipArchiveRef.current;
@@ -9364,7 +9401,7 @@ function App(){
     }
     function renderCodeFileCard(file,isPrimary){
         if(!file)return null;
-        var lines=highlightSyntax(file.content||'',file.name);
+        var lines=asCodeLines(highlightSyntax(file.content||'',file.name));
         return React.createElement('div',{key:file.path,className:'code-card'+(isPrimary?' primary':' linked'),onClick:function(){if(selected&&selected.path!==file.path)selectFile(file.path);}},
             React.createElement('div',{className:'code-card-head',onClick:function(e){e.stopPropagation();selectFile(file.path);}},
                 React.createElement('div',null,
@@ -10627,7 +10664,7 @@ function App(){
                         React.createElement(Icon,{name:'warning',size:'xxl',className:'file-preview-error-icon'}),
                         React.createElement('div',null,filePreview.error)
                     ):filePreview.content?React.createElement('pre',{className:'file-preview-code'},
-                        highlightSyntax(filePreview.content,filePreview.filename).map(function(lineHtml,i){
+                        asCodeLines(highlightSyntax(filePreview.content,filePreview.filename)).map(function(lineHtml,i){
                             var lineNum=i+1;
                             var isHighlighted=filePreview.line&&lineNum===filePreview.line;
                             return React.createElement('div',{key:i,className:'file-preview-line'+(isHighlighted?' highlighted':'')},

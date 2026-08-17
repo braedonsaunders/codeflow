@@ -170,6 +170,13 @@ test('retained folder handle only matches its own recent record', () => {
   assert.equal(context.retainedFolderMatchesRecord(null, { sourceKey: recordA.sourceKey }), true);
 });
 
+test('empty code cards always render from an array of lines', () => {
+  assert.deepEqual(J(context.asCodeLines('')), ['']);
+  assert.deepEqual(J(context.asCodeLines(null)), ['']);
+  assert.deepEqual(J(context.asCodeLines([])), ['']);
+  assert.deepEqual(J(context.asCodeLines(['const x = 1;'])), ['const x = 1;']);
+});
+
 test('HTML attribute sanitizer encodes quotes before they reach data-sym', () => {
   assert.equal(context.escapeHtmlAttr('say "hi"'), 'say &quot;hi&quot;');
   assert.match(context.escapeHtmlAttr('a"onclick="alert(1)'), /&quot;/);
@@ -192,6 +199,8 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /retainedZipMatchesRecord/);
   assert.match(htmlSource, /cliRecordMatchesStatus/);
   assert.match(htmlSource, /githubCacheSourceKey/);
+  assert.match(htmlSource, /filterAnalyzableLocalFiles\(/);
+  assert.match(htmlSource, /asCodeLines\(highlightSyntax/);
   assert.match(htmlSource, /zipArchiveCacheMeta/);
   assert.match(htmlSource, /The folder picker is faster when the API is rate-limited/);
 });
