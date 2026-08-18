@@ -49,6 +49,13 @@ function topBlasts(data, calcBlast, n) {
   return ranked.slice(0, n);
 }
 
+function countAggregateIssueItems(issues, titleNeedle) {
+  const issue = issues.find(
+    (entry) => entry && typeof entry.title === 'string' && entry.title.includes(titleNeedle)
+  );
+  return issue && Array.isArray(issue.items) ? issue.items.length : 0;
+}
+
 function snapshotFromAnalysis(data, helpers, ctx) {
   const stats = (data && data.stats) || {};
   const calcBlast = helpers.calcBlast;
@@ -67,10 +74,11 @@ function snapshotFromAnalysis(data, helpers, ctx) {
 
   const fragility = topBlasts(data, calcBlast, 3);
 
-  // Issues breakdown
+  // Issues breakdown. The analyzer emits one aggregate issue per kind;
+  // the real count is items.length, not how many matching issue objects exist.
   const issues = Array.isArray(data && data.issues) ? data.issues : [];
-  const circular = issues.filter((i) => i && i.title && i.title.includes('Circular')).length;
-  const godObjects = issues.filter((i) => i && i.title && i.title.includes('Large')).length;
+  const circular = countAggregateIssueItems(issues, 'Circular');
+  const godObjects = countAggregateIssueItems(issues, 'Large');
   const avgCoupling = stats.files > 0 ? stats.connections / stats.files : 0;
 
   // Top folders by file count
