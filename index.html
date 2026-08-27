@@ -5627,6 +5627,75 @@ var ANALYSIS_CACHE_STORE='analyses';
 var ANALYSIS_CACHE_VERSION=2;
 var ANALYSIS_CACHE_MAX=12;
 var ANALYSIS_CACHE_MAX_BYTES=18*1024*1024;
+var UI_PREFS_STORAGE_KEY='codeflow-ui-prefs';
+var LINE_THICKNESS_MIN=1;
+var LINE_THICKNESS_MAX=6;
+var LINE_THICKNESS_DEFAULT=1;
+
+function clampLineThickness(value){
+    var n=Number(value);
+    if(!isFinite(n))return LINE_THICKNESS_DEFAULT;
+    n=Math.round(n);
+    if(n<LINE_THICKNESS_MIN)return LINE_THICKNESS_MIN;
+    if(n>LINE_THICKNESS_MAX)return LINE_THICKNESS_MAX;
+    return n;
+}
+
+function defaultUiPrefs(){
+    return{lineThickness:LINE_THICKNESS_DEFAULT};
+}
+
+function normalizeUiPrefs(prefs){
+    prefs=prefs&&typeof prefs==='object'?prefs:{};
+    var next=defaultUiPrefs();
+    if(prefs.lineThickness!=null)next.lineThickness=clampLineThickness(prefs.lineThickness);
+    return next;
+}
+
+function readUiPrefs(storage){
+    try{
+        if(!storage||typeof storage.getItem!=='function')return defaultUiPrefs();
+        var raw=storage.getItem(UI_PREFS_STORAGE_KEY);
+        if(!raw)return defaultUiPrefs();
+        return normalizeUiPrefs(JSON.parse(raw));
+    }catch(e){
+        return defaultUiPrefs();
+    }
+}
+
+function writeUiPrefs(storage,prefs){
+    var next=normalizeUiPrefs(Object.assign({},readUiPrefs(storage),prefs||{}));
+    try{
+        if(storage&&typeof storage.setItem==='function')storage.setItem(UI_PREFS_STORAGE_KEY,JSON.stringify(next));
+    }catch(e){}
+    return next;
+}
+
+function graphLinkBaseWidth(count){
+    return Math.max(1,Math.min(2,Math.sqrt(count||1)*0.3));
+}
+
+function graphLinkStrokeWidth(count,thickness){
+    return graphLinkBaseWidth(count)*clampLineThickness(thickness);
+}
+
+function scaleStrokeWidth(base,thickness){
+    var n=Number(base);
+    if(!isFinite(n)||n<=0)n=1;
+    return Math.max(0.4,n*clampLineThickness(thickness));
+}
+
+function graph3dLinkWidth(link,selectedPath,thickness){
+    link=link||{};
+    var baseWidth=Math.max(0.8,Math.min(3,Math.sqrt(link.count||1)*0.4));
+    if(selectedPath){
+        var s=link.source&&(link.source.id||link.source);
+        var t=link.target&&(link.target.id||link.target);
+        if(s===selectedPath||t===selectedPath)return scaleStrokeWidth(baseWidth*2,thickness);
+        return scaleStrokeWidth(baseWidth*0.3,thickness);
+    }
+    return scaleStrokeWidth(baseWidth,thickness);
+}
 
 function escapeRegExp(value){
     return String(value||'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
@@ -7608,6 +7677,9 @@ function App(){
     var _pillScroll=useState(0),codePillScroll=_pillScroll[0],setCodePillScroll=_pillScroll[1];
     var _codeExpand=useState(false),codeViewExpand=_codeExpand[0],setCodeViewExpand=_codeExpand[1];
     var _codeWrap=useState(true),codeViewWrap=_codeWrap[0],setCodeViewWrap=_codeWrap[1];
+    var _lineThick=useState(readUiPrefs(window.localStorage).lineThickness),lineThickness=_lineThick[0],setLineThickness=_lineThick[1];
+    var lineThicknessRef=useRef(lineThickness);
+    lineThicknessRef.current=lineThickness;
     var pendingRecentDeleteTimerRef=useRef(null);
     var zipInputRef=useRef(null);
     var zipArchiveRef=useRef(null);
@@ -9193,6 +9265,20 @@ function App(){
         if(nodesRef.current)nodesRef.current.attr('transform',function(d){return'translate('+d.x+','+d.y+')';});
         if(linksRef.current)linksRef.current.attr('d',graphLinkPath);
     }
+    function persistLineThickness(value){
+        var next=writeUiPrefs(window.localStorage,{lineThickness:value}).lineThickness;
+        setLineThickness(next);
+    }
+    function applyLinkThickness(){
+        var thickness=lineThicknessRef.current;
+        if(linksRef.current){
+            linksRef.current.attr('stroke-width',function(d){return graphLinkStrokeWidth(d.count,thickness);});
+        }
+        var g3=graph3dInstanceRef.current;
+        if(g3&&typeof g3.linkWidth==='function'){
+            g3.linkWidth(function(link){return graph3dLinkWidth(link,selectedPathRef.current,thickness);});
+        }
+    }
     function flyToOpenedCodeCard(place){
         if(!svgRef.current||!zoomRef.current||!place||!isFinite(place.x)||!isFinite(place.y))return;
         var w=svgRef.current.clientWidth||800;
@@ -9465,7 +9551,7 @@ function App(){
         var velDecay=isLargeGraph?0.7:0.6;
         sim.velocityDecay(velDecay).alphaDecay(alphaDecay);
         simRef.current=sim;
-        var link=linkLayer.selectAll('path').data(links).join('path').attr('fill','none').attr('stroke',theme==='light'?'#ccc':'#333').attr('stroke-width',function(d){return Math.max(1,Math.min(2,Math.sqrt(d.count)*0.3));}).attr('stroke-opacity',0.4).attr('marker-end','url(#arr)');
+        var link=linkLayer.selectAll('path').data(links).join('path').attr('fill','none').attr('stroke',theme==='light'?'#ccc':'#333').attr('stroke-width',function(d){return graphLinkStrokeWidth(d.count,lineThicknessRef.current);}).attr('stroke-opacity',0.4).attr('marker-end','url(#arr)');
         linksRef.current=link;
         var node=nodeLayer.selectAll('g').data(nodes).join('g').style('cursor','pointer');
         nodesRef.current=node;
@@ -9602,6 +9688,10 @@ function App(){
         syncCodeCards();
         if(updateHullsRef.current)updateHullsRef.current();
     },[codeViewFiles,graphConfig.vizType,graphConfig.linkDist,codeViewExpand,codeViewWrap]);
+
+    useEffect(function(){
+        applyLinkThickness();
+    },[lineThickness,selected&&selected.path]);
 
     // 3D Force Graph Hook
     useEffect(function(){
@@ -9743,14 +9833,7 @@ function App(){
                 return theme==='light'?'rgba(200,200,200,0.4)':'rgba(60,60,70,0.4)';
             })
             .linkWidth(function(link){
-                var s=link.source.id||link.source;
-                var t=link.target.id||link.target;
-                var baseWidth=Math.max(0.8,Math.min(3,Math.sqrt(link.count)*0.4));
-                if(selected){
-                    if(s===selected.path||t===selected.path)return baseWidth*2.0;
-                    return baseWidth*0.3;
-                }
-                return baseWidth;
+                return graph3dLinkWidth(link,selected&&selected.path,lineThicknessRef.current);
             })
             .linkDirectionalArrowLength(function(link){
                 if(selected){
@@ -10126,7 +10209,7 @@ function App(){
         var tooltip=container.append('div').attr('class','treemap-tooltip').style('display','none').style('position','absolute');
         g.selectAll('path.dendro-link').data(root.links()).join('path').attr('class','dendro-link')
             .attr('d',function(d){return'M'+d.source.y+','+d.source.x+'C'+(d.source.y+d.target.y)/2+','+d.source.x+' '+(d.source.y+d.target.y)/2+','+d.target.x+' '+d.target.y+','+d.target.x;})
-            .attr('fill','none').attr('stroke','var(--border)').attr('stroke-width',1.5).attr('stroke-opacity',0.6);
+            .attr('fill','none').attr('stroke','var(--border)').attr('stroke-width',scaleStrokeWidth(1.5,lineThickness)).attr('stroke-opacity',0.6);
         var node=g.selectAll('g.dendro-node').data(root.descendants()).join('g').attr('class','dendro-node')
             .attr('transform',function(d){return'translate('+d.y+','+d.x+')';}).style('cursor','pointer');
         node.append('circle').attr('r',function(d){return d.children?6:8;})
@@ -10154,7 +10237,7 @@ function App(){
             if(d.data.path&&selectFileRef.current)selectFileRef.current(d.data.path);
             else if(d.data.fullPath)filterByFolder(d.data.fullPath);
         });
-    },[data,graphConfig.vizType,colorMap,folderFilter]);
+    },[data,graphConfig.vizType,colorMap,folderFilter,lineThickness]);
 
     // Sankey Diagram - Flow visualization showing dependencies between folders
     useEffect(function(){
@@ -10217,7 +10300,7 @@ function App(){
         g.selectAll('path.sankey-link').data(graph.links).join('path').attr('class','sankey-link')
             .attr('d',d3.sankeyLinkHorizontal()).attr('fill','none')
             .attr('stroke',function(d){return colorMap[d.source.fullPath]||COLORS[d.source.id%COLORS.length];})
-            .attr('stroke-width',function(d){return Math.max(2,d.width);}).attr('stroke-opacity',0.4)
+            .attr('stroke-width',function(d){return scaleStrokeWidth(Math.max(2,d.width),lineThickness);}).attr('stroke-opacity',0.4)
             .on('mouseenter',function(e,d){
                 d3.select(this).attr('stroke-opacity',0.8);
                 tooltip.html(renderTooltipHtml(d.source.name+' → '+d.target.name,[
@@ -10240,7 +10323,7 @@ function App(){
             g.selectAll('path.sankey-link').attr('stroke-opacity',function(l){return l.source.id===d.id||l.target.id===d.id?0.8:0.1;});
         }).on('mouseleave',function(){tooltip.style('display','none');g.selectAll('path.sankey-link').attr('stroke-opacity',0.4);})
         .on('click',function(e,d){e.stopPropagation();filterByFolder(d.fullPath);});
-    },[data,graphConfig.vizType,colorMap,folderFilter]);
+    },[data,graphConfig.vizType,colorMap,folderFilter,lineThickness]);
 
     // Disjoint Force-Directed - Separate clusters per folder
     useEffect(function(){
@@ -10282,7 +10365,7 @@ function App(){
             .attr('x',function(d,i){return(i%cols)*cellW+20;}).attr('y',function(d,i){return Math.floor(i/cols)*cellH+28;})
             .attr('fill','var(--t2)').attr('font-size','11px').attr('font-weight','600').text(function(d){return d.split('/').pop()||'root';});
         var link=g.selectAll('line.disjoint-link').data(links).join('line').attr('class','disjoint-link')
-            .attr('stroke','var(--border)').attr('stroke-width',1).attr('stroke-opacity',0.3);
+            .attr('stroke','var(--border)').attr('stroke-width',scaleStrokeWidth(1,lineThickness)).attr('stroke-opacity',0.3);
         var tooltip=container.append('div').attr('class','treemap-tooltip').style('display','none').style('position','absolute');
         var node=g.selectAll('g.disjoint-node').data(nodes).join('g').attr('class','disjoint-node').style('cursor','pointer')
             .call(d3.drag().on('start',function(e,d){if(!e.active)sim.alphaTarget(0.3).restart();d.fx=d.x;d.fy=d.y;})
@@ -10310,7 +10393,7 @@ function App(){
         });
         svg.on('click',function(){setSelected(null);setBlastRadius(null);});
         return function(){sim.stop();};
-    },[data,graphConfig.vizType,colorMap,folderFilter]);
+    },[data,graphConfig.vizType,colorMap,folderFilter,lineThickness]);
 
     // Circular Bundle visualization - Interactive with zoom, selection, blast radius
     useEffect(function(){
@@ -10371,7 +10454,7 @@ function App(){
                 return'M'+x1+','+y1+'Q'+cx+','+cy+' '+x2+','+y2;
             })
             .attr('fill','none').attr('stroke',getBundleLinkColor)
-            .attr('stroke-width',1.8).attr('stroke-opacity',0.35);
+            .attr('stroke-width',scaleStrokeWidth(1.8,lineThickness)).attr('stroke-opacity',0.35);
         var tooltip=container.append('div').attr('class','treemap-tooltip').style('display','none').style('position','absolute');
         var node=mainG.selectAll('g.bundle-node').data(nodes).join('g').attr('class','bundle-node').style('cursor','pointer')
             .attr('transform',function(d){return'rotate('+(d.angle*180/Math.PI-90)+') translate('+radius+',0)'+(d.angle>Math.PI?' rotate(180)':'');});
@@ -10382,7 +10465,7 @@ function App(){
         function applyBundleDefaultState(){
             link.transition().duration(200)
                 .attr('stroke-opacity',0.35)
-                .attr('stroke-width',1.8)
+                .attr('stroke-width',scaleStrokeWidth(1.8,lineThickness))
                 .attr('stroke',getBundleLinkColor);
             node.selectAll('.bundle-circle').transition().duration(200)
                 .attr('fill',function(d){return colorMap[d.folder]||COLORS[0];})
@@ -10395,7 +10478,7 @@ function App(){
             var directConnections=getBundleDirectConnections(nodeId);
             link.transition().duration(200)
                 .attr('stroke-opacity',function(linkDatum){return isBundleLinkMatch(nodeId,linkDatum)?0.88:0.04;})
-                .attr('stroke-width',function(linkDatum){return isBundleLinkMatch(nodeId,linkDatum)?3.1:1;})
+                .attr('stroke-width',function(linkDatum){return scaleStrokeWidth(isBundleLinkMatch(nodeId,linkDatum)?3.1:1,lineThickness);})
                 .attr('stroke',function(linkDatum){return isBundleLinkMatch(nodeId,linkDatum)?'var(--acc)':getBundleLinkColor(linkDatum);});
             node.selectAll('.bundle-circle').transition().duration(200)
                 .attr('opacity',function(nodeDatum){return directConnections.has(nodeDatum.id)?1:0.22;})
@@ -10408,7 +10491,7 @@ function App(){
             var affectedSet=new Set(blast&&blast.affected?blast.affected:[]);
             link.transition().duration(300)
                 .attr('stroke-opacity',function(linkDatum){return isBundleLinkMatch(nodeId,linkDatum)?0.96:0.08;})
-                .attr('stroke-width',function(linkDatum){return isBundleLinkMatch(nodeId,linkDatum)?3.6:1.15;})
+                .attr('stroke-width',function(linkDatum){return scaleStrokeWidth(isBundleLinkMatch(nodeId,linkDatum)?3.6:1.15,lineThickness);})
                 .attr('stroke',function(linkDatum){return isBundleLinkMatch(nodeId,linkDatum)?'#ff9f43':getBundleLinkColor(linkDatum);});
             node.selectAll('.bundle-circle').transition().duration(300)
                 .attr('fill',function(nodeDatum){return nodeDatum.id===nodeId?'#ff5f5f':affectedSet.has(nodeDatum.id)?'#ff9f43':colorMap[nodeDatum.folder]||COLORS[0];})
@@ -10466,7 +10549,7 @@ function App(){
         }else{
             applyBundleDefaultState();
         }
-    },[data,graphConfig.vizType,colorMap,folderFilter,selected,blastRadius]);
+    },[data,graphConfig.vizType,colorMap,folderFilter,selected,blastRadius,lineThickness]);
 
     function zoomIn(){
         if(graphConfig.vizType==='graph3d'&&graph3dInstanceRef.current){
@@ -11672,6 +11755,11 @@ function App(){
                             React.createElement('span',{className:'config-label'},'Links'),
                             React.createElement('input',{type:'range',className:'config-slider',min:'30',max:'200',value:graphConfig.linkDist,onChange:function(e){setGraphConfig(Object.assign({},graphConfig,{linkDist:parseInt(e.target.value)}));}}),
                             React.createElement('span',{className:'config-value'},graphConfig.linkDist)
+                        ),
+                        React.createElement('div',{className:'config-row'},
+                            React.createElement('span',{className:'config-label'},'Thickness'),
+                            React.createElement('input',{type:'range',className:'config-slider',min:String(LINE_THICKNESS_MIN),max:String(LINE_THICKNESS_MAX),step:'1',value:lineThickness,'aria-label':'Line thickness',onChange:function(e){persistLineThickness(e.target.value);}}),
+                            React.createElement('span',{className:'config-value'},lineThickness)
                         ),
                         React.createElement('div',{className:'graph-config-title',style:{marginTop:8}},'Display'),
                         React.createElement('label',{className:'config-check'},

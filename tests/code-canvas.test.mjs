@@ -1273,4 +1273,62 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /\.code-card\.expand:not\(\.wrap\) \.code-card-body\{overflow-x:auto/);
   assert.doesNotMatch(htmlSource, /sidebar-title'\},'Color By'/);
   assert.doesNotMatch(htmlSource, /sidebar-title'\},'Explorer'/);
+  assert.match(htmlSource, /function persistLineThickness\(/);
+  assert.match(htmlSource, /function applyLinkThickness\(/);
+  assert.match(htmlSource, /'aria-label':'Line thickness'/);
+  assert.match(htmlSource, /config-label'\},'Thickness'/);
+  assert.match(htmlSource, /persistLineThickness\(e\.target\.value\)/);
+  assert.match(htmlSource, /graphLinkStrokeWidth\(d\.count,lineThicknessRef\.current\)/);
+  assert.match(htmlSource, /graph3dLinkWidth\(link,selected&&selected\.path,lineThicknessRef\.current\)/);
+  assert.match(htmlSource, /scaleStrokeWidth\(1\.5,lineThickness\)/);
+  assert.match(htmlSource, /scaleStrokeWidth\(Math\.max\(2,d\.width\),lineThickness\)/);
+  assert.match(htmlSource, /UI_PREFS_STORAGE_KEY/);
+});
+
+function memoryStorage(seed) {
+  const data = Object.assign({}, seed || {});
+  return {
+    getItem(key) {
+      return Object.prototype.hasOwnProperty.call(data, key) ? data[key] : null;
+    },
+    setItem(key, value) {
+      data[key] = String(value);
+    },
+    _data: data
+  };
+}
+
+test('line thickness defaults match current graph edges and stay in range', () => {
+  assert.equal(context.LINE_THICKNESS_DEFAULT, 1);
+  assert.equal(context.LINE_THICKNESS_MIN, 1);
+  assert.equal(context.LINE_THICKNESS_MAX, 6);
+  assert.equal(context.clampLineThickness(undefined), 1);
+  assert.equal(context.clampLineThickness('nope'), 1);
+  assert.equal(context.clampLineThickness(0), 1);
+  assert.equal(context.clampLineThickness(9), 6);
+  assert.equal(context.clampLineThickness(3.6), 4);
+  const thin = context.graphLinkStrokeWidth(1, 1);
+  const thick = context.graphLinkStrokeWidth(1, 4);
+  assert.equal(thin, Math.max(1, Math.min(2, Math.sqrt(1) * 0.3)));
+  assert.equal(thick, thin * 4);
+  assert.equal(context.scaleStrokeWidth(1.5, 1), 1.5);
+  assert.equal(context.scaleStrokeWidth(1.5, 2), 3);
+  const idle = context.graph3dLinkWidth({ count: 1, source: 'a.js', target: 'b.js' }, null, 1);
+  const selected = context.graph3dLinkWidth({ count: 1, source: 'a.js', target: 'b.js' }, 'a.js', 1);
+  assert.ok(selected > idle);
+});
+
+test('UI prefs persist line thickness in localStorage', () => {
+  const storage = memoryStorage();
+  assert.equal(context.readUiPrefs(storage).lineThickness, 1);
+  assert.equal(context.readUiPrefs(null).lineThickness, 1);
+  const written = context.writeUiPrefs(storage, { lineThickness: 5 });
+  assert.equal(written.lineThickness, 5);
+  assert.equal(context.readUiPrefs(storage).lineThickness, 5);
+  assert.equal(context.writeUiPrefs(storage, { lineThickness: 99 }).lineThickness, 6);
+  storage.setItem(context.UI_PREFS_STORAGE_KEY, '{not-json');
+  assert.equal(context.readUiPrefs(storage).lineThickness, 1);
+  const other = memoryStorage({ [context.UI_PREFS_STORAGE_KEY]: JSON.stringify({ lineThickness: 2, extra: true }) });
+  const merged = context.writeUiPrefs(other, { lineThickness: 3 });
+  assert.equal(merged.lineThickness, 3);
 });
