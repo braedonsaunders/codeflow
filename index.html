@@ -274,6 +274,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .fn-caller{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;font-size:10px;color:var(--t2);cursor:pointer}
 .fn-caller:hover{background:var(--hover);color:var(--acc)}
 .graph-config{position:absolute;top:12px;left:180px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;padding:12px;z-index:50;width:220px}
+.graph-config.thickness-only{left:56px}
 .graph-config-title{font-size:9px;font-weight:600;color:var(--t3);text-transform:uppercase;margin-bottom:10px}
 .config-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
 .config-label{font-size:10px;color:var(--t2);min-width:60px}
@@ -5982,6 +5983,14 @@ function codeFileNavOpensCard(vizType){
 
 function graphSvgExportEnabled(vizType){
     return vizType!=='code';
+}
+
+function vizUsesLineThickness(vizType){
+    return vizType==='graph'||vizType==='code'||vizType==='graph3d'||vizType==='dendro'||vizType==='sankey'||vizType==='disjoint'||vizType==='bundle';
+}
+
+function vizHasGraphToolbar(vizType){
+    return vizType==='graph'||vizType==='code'||vizType==='graph3d';
 }
 
 function collectVisibleCodeFiles(selectedPath,data,folderFilter,limit){
@@ -11746,16 +11755,16 @@ function App(){
                     graphConfig.vizType==='disjoint'&&React.createElement('div',{ref:disjointRef,className:'disjoint-container',style:{width:'100%',height:'100%',position:'relative'}}),
                     graphConfig.vizType==='bundle'&&React.createElement('div',{ref:bundleRef,className:'bundle-container'}),
                     graphConfig.vizType==='architecture'&&renderArchitectureView(),
-                    (graphConfig.vizType==='graph'||graphConfig.vizType==='graph3d'||graphConfig.vizType==='code')&&React.createElement('div',{className:'canvas-toolbar'},
-                        React.createElement('button',{className:'tool-btn',onClick:zoomIn,'aria-label':'Zoom in'},'+'),
-                        React.createElement('button',{className:'tool-btn',onClick:zoomOut,'aria-label':'Zoom out'},'−'),
-                        React.createElement('button',{className:'tool-btn',onClick:resetZoom,'aria-label':'Reset zoom'},'⟲'),
-                        React.createElement('button',{className:'tool-btn',onClick:fitView,'aria-label':'Fit view'},'⊡'),
+                    vizUsesLineThickness(graphConfig.vizType)&&React.createElement('div',{className:'canvas-toolbar'},
+                        vizHasGraphToolbar(graphConfig.vizType)&&React.createElement('button',{className:'tool-btn',onClick:zoomIn,'aria-label':'Zoom in'},'+'),
+                        vizHasGraphToolbar(graphConfig.vizType)&&React.createElement('button',{className:'tool-btn',onClick:zoomOut,'aria-label':'Zoom out'},'−'),
+                        vizHasGraphToolbar(graphConfig.vizType)&&React.createElement('button',{className:'tool-btn',onClick:resetZoom,'aria-label':'Reset zoom'},'⟲'),
+                        vizHasGraphToolbar(graphConfig.vizType)&&React.createElement('button',{className:'tool-btn',onClick:fitView,'aria-label':'Fit view'},'⊡'),
                         React.createElement('button',{className:'tool-btn'+(showGraphConfig?' active':''),onClick:function(){setShowGraphConfig(!showGraphConfig);},'aria-label':'Graph settings',style:showGraphConfig?{background:'var(--accbg)',borderColor:'var(--acc)'}:{}},
                             React.createElement(Icon,{name:'settings',size:'m'})
                         )
                     ),
-                    (graphConfig.vizType==='graph'||graphConfig.vizType==='graph3d'||graphConfig.vizType==='code')&&showGraphConfig&&React.createElement('div',{className:'graph-config'},
+                    vizUsesLineThickness(graphConfig.vizType)&&showGraphConfig&&React.createElement('div',{className:'graph-config'+(vizHasGraphToolbar(graphConfig.vizType)?'':' thickness-only')},
                         (graphConfig.vizType==='graph'||graphConfig.vizType==='code')&&React.createElement('div',{className:'graph-config-title'},'Layout'),
                         (graphConfig.vizType==='graph'||graphConfig.vizType==='code')&&React.createElement('div',{className:'view-toggle',style:{flexWrap:'wrap'}},
                             React.createElement('button',{className:'view-btn'+(graphConfig.viewMode==='force'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{viewMode:'force'}));}},'Force'),
@@ -11764,13 +11773,13 @@ function App(){
                             React.createElement('button',{className:'view-btn'+(graphConfig.viewMode==='grid'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{viewMode:'grid'}));}},'Grid'),
                             React.createElement('button',{className:'view-btn'+(graphConfig.viewMode==='metro'?' active':''),onClick:function(){setGraphConfig(Object.assign({},graphConfig,{viewMode:'metro'}));}},'Metro')
                         ),
-                        React.createElement('div',{className:'graph-config-title',style:{marginTop:(graphConfig.vizType==='graph'||graphConfig.vizType==='code')?8:0}},'Spacing'),
-                        React.createElement('div',{className:'config-row'},
+                        React.createElement('div',{className:'graph-config-title',style:{marginTop:(graphConfig.vizType==='graph'||graphConfig.vizType==='code')?8:0}},vizHasGraphToolbar(graphConfig.vizType)?'Spacing':'Lines'),
+                        vizHasGraphToolbar(graphConfig.vizType)&&React.createElement('div',{className:'config-row'},
                             React.createElement('span',{className:'config-label'},'Spread'),
                             React.createElement('input',{type:'range',className:'config-slider',min:'50',max:'500',value:graphConfig.spacing,onChange:function(e){setGraphConfig(Object.assign({},graphConfig,{spacing:parseInt(e.target.value)}));}}),
                             React.createElement('span',{className:'config-value'},graphConfig.spacing)
                         ),
-                        React.createElement('div',{className:'config-row'},
+                        vizHasGraphToolbar(graphConfig.vizType)&&React.createElement('div',{className:'config-row'},
                             React.createElement('span',{className:'config-label'},'Links'),
                             React.createElement('input',{type:'range',className:'config-slider',min:'30',max:'200',value:graphConfig.linkDist,onChange:function(e){setGraphConfig(Object.assign({},graphConfig,{linkDist:parseInt(e.target.value)}));}}),
                             React.createElement('span',{className:'config-value'},graphConfig.linkDist)
@@ -11780,12 +11789,12 @@ function App(){
                             React.createElement('input',{type:'range',className:'config-slider',min:String(LINE_THICKNESS_MIN),max:String(LINE_THICKNESS_MAX),step:'1',value:lineThickness,'aria-label':'Line thickness',onChange:function(e){persistLineThickness(e.target.value);}}),
                             React.createElement('span',{className:'config-value'},lineThickness)
                         ),
-                        React.createElement('div',{className:'graph-config-title',style:{marginTop:8}},'Display'),
-                        React.createElement('label',{className:'config-check'},
+                        vizHasGraphToolbar(graphConfig.vizType)&&React.createElement('div',{className:'graph-config-title',style:{marginTop:8}},'Display'),
+                        vizHasGraphToolbar(graphConfig.vizType)&&React.createElement('label',{className:'config-check'},
                             React.createElement('input',{type:'checkbox',checked:graphConfig.showLabels,onChange:function(e){setGraphConfig(Object.assign({},graphConfig,{showLabels:e.target.checked}));}}),
                             'Show labels'
                         ),
-                        React.createElement('label',{className:'config-check',style:{marginTop:6}},
+                        vizHasGraphToolbar(graphConfig.vizType)&&React.createElement('label',{className:'config-check',style:{marginTop:6}},
                             React.createElement('input',{type:'checkbox',checked:graphConfig.curvedLinks,onChange:function(e){setGraphConfig(Object.assign({},graphConfig,{curvedLinks:e.target.checked}));}}),
                             'Curved links'
                         ),

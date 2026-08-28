@@ -1289,6 +1289,22 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /scaleStrokeWidth\(1\.5,lineThickness\)/);
   assert.match(htmlSource, /scaleStrokeWidth\(Math\.max\(2,d\.width\),lineThickness\)/);
   assert.match(htmlSource, /UI_PREFS_STORAGE_KEY/);
+  assert.match(htmlSource, /function vizUsesLineThickness\(/);
+  assert.match(htmlSource, /vizUsesLineThickness\(graphConfig\.vizType\)&&React\.createElement\('div',\{className:'canvas-toolbar'/);
+  assert.match(htmlSource, /vizUsesLineThickness\(graphConfig\.vizType\)&&showGraphConfig/);
+  assert.doesNotMatch(htmlSource, /\(graphConfig\.vizType==='graph'\|\|graphConfig\.vizType==='graph3d'\|\|graphConfig\.vizType==='code'\)&&React\.createElement\('div',\{className:'canvas-toolbar'/);
+});
+
+test('thickness control is offered on every view that draws links', () => {
+  ['graph', 'code', 'graph3d', 'dendro', 'sankey', 'disjoint', 'bundle'].forEach((viz) => {
+    assert.equal(context.vizUsesLineThickness(viz), true, viz);
+  });
+  ['treemap', 'matrix', 'architecture', 'none', ''].forEach((viz) => {
+    assert.equal(context.vizUsesLineThickness(viz), false, viz);
+  });
+  assert.equal(context.vizHasGraphToolbar('graph'), true);
+  assert.equal(context.vizHasGraphToolbar('dendro'), false);
+  assert.equal(context.vizHasGraphToolbar('bundle'), false);
 });
 
 function memoryStorage(seed) {
