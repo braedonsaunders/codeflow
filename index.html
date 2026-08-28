@@ -514,9 +514,17 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .code-card-resize-se{right:-3px;bottom:-3px;width:14px;height:14px;cursor:nwse-resize}
 .code-card.code-far .code-card-body{overflow:hidden}
 .code-card.code-far .file-preview-linenum{display:none}
-.code-card.code-far .file-preview-line{min-height:3px;height:3px;overflow:hidden}
-.code-card.code-far .file-preview-text{font-size:3px;line-height:3px;letter-spacing:-0.5px}
+.code-card.code-far .file-preview-text{visibility:hidden}
 .code-card.code-far .code-line-pill{display:none}
+.code-card-source{position:relative;min-height:100%}
+.code-color-blocks{display:none;position:absolute;inset:0;pointer-events:none;z-index:1}
+.code-card.code-blocks .code-color-blocks{display:block}
+.code-color-block{position:absolute;left:8px;right:8px;border-radius:3px;min-height:4px;pointer-events:auto;cursor:default}
+.code-card.code-blocks:not(.code-far) .code-color-block{opacity:0.38}
+.code-card.code-far .code-color-block{opacity:0.88}
+.code-color-block:hover{outline:1px solid var(--acc);opacity:1}
+svg.color-blocks circle.nc{display:none}
+svg.color-blocks text.node-label{display:none}
 .has-code-card{display:none!important}
 .has-code-card .nc,.has-code-card .node-label{pointer-events:none}
 .sym-mark{border-radius:3px;padding:0 1px;cursor:pointer}
@@ -5847,6 +5855,34 @@ function readableLabelScale(k){
     return Math.min(8,1/zoom);
 }
 
+var COLOR_BLOCK_ZOOM=0.4;
+var CODE_FAR_ZOOM=0.22;
+
+function zoomShowsColorBlocks(k){
+    var zoom=Number(k);
+    if(!isFinite(zoom)||zoom<=0)return false;
+    return zoom<COLOR_BLOCK_ZOOM;
+}
+
+function zoomHidesCodeText(k){
+    var zoom=Number(k);
+    if(!isFinite(zoom)||zoom<=0)return false;
+    return zoom<CODE_FAR_ZOOM;
+}
+
+function graphColorBlockSize(d){
+    var r=Math.max(8,Math.min(24,5+((d&&d.fnCount)||0)*0.8));
+    return Math.max(18,r*2);
+}
+
+function codeColorBlockKindColor(kind){
+    if(kind==='import')return '#c678dd';
+    if(kind==='export')return '#98c379';
+    if(kind==='var'||kind==='file')return '#e06c75';
+    if(kind==='class')return '#e5c07b';
+    return '#61afef';
+}
+
 function nodeReplacedByCard(path,cardPaths){
     return !!(cardPaths&&cardPaths.has(path));
 }
@@ -5991,6 +6027,10 @@ function vizUsesLineThickness(vizType){
 
 function vizHasGraphToolbar(vizType){
     return vizType==='graph'||vizType==='code'||vizType==='graph3d';
+}
+
+function vizHasZoomColorBlocks(vizType){
+    return vizType==='graph'||vizType==='code';
 }
 
 function collectVisibleCodeFiles(selectedPath,data,folderFilter,limit){
@@ -6832,12 +6872,14 @@ function applyCodeCardLayout(layer,nodesById,transform,sizesByPath){
         var title=card.querySelector?card.querySelector('.code-card-name'):null;
         if(title)title.style.transform='scale('+titleScale+')';
         if(card.classList){
-            if(k<0.22&&card.classList.add)card.classList.add('code-far');
+            if(zoomHidesCodeText(k)&&card.classList.add)card.classList.add('code-far');
             else if(card.classList.remove)card.classList.remove('code-far');
+            if(zoomShowsColorBlocks(k)&&card.classList.add)card.classList.add('code-blocks');
+            else if(card.classList.remove)card.classList.remove('code-blocks');
         }
         if(style.visibility==='visible')placed++;
     });
-    return{placed:placed,titleScale:titleScale};
+    return{placed:placed,titleScale:titleScale,colorBlocks:zoomShowsColorBlocks(k),codeFar:zoomHidesCodeText(k)};
 }
 
 function armRecentDelete(armedId,clickedId){
@@ -6899,6 +6941,59 @@ function extractFileSymbols(file,connections){
         if(file&&(src===file.path||tgt===file.path)&&c.fn)add(c.fn,'fn');
     });
     return symbols;
+}
+
+function codeColorBlockLineCount(file){
+    if(file&&typeof file.content==='string'&&file.content)return Math.max(1,file.content.split('\n').length);
+    var lines=Number(file&&file.lines);
+    if(isFinite(lines)&&lines>0)return Math.max(1,lines);
+    var max=1;
+    (file&&file.functions||[]).forEach(function(fn){
+        var line=Number(fn&&fn.line);
+        if(isFinite(line)&&line>max)max=line;
+    });
+    return max;
+}
+
+function codeColorBlockSections(file,connections,prefs){
+    prefs=normalizeCodeCardPrefs(prefs);
+    var total=codeColorBlockLineCount(file);
+    var byLine=Object.create(null);
+    (file&&file.functions||[]).forEach(function(fn){
+        if(!fn||!fn.name||!fn.line)return;
+        var kind=fn.type==='class'||fn.type==='dataclass'||fn.type==='abstract_class'?'class':(fn.isExported?'export':'fn');
+        byLine[fn.line]={name:fn.name,kind:kind,startLine:fn.line};
+    });
+    extractFileSymbols(file,connections).forEach(function(sym){
+        var line=codeCardSymbolLine(file,sym.name);
+        if(!line||byLine[line])return;
+        byLine[line]={name:sym.name,kind:sym.kind||'var',startLine:line};
+    });
+    var starts=Object.keys(byLine).map(Number).filter(isFinite).sort(function(a,b){return a-b;});
+    var sections=[];
+    if(!starts.length){
+        sections.push({name:(file&&(file.name||file.path))||'file',kind:'file',startLine:1,endLine:total});
+    }else{
+        if(starts[0]>1){
+            sections.push({name:(file&&(file.name||file.path))||'file',kind:'file',startLine:1,endLine:starts[0]-1});
+        }
+        starts.forEach(function(start,i){
+            var item=byLine[start];
+            var end=i+1<starts.length?starts[i+1]-1:total;
+            if(end<start)end=start;
+            sections.push({name:item.name,kind:item.kind,startLine:start,endLine:end});
+        });
+    }
+    return sections.map(function(section){
+        var startVisual=file?codeCardVisualLineIndex(file,section.startLine,prefs):section.startLine;
+        var endVisual=file?codeCardVisualLineIndex(file,section.endLine,prefs):section.endLine;
+        if(endVisual<startVisual)endVisual=startVisual;
+        return Object.assign({},section,{
+            color:codeColorBlockKindColor(section.kind),
+            top:8+(startVisual-1)*CODE_CARD_LINE_HEIGHT,
+            height:Math.max(6,(endVisual-startVisual+1)*CODE_CARD_LINE_HEIGHT)
+        });
+    });
 }
 
 function codeCardSymbolPills(file,connections,prefs){
@@ -8998,7 +9093,7 @@ function App(){
     function updateGraphHighlight(path,blast){
         if(!nodesRef.current||!linksRef.current)return;
         var affectedSet=new Set(blast?blast.affected:[]);
-        nodesRef.current.selectAll('.nc').transition().duration(200)
+        nodesRef.current.selectAll('.nc,.nb').transition().duration(200)
             .attr('opacity',function(n){if(n.id===path)return 1;if(affectedSet.has(n.id))return 1;return path?0.2:1;})
             .attr('fill',function(n){if(n.id===path)return'#ff5f5f';if(affectedSet.has(n.id))return'#ff9f43';return getNodeColor(n);});
         linksRef.current.transition().duration(200)
@@ -9393,12 +9488,14 @@ function App(){
             });
         }
         if(nodesRef.current){
-            var markScale=readableLabelScale((codeZoomTransformRef.current||{}).k);
+            var zoomK=(codeZoomTransformRef.current||{}).k;
+            var markScale=readableLabelScale(zoomK);
+            var hideChrome=zoomShowsColorBlocks(zoomK);
             nodesRef.current.classed('has-code-card',function(d){return nodeReplacedByCard(d.id,codeCardPathsRef.current);});
             nodesRef.current.classed('code-faded',false);
             nodesRef.current.attr('display',function(d){return nodeReplacedByCard(d.id,codeCardPathsRef.current)?'none':null;});
-            nodesRef.current.selectAll('circle.nc').attr('transform',function(d){return nodeReplacedByCard(d.id,codeCardPathsRef.current)?'':'scale('+markScale+')';});
-            nodesRef.current.selectAll('text.node-label').attr('transform',function(d){return nodeReplacedByCard(d.id,codeCardPathsRef.current)?'':'scale('+markScale+')';});
+            nodesRef.current.selectAll('circle.nc').attr('transform',function(d){return nodeReplacedByCard(d.id,codeCardPathsRef.current)||hideChrome?'':'scale('+markScale+')';});
+            nodesRef.current.selectAll('text.node-label').attr('transform',function(d){return nodeReplacedByCard(d.id,codeCardPathsRef.current)||hideChrome?'':'scale('+markScale+')';});
         }
     }
 
@@ -9482,9 +9579,21 @@ function App(){
         graphNodesByIdRef.current=Object.create(null);
         nodes.forEach(function(n){graphNodesByIdRef.current[n.id]=n;});
         function collideR(d){return liveCodeCollideRadius(d,keepReadable&&codeCardPathsRef.current.has(d.id)?codeCardSizesRef.current[d.id]:null);}
+        function applyCanvasColorBlocks(k){
+            var on=zoomShowsColorBlocks(k);
+            if(svgRef.current&&svgRef.current.classList){
+                if(on)svgRef.current.classList.add('color-blocks');
+                else svgRef.current.classList.remove('color-blocks');
+            }
+            if(nodesRef.current){
+                nodesRef.current.selectAll('rect.nb').attr('display',on?null:'none');
+            }
+        }
         function applyReadableLabels(k){
+            applyCanvasColorBlocks(k);
             if(!keepReadable)return;
             var s=readableLabelScale(k);
+            var blocks=zoomShowsColorBlocks(k);
             nodeLayer.selectAll('g').each(function(d){
                 var hidden=nodeReplacedByCard(d&&d.id,codeCardPathsRef.current);
                 var sel=d3.select(this);
@@ -9492,6 +9601,11 @@ function App(){
                 sel.classed('code-faded',false);
                 sel.attr('display',hidden?'none':null);
                 if(hidden)return;
+                if(blocks){
+                    sel.select('circle.nc').attr('transform',null);
+                    sel.select('text.node-label').attr('transform',null);
+                    return;
+                }
                 sel.select('circle.nc').attr('transform','scale('+s+')');
                 sel.select('text.node-label').attr('transform','scale('+s+')');
             });
@@ -9618,9 +9732,10 @@ function App(){
             setActiveSymbol(null);
             if(keepReadable)return;
             link.attr('stroke',theme==='light'?'#ccc':'#333').attr('stroke-opacity',0.4);
-            node.selectAll('.nc').attr('opacity',1).attr('fill',getC);
+            node.selectAll('.nc,.nb').attr('opacity',1).attr('fill',getC);
         });
         node.append('circle').attr('class','nc').attr('r',getR).attr('fill',getC).attr('stroke',function(d){var c=d3.color(getC(d));return c?c.brighter(0.3):'#fff';}).attr('stroke-width',1.5);
+        node.append('rect').attr('class','nb').attr('x',function(d){return -graphColorBlockSize(d)/2;}).attr('y',function(d){return -graphColorBlockSize(d)/2;}).attr('width',graphColorBlockSize).attr('height',graphColorBlockSize).attr('rx',4).attr('fill',getC).attr('display','none');
         // Hide labels for large graphs to reduce DOM overhead. Code view keeps titles readable.
         if(keepReadable||!isLargeGraph||graphConfig.showLabels){
             node.append('text').attr('class','node-label').attr('text-anchor','middle').attr('dy',0).attr('fill',theme==='light'?'#333':'#eee').attr('font-size',function(d){return (keepReadable?Math.max(9,Math.min(12,getR(d)*0.7)):Math.max(6,Math.min(10,getR(d)*0.6)))+'px';}).attr('font-family','JetBrains Mono').attr('font-weight','600').attr('pointer-events','none').text(function(d){var n=d.name.replace(/\.[^.]+$/,'');if(keepReadable)return n.length>18?n.slice(0,17)+'…':n;var maxLen=Math.max(4,Math.floor(getR(d)/2));return n.length>maxLen+1?n.slice(0,maxLen)+'…':n;});
@@ -9683,6 +9798,7 @@ function App(){
             if(tickCount%hullInterval===0)updateHulls();
         });
         node.selectAll('text').attr('opacity',(keepReadable||graphConfig.showLabels)?1:0);
+        applyCanvasColorBlocks((codeZoomTransformRef.current&&codeZoomTransformRef.current.k)||1);
         if(keepReadable){
             applyOpenedCardPlacements({skipFly:true});
             placeRemainingCodeNodes();
@@ -11396,6 +11512,25 @@ function App(){
         var cardPrefs=currentCodeCardPrefs();
         var cardSize=applyCodeCardUserSize(codeCardSize(file,cardPrefs),codeCardUserSizeRef.current[file.path]);
         var pills=isPrimary?codeCardSymbolPills(file,data?data.connections:[],cardPrefs):[];
+        var colorBlocks=codeColorBlockSections(file,data?data.connections:[],cardPrefs);
+        var blockLayer=colorBlocks.length?React.createElement('div',{className:'code-color-blocks'},
+            colorBlocks.map(function(block){
+                return React.createElement('div',{
+                    key:block.name+':'+block.startLine,
+                    className:'code-color-block '+block.kind,
+                    title:block.name,
+                    style:{top:block.top+'px',height:block.height+'px',background:block.color},
+                    onMouseEnter:function(e){
+                        var host=codeCanvasRef.current;
+                        if(!host)return;
+                        var r=host.getBoundingClientRect();
+                        setTooltip({x:e.clientX-r.left+10,y:e.clientY-r.top,title:block.name,content:block.kind+(block.startLine?' · L'+block.startLine:'')});
+                    },
+                    onMouseLeave:function(){setTooltip(null);}
+                });
+            })
+        ):null;
+        body=React.createElement('div',{className:'code-card-source'},body,blockLayer);
         return React.createElement('div',{key:file.path,'data-code-card':file.path,className:'code-card'+(isPrimary?' primary':' linked')+(cardSize.clipped?' clipped':'')+(cardSize.expand?' expand':'')+(cardSize.wrap?' wrap':''),onClick:function(e){
             var taken=consumeCodeCardClick(codeCardIgnoreClickRef.current);
             codeCardIgnoreClickRef.current=taken.ignoreNextClick;
@@ -11863,7 +11998,7 @@ function App(){
                     ),
                     React.createElement('div',{className:'panel-content'},
                         rightTab==='details'&&(selected?React.createElement(React.Fragment,null,
-                            React.createElement('button',{className:'top-btn',style:{width:'100%',marginBottom:12},onClick:function(){setSelected(null);setBlastRadius(null);if(nodesRef.current){nodesRef.current.selectAll('.nc').transition().duration(200).attr('opacity',1).attr('fill',getNodeColor);}if(linksRef.current){linksRef.current.transition().duration(200).attr('stroke-opacity',0.4).attr('stroke',theme==='light'?'#ccc':'#333');}}},'← Back to Issues'),
+                            React.createElement('button',{className:'top-btn',style:{width:'100%',marginBottom:12},onClick:function(){setSelected(null);setBlastRadius(null);if(nodesRef.current){nodesRef.current.selectAll('.nc,.nb').transition().duration(200).attr('opacity',1).attr('fill',getNodeColor);}if(linksRef.current){linksRef.current.transition().duration(200).attr('stroke-opacity',0.4).attr('stroke',theme==='light'?'#ccc':'#333');}}},'← Back to Issues'),
                             React.createElement('div',{className:'panel-header',style:{margin:'0 -12px 12px',padding:12}},
                                 React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},
                                     React.createElement('div',null,

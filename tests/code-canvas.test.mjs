@@ -25,6 +25,92 @@ test('readable labels grow only when zoomed out', () => {
   assert.ok(context.readableLabelScale(0.1) > 2);
 });
 
+test('color blocks replace fine chrome below the CodeCanvas zoom threshold', () => {
+  assert.equal(context.COLOR_BLOCK_ZOOM, 0.4);
+  assert.equal(context.CODE_FAR_ZOOM, 0.22);
+  assert.equal(context.zoomShowsColorBlocks(1), false);
+  assert.equal(context.zoomShowsColorBlocks(0.4), false);
+  assert.equal(context.zoomShowsColorBlocks(0.39), true);
+  assert.equal(context.zoomShowsColorBlocks(0.2), true);
+  assert.equal(context.zoomHidesCodeText(0.4), false);
+  assert.equal(context.zoomHidesCodeText(0.22), false);
+  assert.equal(context.zoomHidesCodeText(0.21), true);
+  assert.equal(context.vizHasZoomColorBlocks('graph'), true);
+  assert.equal(context.vizHasZoomColorBlocks('code'), true);
+  assert.equal(context.vizHasZoomColorBlocks('graph3d'), false);
+  assert.equal(context.vizHasZoomColorBlocks('treemap'), false);
+  assert.ok(context.graphColorBlockSize({ fnCount: 0 }) >= 18);
+  assert.ok(context.graphColorBlockSize({ fnCount: 20 }) > context.graphColorBlockSize({ fnCount: 0 }));
+});
+
+test('code color blocks cover functions and leftover file regions', () => {
+  const file = {
+    path: 'src/app.js',
+    name: 'app.js',
+    content: 'import { add } from "./math.js";\n\nexport function render(){\n  return add(1, 2);\n}\n\nfunction helper(){\n  return 1;\n}\n',
+    functions: [
+      { name: 'render', line: 3, isExported: true },
+      { name: 'helper', line: 7, isExported: false }
+    ]
+  };
+  const sections = context.codeColorBlockSections(file, [{ source: 'src/math.js', target: 'src/app.js', fn: 'add' }]);
+  const names = J(sections).map((s) => s.name);
+  assert.ok(names.includes('render'));
+  assert.ok(names.includes('helper'));
+  assert.ok(names.includes('add') || names.includes('app.js'));
+  const render = sections.find((s) => s.name === 'render');
+  assert.equal(render.kind, 'export');
+  assert.equal(render.startLine, 3);
+  assert.ok(render.endLine >= 3);
+  assert.ok(render.height >= 6);
+  assert.equal(render.color, context.codeColorBlockKindColor('export'));
+  const helper = sections.find((s) => s.name === 'helper');
+  assert.equal(helper.kind, 'fn');
+  assert.ok(helper.top > render.top);
+  const empty = context.codeColorBlockSections({ name: 'notes.md', path: 'notes.md', content: '# hi\n' }, []);
+  assert.equal(empty.length, 1);
+  assert.equal(empty[0].name, 'notes.md');
+  assert.equal(empty[0].kind, 'file');
+});
+
+test('card layout toggles color-block and far-zoom classes at the thresholds', () => {
+  function trackingCard(path) {
+    const classes = new Set();
+    return {
+      path,
+      classes,
+      getAttribute(name) { return name === 'data-code-card' ? path : null; },
+      style: {},
+      classList: {
+        add(name) { classes.add(name); },
+        remove(name) { classes.delete(name); }
+      },
+      querySelector() { return { style: {} }; }
+    };
+  }
+  const near = trackingCard('a.js');
+  const mid = trackingCard('b.js');
+  const far = trackingCard('c.js');
+  const layerFor = (card) => ({ style: {}, querySelectorAll() { return [card]; } });
+  const nodes = { 'a.js': { x: 10, y: 10 }, 'b.js': { x: 10, y: 10 }, 'c.js': { x: 10, y: 10 } };
+  const sizes = { 'a.js': { width: 100, height: 80 }, 'b.js': { width: 100, height: 80 }, 'c.js': { width: 100, height: 80 } };
+  const nearLaid = context.applyCodeCardLayout(layerFor(near), nodes, { k: 1, x: 0, y: 0 }, sizes);
+  assert.equal(nearLaid.colorBlocks, false);
+  assert.equal(nearLaid.codeFar, false);
+  assert.equal(near.classes.has('code-blocks'), false);
+  assert.equal(near.classes.has('code-far'), false);
+  const midLaid = context.applyCodeCardLayout(layerFor(mid), { 'b.js': { x: 10, y: 10 } }, { k: 0.3, x: 0, y: 0 }, sizes);
+  assert.equal(midLaid.colorBlocks, true);
+  assert.equal(midLaid.codeFar, false);
+  assert.equal(mid.classes.has('code-blocks'), true);
+  assert.equal(mid.classes.has('code-far'), false);
+  const farLaid = context.applyCodeCardLayout(layerFor(far), { 'c.js': { x: 10, y: 10 } }, { k: 0.1, x: 0, y: 0 }, sizes);
+  assert.equal(farLaid.colorBlocks, true);
+  assert.equal(farLaid.codeFar, true);
+  assert.equal(far.classes.has('code-blocks'), true);
+  assert.equal(far.classes.has('code-far'), true);
+});
+
 test('open Code cards replace their nodes', () => {
   const cards = new Set(['src/app.js']);
   assert.equal(context.nodeReplacedByCard('src/app.js', cards), true);
@@ -1142,6 +1228,18 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /pruneCodeCardPlacements/);
   assert.match(htmlSource, /codeCardPlacementKeepSet\(openedCodePaths,codeViewFiles\)/);
   assert.match(htmlSource, /code-card\.code-far/);
+  assert.match(htmlSource, /zoomShowsColorBlocks/);
+  assert.match(htmlSource, /zoomHidesCodeText/);
+  assert.match(htmlSource, /codeColorBlockSections/);
+  assert.match(htmlSource, /vizHasZoomColorBlocks/);
+  assert.match(htmlSource, /applyCanvasColorBlocks/);
+  assert.match(htmlSource, /graphColorBlockSize/);
+  assert.match(htmlSource, /className:'code-color-blocks'/);
+  assert.match(htmlSource, /className:'code-color-block /);
+  assert.match(htmlSource, /attr\('class','nb'\)/);
+  assert.match(htmlSource, /svg\.color-blocks/);
+  assert.match(htmlSource, /COLOR_BLOCK_ZOOM/);
+  assert.match(htmlSource, /selectAll\('\.nc,\.nb'\)/);
   assert.match(htmlSource, /evictHiddenCodeCards/);
   assert.match(htmlSource, /updateHullsRef\.current/);
   assert.match(htmlSource, /codeViewWheelPanDelta/);
