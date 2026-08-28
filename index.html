@@ -5652,10 +5652,24 @@ function normalizeUiPrefs(prefs){
     return next;
 }
 
+function resolveUiPrefsStorage(storage){
+    try{
+        if(storage===undefined){
+            if(typeof window==='undefined')return null;
+            storage=window.localStorage;
+        }
+        if(!storage||typeof storage.getItem!=='function')return null;
+        return storage;
+    }catch(e){
+        return null;
+    }
+}
+
 function readUiPrefs(storage){
     try{
-        if(!storage||typeof storage.getItem!=='function')return defaultUiPrefs();
-        var raw=storage.getItem(UI_PREFS_STORAGE_KEY);
+        var store=resolveUiPrefsStorage(storage);
+        if(!store)return defaultUiPrefs();
+        var raw=store.getItem(UI_PREFS_STORAGE_KEY);
         if(!raw)return defaultUiPrefs();
         return normalizeUiPrefs(JSON.parse(raw));
     }catch(e){
@@ -5666,9 +5680,14 @@ function readUiPrefs(storage){
 function writeUiPrefs(storage,prefs){
     var next=normalizeUiPrefs(Object.assign({},readUiPrefs(storage),prefs||{}));
     try{
-        if(storage&&typeof storage.setItem==='function')storage.setItem(UI_PREFS_STORAGE_KEY,JSON.stringify(next));
+        var store=resolveUiPrefsStorage(storage);
+        if(store)store.setItem(UI_PREFS_STORAGE_KEY,JSON.stringify(next));
     }catch(e){}
     return next;
+}
+
+function persistUiPrefs(prefs){
+    return writeUiPrefs(undefined,prefs);
 }
 
 function graphLinkBaseWidth(count){
@@ -7677,7 +7696,7 @@ function App(){
     var _pillScroll=useState(0),codePillScroll=_pillScroll[0],setCodePillScroll=_pillScroll[1];
     var _codeExpand=useState(false),codeViewExpand=_codeExpand[0],setCodeViewExpand=_codeExpand[1];
     var _codeWrap=useState(true),codeViewWrap=_codeWrap[0],setCodeViewWrap=_codeWrap[1];
-    var _lineThick=useState(readUiPrefs(window.localStorage).lineThickness),lineThickness=_lineThick[0],setLineThickness=_lineThick[1];
+    var _lineThick=useState(readUiPrefs().lineThickness),lineThickness=_lineThick[0],setLineThickness=_lineThick[1];
     var lineThicknessRef=useRef(lineThickness);
     lineThicknessRef.current=lineThickness;
     var pendingRecentDeleteTimerRef=useRef(null);
@@ -9266,7 +9285,7 @@ function App(){
         if(linksRef.current)linksRef.current.attr('d',graphLinkPath);
     }
     function persistLineThickness(value){
-        var next=writeUiPrefs(window.localStorage,{lineThickness:value}).lineThickness;
+        var next=persistUiPrefs({lineThickness:value}).lineThickness;
         setLineThickness(next);
     }
     function applyLinkThickness(){

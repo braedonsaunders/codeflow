@@ -1274,10 +1274,16 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.doesNotMatch(htmlSource, /sidebar-title'\},'Color By'/);
   assert.doesNotMatch(htmlSource, /sidebar-title'\},'Explorer'/);
   assert.match(htmlSource, /function persistLineThickness\(/);
+  assert.match(htmlSource, /function persistUiPrefs\(/);
+  assert.match(htmlSource, /function resolveUiPrefsStorage\(/);
   assert.match(htmlSource, /function applyLinkThickness\(/);
   assert.match(htmlSource, /'aria-label':'Line thickness'/);
   assert.match(htmlSource, /config-label'\},'Thickness'/);
   assert.match(htmlSource, /persistLineThickness\(e\.target\.value\)/);
+  assert.match(htmlSource, /useState\(readUiPrefs\(\)\.lineThickness\)/);
+  assert.match(htmlSource, /persistUiPrefs\(\{lineThickness:value\}\)/);
+  assert.doesNotMatch(htmlSource, /readUiPrefs\(window\.localStorage\)/);
+  assert.doesNotMatch(htmlSource, /writeUiPrefs\(window\.localStorage/);
   assert.match(htmlSource, /graphLinkStrokeWidth\(d\.count,lineThicknessRef\.current\)/);
   assert.match(htmlSource, /graph3dLinkWidth\(link,selected&&selected\.path,lineThicknessRef\.current\)/);
   assert.match(htmlSource, /scaleStrokeWidth\(1\.5,lineThickness\)/);
@@ -1331,4 +1337,38 @@ test('UI prefs persist line thickness in localStorage', () => {
   const other = memoryStorage({ [context.UI_PREFS_STORAGE_KEY]: JSON.stringify({ lineThickness: 2, extra: true }) });
   const merged = context.writeUiPrefs(other, { lineThickness: 3 });
   assert.equal(merged.lineThickness, 3);
+  context.window = { localStorage: storage };
+  try {
+    assert.equal(context.persistUiPrefs({ lineThickness: 4 }).lineThickness, 4);
+    assert.equal(context.readUiPrefs().lineThickness, 4);
+  } finally {
+    delete context.window;
+  }
+});
+
+function throwingLocalStorageWindow() {
+  return {
+    get localStorage() {
+      const err = new Error('Access is denied for this document.');
+      err.name = 'SecurityError';
+      throw err;
+    }
+  };
+}
+
+test('UI prefs keep the default when localStorage access throws', () => {
+  context.window = throwingLocalStorageWindow();
+  try {
+    assert.equal(context.resolveUiPrefsStorage(undefined), null);
+    assert.doesNotThrow(() => context.readUiPrefs());
+    assert.equal(context.readUiPrefs().lineThickness, context.LINE_THICKNESS_DEFAULT);
+    const rendered = context.readUiPrefs().lineThickness;
+    assert.equal(rendered, 1);
+    assert.doesNotThrow(() => context.persistUiPrefs({ lineThickness: 5 }));
+    const inSession = context.persistUiPrefs({ lineThickness: 5 });
+    assert.equal(inSession.lineThickness, 5);
+    assert.equal(context.readUiPrefs().lineThickness, 1);
+  } finally {
+    delete context.window;
+  }
 });
