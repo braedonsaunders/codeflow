@@ -117,6 +117,8 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .canvas-area svg{width:100%;height:100%;display:block}
 .canvas-toolbar{position:absolute;top:12px;left:12px;display:flex;gap:4px;z-index:50}
 .canvas-info{position:absolute;bottom:12px;left:12px;display:flex;gap:8px;z-index:50}
+.canvas-minimap{position:absolute;right:12px;bottom:12px;z-index:50;width:176px;height:118px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:crosshair;touch-action:none;user-select:none;-webkit-user-select:none}
+.canvas-minimap canvas{display:block;width:100%;height:100%;pointer-events:none}
 .info-chip{padding:6px 10px;background:var(--bg1);border:1px solid var(--border);border-radius:6px;font-size:10px;color:var(--t2)}
 .info-chip strong{color:var(--acc)}
 .tool-btn{width:32px;height:32px;background:var(--bg1);border:1px solid var(--border);border-radius:6px;color:var(--t2);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;touch-action:manipulation}
@@ -623,6 +625,10 @@ body{height:100dvh;min-height:100dvh}
 .legend{top:auto;bottom:68px;right:12px;max-width:calc(100vw - 24px)}
 .legend.with-color-by{top:auto;bottom:68px}
 .canvas-info{left:12px;right:12px;bottom:12px;overflow-x:auto;padding-bottom:calc(2px + env(safe-area-inset-bottom))}
+.canvas-minimap{width:132px;height:88px;right:12px;bottom:52px}
+.canvas-area:has(.canvas-minimap) .legend{bottom:148px}
+.canvas-area:has(.canvas-minimap) .legend.with-color-by{bottom:148px}
+.canvas-area:has(.canvas-minimap) .color-by{bottom:198px}
 .info-chip{white-space:nowrap;flex:0 0 auto}
 .export-options,.pr-grid,.pr-impact-grid,.unused-summary{grid-template-columns:1fr}
 .pr-risk{flex-direction:column;align-items:flex-start}
@@ -651,6 +657,9 @@ body{height:100dvh;min-height:100dvh}
 .color-by{bottom:122px}
 .legend{bottom:72px;right:12px}
 .legend.with-color-by{bottom:72px}
+.canvas-area:has(.canvas-minimap) .legend{bottom:148px}
+.canvas-area:has(.canvas-minimap) .legend.with-color-by{bottom:148px}
+.canvas-area:has(.canvas-minimap) .color-by{bottom:198px}
 .panel-tabs{position:sticky;top:0;z-index:2}
 .file-preview-modal{width:100vw;height:100dvh;border-radius:0;border:none}
 .file-preview-header{border-radius:0;padding:12px}
@@ -710,6 +719,10 @@ body{height:100dvh;min-height:100dvh}
 .legend{top:auto;bottom:72px;right:10px;max-width:calc(100vw - 20px)}
 .legend.with-color-by{top:auto;bottom:72px}
 .canvas-info{left:10px;right:10px;bottom:10px;overflow-x:auto;padding-bottom:0}
+.canvas-minimap{width:132px;height:88px;right:10px;bottom:52px}
+.canvas-area:has(.canvas-minimap) .legend{bottom:148px}
+.canvas-area:has(.canvas-minimap) .legend.with-color-by{bottom:148px}
+.canvas-area:has(.canvas-minimap) .color-by{bottom:198px}
 .info-chip{white-space:nowrap;flex:0 0 auto}
 }
 @media (max-width:420px){
@@ -6151,6 +6164,10 @@ function vizHasZoomColorBlocks(vizType){
     return vizType==='graph'||vizType==='code';
 }
 
+function vizHasCanvasMinimap(vizType){
+    return vizType==='graph'||vizType==='code';
+}
+
 function collectVisibleCodeFiles(selectedPath,data,folderFilter,limit){
     if(!data||!data.files)return[];
     var filtered=folderFilter?data.files.filter(function(f){return f.folder===folderFilter||f.folder.startsWith(folderFilter+'/');}):data.files;
@@ -7305,6 +7322,229 @@ function snapshotZoomTransform(transform){
     return {k:k,x:x,y:y};
 }
 
+function minimapWorldFromBoxes(boxes,pad){
+    var union=unionPaddedBoxes(boxes,pad==null?48:pad,0);
+    if(!union)return null;
+    return{
+        minX:union.x,
+        minY:union.y,
+        maxX:union.x+union.width,
+        maxY:union.y+union.height,
+        width:union.width,
+        height:union.height
+    };
+}
+
+function collectMinimapWorldBounds(nodes,sizesByPath,cardPaths,pad){
+    var boxes=[];
+    (nodes||[]).forEach(function(node){
+        var xy=liveGraphNodeXY(node);
+        if(!xy)return;
+        if(cardPaths&&cardPaths.has&&cardPaths.has(node.id)&&sizesByPath&&sizesByPath[node.id]){
+            var size=sizesByPath[node.id];
+            boxes.push({x:xy.x-size.width/2,y:xy.y-size.height/2,width:size.width,height:size.height});
+            return;
+        }
+        boxes.push({x:xy.x-16,y:xy.y-16,width:32,height:32});
+    });
+    return minimapWorldFromBoxes(boxes,pad);
+}
+
+function collectMinimapContent(nodes,sizesByPath,cardPaths,colorOf,pad){
+    var marks=[];
+    var folders=Object.create(null);
+    (nodes||[]).forEach(function(node){
+        var xy=liveGraphNodeXY(node);
+        if(!xy)return;
+        var folder=node.folder||'root';
+        var color=typeof colorOf==='function'?colorOf(node):null;
+        var isCard=!!(cardPaths&&cardPaths.has&&cardPaths.has(node.id)&&sizesByPath&&sizesByPath[node.id]);
+        var box;
+        if(isCard){
+            var size=sizesByPath[node.id];
+            box={x:xy.x-size.width/2,y:xy.y-size.height/2,width:size.width,height:size.height};
+            marks.push({kind:'card',x:box.x,y:box.y,width:box.width,height:box.height,color:color,folder:folder});
+        }else{
+            box={x:xy.x-16,y:xy.y-16,width:32,height:32};
+            marks.push({kind:'node',x:xy.x,y:xy.y,color:color,folder:folder});
+        }
+        if(!folders[folder])folders[folder]={boxes:[],color:color};
+        folders[folder].boxes.push(box);
+        if(color)folders[folder].color=color;
+    });
+    var hulls=[];
+    Object.keys(folders).forEach(function(folder){
+        var union=unionPaddedBoxes(folders[folder].boxes,18,0);
+        if(union)hulls.push({folder:folder,color:folders[folder].color,x:union.x,y:union.y,width:union.width,height:union.height});
+    });
+    return{marks:marks,hulls:hulls,world:minimapWorldFromBoxes(Object.keys(folders).reduce(function(boxes,folder){
+        return boxes.concat(folders[folder].boxes);
+    },[]),pad)};
+}
+
+function viewportWorldRect(transform,viewW,viewH){
+    var t=snapshotZoomTransform(transform);
+    var w=Number(viewW);
+    var h=Number(viewH);
+    if(!isFinite(w)||w<=0)w=800;
+    if(!isFinite(h)||h<=0)h=600;
+    return{x:-t.x/t.k,y:-t.y/t.k,width:w/t.k,height:h/t.k};
+}
+
+function minimapFitRect(world,mapW,mapH,pad){
+    mapW=Number(mapW);
+    mapH=Number(mapH);
+    if(!world||!isFinite(world.width)||!isFinite(world.height)||world.width<=0||world.height<=0)return null;
+    if(!isFinite(mapW)||!isFinite(mapH)||mapW<=0||mapH<=0)return null;
+    pad=pad==null?8:Number(pad);
+    if(!isFinite(pad)||pad<0)pad=0;
+    var innerW=Math.max(1,mapW-pad*2);
+    var innerH=Math.max(1,mapH-pad*2);
+    var scale=Math.min(innerW/world.width,innerH/world.height);
+    if(!isFinite(scale)||scale<=0)scale=1;
+    var usedW=world.width*scale;
+    var usedH=world.height*scale;
+    return{scale:scale,ox:pad+(innerW-usedW)/2,oy:pad+(innerH-usedH)/2};
+}
+
+function worldToMinimap(x,y,world,fit){
+    if(!world||!fit)return{x:0,y:0};
+    return{x:(Number(x)-world.minX)*fit.scale+fit.ox,y:(Number(y)-world.minY)*fit.scale+fit.oy};
+}
+
+function minimapToWorld(mx,my,world,fit){
+    if(!world||!fit||!fit.scale)return{x:0,y:0};
+    return{x:(Number(mx)-fit.ox)/fit.scale+world.minX,y:(Number(my)-fit.oy)/fit.scale+world.minY};
+}
+
+function zoomTransformToCenterWorld(worldX,worldY,scale,viewW,viewH){
+    var k=Number(scale);
+    if(!isFinite(k)||k<=0)k=1;
+    var w=Number(viewW);
+    var h=Number(viewH);
+    if(!isFinite(w)||w<=0)w=800;
+    if(!isFinite(h)||h<=0)h=600;
+    return{k:k,x:w/2-Number(worldX)*k,y:h/2-Number(worldY)*k};
+}
+
+function zoomTransformFromMinimapPoint(mx,my,world,fit,transform,viewW,viewH){
+    var pt=minimapToWorld(mx,my,world,fit);
+    var t=snapshotZoomTransform(transform);
+    return zoomTransformToCenterWorld(pt.x,pt.y,t.k,viewW,viewH);
+}
+
+function minimapPointerXY(clientX,clientY,rect){
+    rect=rect||{};
+    return{x:(Number(clientX)||0)-(Number(rect.left)||0),y:(Number(clientY)||0)-(Number(rect.top)||0)};
+}
+
+function colorWithAlpha(color,alpha){
+    color=String(color||'');
+    var a=Number(alpha);
+    if(!isFinite(a))a=1;
+    if(a<0)a=0;
+    if(a>1)a=1;
+    if(color.charAt(0)==='#'&&(color.length===7||color.length===4)){
+        var r,g,b;
+        if(color.length===4){
+            r=parseInt(color.charAt(1)+color.charAt(1),16);
+            g=parseInt(color.charAt(2)+color.charAt(2),16);
+            b=parseInt(color.charAt(3)+color.charAt(3),16);
+        }else{
+            r=parseInt(color.slice(1,3),16);
+            g=parseInt(color.slice(3,5),16);
+            b=parseInt(color.slice(5,7),16);
+        }
+        if(isFinite(r)&&isFinite(g)&&isFinite(b))return 'rgba('+r+','+g+','+b+','+a+')';
+    }
+    return color;
+}
+
+function readMinimapTheme(el){
+    var styles=el&&typeof getComputedStyle==='function'?getComputedStyle(el):null;
+    function css(name,fallback){
+        var v=styles?String(styles.getPropertyValue(name)||'').trim():'';
+        return v||fallback;
+    }
+    return{
+        bg:css('--bg1','#0f0f12'),
+        acc:css('--acc','#00ff9d'),
+        muted:css('--t3','#5c5c66')
+    };
+}
+
+function clearCanvasMinimap(canvas){
+    if(!canvas||typeof canvas.getContext!=='function')return false;
+    var ctx=canvas.getContext('2d');
+    if(!ctx)return false;
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,canvas.width||0,canvas.height||0);
+    return true;
+}
+
+function drawCanvasMinimap(canvas,model){
+    if(!canvas||typeof canvas.getContext!=='function'||!model||!model.fit||!model.world)return false;
+    var ctx=canvas.getContext('2d');
+    if(!ctx)return false;
+    var dpr=typeof window!=='undefined'&&window.devicePixelRatio?window.devicePixelRatio:1;
+    if(!isFinite(dpr)||dpr<=0)dpr=1;
+    var w=Number(model.mapW);
+    var h=Number(model.mapH);
+    if(!isFinite(w)||w<=0)w=176;
+    if(!isFinite(h)||h<=0)h=118;
+    var pixelW=Math.max(1,Math.round(w*dpr));
+    var pixelH=Math.max(1,Math.round(h*dpr));
+    if(canvas.width!==pixelW||canvas.height!==pixelH){
+        canvas.width=pixelW;
+        canvas.height=pixelH;
+    }
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,w,h);
+    var theme=model.theme||{};
+    var acc=theme.acc||'#00ff9d';
+    var muted=theme.muted||'#5c5c66';
+    (model.hulls||[]).forEach(function(hull){
+        if(!hull)return;
+        var p1=worldToMinimap(hull.x,hull.y,model.world,model.fit);
+        var p2=worldToMinimap(hull.x+hull.width,hull.y+hull.height,model.world,model.fit);
+        var hx=p1.x,hy=p1.y,hw=Math.max(2,p2.x-p1.x),hh=Math.max(2,p2.y-p1.y);
+        ctx.beginPath();
+        ctx.fillStyle=colorWithAlpha(hull.color||muted,0.12);
+        ctx.strokeStyle=colorWithAlpha(hull.color||muted,0.4);
+        ctx.lineWidth=1;
+        if(typeof ctx.roundRect==='function')ctx.roundRect(hx,hy,hw,hh,3);
+        else ctx.rect(hx,hy,hw,hh);
+        ctx.fill();
+        ctx.stroke();
+    });
+    (model.marks||[]).forEach(function(mark){
+        if(!mark||mark.kind!=='card')return;
+        var c1=worldToMinimap(mark.x,mark.y,model.world,model.fit);
+        var c2=worldToMinimap(mark.x+mark.width,mark.y+mark.height,model.world,model.fit);
+        ctx.fillStyle=colorWithAlpha(mark.color||acc,0.32);
+        ctx.fillRect(c1.x,c1.y,Math.max(2,c2.x-c1.x),Math.max(2,c2.y-c1.y));
+    });
+    (model.marks||[]).forEach(function(mark){
+        if(!mark||mark.kind!=='node')return;
+        var p=worldToMinimap(mark.x,mark.y,model.world,model.fit);
+        ctx.beginPath();
+        ctx.fillStyle=mark.color||acc;
+        ctx.arc(p.x,p.y,1.7,0,Math.PI*2);
+        ctx.fill();
+    });
+    if(model.viewport){
+        var v=model.viewport;
+        var v1=worldToMinimap(v.x,v.y,model.world,model.fit);
+        var v2=worldToMinimap(v.x+v.width,v.y+v.height,model.world,model.fit);
+        ctx.fillStyle=colorWithAlpha(acc,0.1);
+        ctx.strokeStyle=acc;
+        ctx.lineWidth=1.25;
+        ctx.fillRect(v1.x,v1.y,v2.x-v1.x,v2.y-v1.y);
+        ctx.strokeRect(v1.x,v1.y,v2.x-v1.x,v2.y-v1.y);
+    }
+    return true;
+}
+
 function shouldFitCodeCamera(cameraReady,vizType){
     return vizType==='code'&&!cameraReady;
 }
@@ -8279,6 +8519,12 @@ function App(){
     var codeCanvasRef=useRef(null);
     var codeSourceInFlightRef=useRef(Object.create(null));
     var updateHullsRef=useRef(null);
+    var drawMinimapRef=useRef(null);
+    var minimapHostRef=useRef(null);
+    var minimapCanvasRef=useRef(null);
+    var minimapModelRef=useRef(null);
+    var minimapDragRef=useRef(null);
+    var minimapRafRef=useRef(0);
     var codeFolderCentersRef=useRef(Object.create(null));
     var codeCardUserSizeRef=useRef(Object.create(null));
     var codeCardStackRef=useRef([]);
@@ -9907,6 +10153,86 @@ function App(){
             g3.linkWidth(function(link){return graph3dLinkWidth(link,selectedPathRef.current,thickness);});
         }
     }
+    function refreshMinimap(){
+        var canvas=minimapCanvasRef.current;
+        if(!canvas||!vizHasCanvasMinimap(graphConfig.vizType))return;
+        var svg=svgRef.current;
+        if(!svg){
+            minimapModelRef.current=null;
+            clearCanvasMinimap(canvas);
+            return;
+        }
+        var mapW=canvas.clientWidth||176;
+        var mapH=canvas.clientHeight||118;
+        var viewW=svg.clientWidth||800;
+        var viewH=svg.clientHeight||600;
+        var nodes=simRef.current?simRef.current.nodes():[];
+        var content=collectMinimapContent(nodes,codeCardSizesRef.current,codeCardPathsRef.current,getNodeColor);
+        if(!content.world||!content.world.width){
+            minimapModelRef.current=null;
+            clearCanvasMinimap(canvas);
+            return;
+        }
+        var transform=snapshotZoomTransform(codeZoomTransformRef.current);
+        var viewport=viewportWorldRect(transform,viewW,viewH);
+        var fit=minimapFitRect(content.world,mapW,mapH,8);
+        var model={
+            mapW:mapW,
+            mapH:mapH,
+            viewW:viewW,
+            viewH:viewH,
+            transform:transform,
+            world:content.world,
+            fit:fit,
+            viewport:viewport,
+            marks:content.marks,
+            hulls:content.hulls,
+            theme:readMinimapTheme(minimapHostRef.current||canvas)
+        };
+        minimapModelRef.current=model;
+        drawCanvasMinimap(canvas,model);
+    }
+    function scheduleMinimapDraw(){
+        if(minimapRafRef.current)return;
+        minimapRafRef.current=requestAnimationFrame(function(){
+            minimapRafRef.current=0;
+            refreshMinimap();
+        });
+    }
+    drawMinimapRef.current=scheduleMinimapDraw;
+    function applyMinimapFocus(mx,my){
+        var model=minimapModelRef.current;
+        if(!model||!model.fit||!zoomRef.current||!svgRef.current)return;
+        var next=zoomTransformFromMinimapPoint(mx,my,model.world,model.fit,codeZoomTransformRef.current,model.viewW,model.viewH);
+        d3.select(svgRef.current).call(zoomRef.current.transform,d3.zoomIdentity.translate(next.x,next.y).scale(next.k));
+    }
+    function handleMinimapPointerDown(e){
+        if(e.button!==undefined&&e.button!==0)return;
+        e.preventDefault();
+        e.stopPropagation();
+        var canvas=minimapCanvasRef.current;
+        if(!canvas)return;
+        var xy=minimapPointerXY(e.clientX,e.clientY,canvas.getBoundingClientRect());
+        minimapDragRef.current={pointerId:e.pointerId};
+        if(e.currentTarget&&e.currentTarget.setPointerCapture){
+            try{e.currentTarget.setPointerCapture(e.pointerId);}catch(err){}
+        }
+        applyMinimapFocus(xy.x,xy.y);
+    }
+    function handleMinimapPointerMove(e){
+        if(!minimapDragRef.current)return;
+        e.preventDefault();
+        var canvas=minimapCanvasRef.current;
+        if(!canvas)return;
+        var xy=minimapPointerXY(e.clientX,e.clientY,canvas.getBoundingClientRect());
+        applyMinimapFocus(xy.x,xy.y);
+    }
+    function handleMinimapPointerUp(e){
+        if(e&&e.currentTarget&&e.currentTarget.releasePointerCapture&&minimapDragRef.current){
+            try{e.currentTarget.releasePointerCapture(minimapDragRef.current.pointerId);}catch(err){}
+        }
+        minimapDragRef.current=null;
+    }
     function flyToOpenedCodeCard(place){
         if(!svgRef.current||!zoomRef.current||!place||!isFinite(place.x)||!isFinite(place.y))return;
         var w=svgRef.current.clientWidth||800;
@@ -10130,6 +10456,7 @@ function App(){
             codeZoomTransformRef.current=e.transform;
             applyReadableLabels(e.transform.k);
             if(keepReadable)syncCodeCards();
+            if(drawMinimapRef.current)drawMinimapRef.current();
         });
         svg.call(zoom);
         zoomRef.current=zoom;
@@ -10226,6 +10553,7 @@ function App(){
                 }else{
                     redrawMovedGraphNodes([d].concat(siblings));
                 }
+                if(drawMinimapRef.current)drawMinimapRef.current();
                 return;
             }
         }).on('end',function(e,d){
@@ -10244,6 +10572,7 @@ function App(){
                 redrawGraphLinksAndNodes();
                 if(updateHullsRef.current)updateHullsRef.current();
             }
+            if(drawMinimapRef.current)drawMinimapRef.current();
         }));
         node.on('click',function(e,d){
             e.stopPropagation();
@@ -10325,6 +10654,7 @@ function App(){
             }
             tickCount++;
             if(tickCount%hullInterval===0)updateHulls();
+            if(drawMinimapRef.current)drawMinimapRef.current();
         });
         node.selectAll('text').attr('opacity',(keepReadable||graphConfig.showLabels)?1:0);
         applyCanvasColorBlocks((codeZoomTransformRef.current&&codeZoomTransformRef.current.k)||1);
@@ -10344,6 +10674,7 @@ function App(){
             sim.alpha(0);
         }
         updateHullsRef.current=updateHulls;
+        if(drawMinimapRef.current)drawMinimapRef.current();
         }catch(e){console.error('Force graph error:',e);svg.selectAll('*').remove();svg.append('text').attr('x',20).attr('y',30).attr('fill','var(--t3)').text('Graph rendering error: '+e.message);}
         return function(){if(simRef.current)simRef.current.stop();updateHullsRef.current=null;};
     },[graphRebuildKey]);
@@ -10360,11 +10691,30 @@ function App(){
         placeRemainingCodeNodes();
         syncCodeCards();
         if(updateHullsRef.current)updateHullsRef.current();
+        if(drawMinimapRef.current)drawMinimapRef.current();
     },[codeViewFiles,graphConfig.vizType,graphConfig.linkDist,codeViewExpand,codeViewWrap]);
 
     useEffect(function(){
         applyLinkThickness();
     },[lineThickness,selected&&selected.path]);
+
+    useEffect(function(){
+        if(!vizHasCanvasMinimap(graphConfig.vizType)){
+            minimapModelRef.current=null;
+            if(minimapCanvasRef.current)clearCanvasMinimap(minimapCanvasRef.current);
+            return;
+        }
+        scheduleMinimapDraw();
+    },[graphConfig.vizType,theme,colorMode,viewportWidth,sidebarWidth,rightPanelWidth]);
+
+    useEffect(function(){
+        return function(){
+            if(minimapRafRef.current){
+                cancelAnimationFrame(minimapRafRef.current);
+                minimapRafRef.current=0;
+            }
+        };
+    },[]);
 
     // 3D Force Graph Hook
     useEffect(function(){
@@ -11950,6 +12300,7 @@ function App(){
                 applyCodeCardDragFrame(codeCardsLayerRef.current,file.path,node,codeCardSizesRef.current[file.path]);
                 redrawMovedGraphNodes([node].concat(siblings));
             }
+            if(drawMinimapRef.current)drawMinimapRef.current();
         }
         function onUp(){
             window.removeEventListener('pointermove',onMove);
@@ -11972,6 +12323,7 @@ function App(){
                 syncCodeCards();
                 redrawGraphLinksAndNodes();
                 if(updateHullsRef.current)updateHullsRef.current();
+                if(drawMinimapRef.current)drawMinimapRef.current();
             }
             if(end.select)selectFile(file.path);
         }
@@ -12030,6 +12382,7 @@ function App(){
                     }
                 }
             }
+            if(drawMinimapRef.current)drawMinimapRef.current();
         }
         function onUp(){
             window.removeEventListener('pointermove',onMove);
@@ -12045,6 +12398,7 @@ function App(){
                 syncCodeCards();
                 redrawGraphLinksAndNodes();
                 if(updateHullsRef.current)updateHullsRef.current();
+                if(drawMinimapRef.current)drawMinimapRef.current();
             }
         }
         window.addEventListener('pointermove',onMove);
@@ -12513,6 +12867,17 @@ function App(){
                             'Auto-rotate'
                         )
                     ),
+                    vizHasCanvasMinimap(graphConfig.vizType)&&React.createElement('div',{
+                        className:'canvas-minimap',
+                        ref:minimapHostRef,
+                        'aria-label':'Canvas mini-map. Click or drag to pan.',
+                        title:'Click or drag to pan',
+                        onPointerDown:handleMinimapPointerDown,
+                        onPointerMove:handleMinimapPointerMove,
+                        onPointerUp:handleMinimapPointerUp,
+                        onPointerCancel:handleMinimapPointerUp,
+                        onWheel:function(e){e.preventDefault();e.stopPropagation();}
+                    },React.createElement('canvas',{ref:minimapCanvasRef})),
                     graphConfig.vizType!=='architecture'&&React.createElement('div',{className:'canvas-info'},
                         React.createElement('div',{className:'info-chip'},React.createElement('strong',null,folderFilter?data.files.filter(function(f){return f.folder===folderFilter||f.folder.startsWith(folderFilter+'/');}).length:data.files.length),' files'),
                         React.createElement('div',{className:'info-chip'},React.createElement('strong',null,data.connections.length),' links'),

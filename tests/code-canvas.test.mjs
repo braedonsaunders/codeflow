@@ -1778,6 +1778,75 @@ test('thickness control is offered on every view that draws links', () => {
   assert.equal(context.vizHasGraphToolbar('bundle'), false);
 });
 
+test('canvas mini-map is wired for Graph and Code only', () => {
+  assert.equal(context.vizHasCanvasMinimap('graph'), true);
+  assert.equal(context.vizHasCanvasMinimap('code'), true);
+  ['graph3d', 'treemap', 'matrix', 'dendro', 'sankey', 'disjoint', 'bundle', 'architecture', ''].forEach((viz) => {
+    assert.equal(context.vizHasCanvasMinimap(viz), false, viz);
+  });
+  assert.match(htmlSource, /function vizHasCanvasMinimap\(/);
+  assert.match(htmlSource, /vizHasCanvasMinimap\(graphConfig\.vizType\)&&React\.createElement\('div',\{/);
+  assert.match(htmlSource, /className:'canvas-minimap'/);
+  assert.match(htmlSource, /Click or drag to pan/);
+  assert.match(htmlSource, /function zoomTransformFromMinimapPoint\(/);
+  assert.match(htmlSource, /function drawCanvasMinimap\(/);
+  assert.match(htmlSource, /if\(drawMinimapRef\.current\)drawMinimapRef\.current\(\)/);
+  assert.doesNotMatch(htmlSource, /minimap-drag-handle|drag indicator/);
+  assert.match(htmlSource, /'aria-label':'Line thickness'/);
+  assert.match(htmlSource, /config-label'\},'Thickness'/);
+});
+
+test('mini-map world bounds include nodes and code cards', () => {
+  const nodes = [
+    { id: 'src/a.js', folder: 'src', x: 0, y: 0 },
+    { id: 'src/b.js', folder: 'src', x: 200, y: 40 }
+  ];
+  const world = context.collectMinimapWorldBounds(nodes, null, null, 0);
+  assert.ok(world);
+  assert.equal(world.minX, -16);
+  assert.equal(world.maxX, 216);
+  const cards = new Set(['src/a.js']);
+  const sizes = { 'src/a.js': { width: 400, height: 200 } };
+  const cardWorld = context.collectMinimapWorldBounds(nodes, sizes, cards, 0);
+  assert.ok(cardWorld.minX <= -200);
+  assert.ok(cardWorld.maxX >= 216);
+  const content = context.collectMinimapContent(nodes, sizes, cards, (n) => n.id === 'src/a.js' ? '#4d9fff' : '#22c55e', 0);
+  assert.equal(content.marks.some((m) => m.kind === 'card'), true);
+  assert.equal(content.marks.some((m) => m.kind === 'node'), true);
+  assert.equal(content.hulls.length, 1);
+  assert.equal(content.hulls[0].folder, 'src');
+});
+
+test('mini-map click centers the current camera on that world point', () => {
+  const transform = { k: 2, x: 100, y: 50 };
+  const view = context.viewportWorldRect(transform, 800, 600);
+  assert.equal(view.x, -50);
+  assert.equal(view.y, -25);
+  assert.equal(view.width, 400);
+  assert.equal(view.height, 300);
+  const world = { minX: 0, minY: 0, maxX: 400, maxY: 300, width: 400, height: 300 };
+  const fit = context.minimapFitRect(world, 200, 150, 0);
+  assert.ok(fit);
+  assert.equal(fit.scale, 0.5);
+  const mid = context.worldToMinimap(200, 150, world, fit);
+  assert.equal(mid.x, 100);
+  assert.equal(mid.y, 75);
+  const back = context.minimapToWorld(mid.x, mid.y, world, fit);
+  assert.equal(back.x, 200);
+  assert.equal(back.y, 150);
+  const centered = context.zoomTransformToCenterWorld(150, 125, 2, 800, 600);
+  assert.equal(centered.k, 2);
+  assert.equal(centered.x, 100);
+  assert.equal(centered.y, 50);
+  const jumped = context.zoomTransformFromMinimapPoint(100, 75, world, fit, transform, 800, 600);
+  assert.equal(jumped.k, 2);
+  assert.equal(jumped.x, 400 - 200 * 2);
+  assert.equal(jumped.y, 300 - 150 * 2);
+  const ptr = J(context.minimapPointerXY(120, 80, { left: 20, top: 30 }));
+  assert.deepEqual(ptr, { x: 100, y: 50 });
+  assert.equal(context.colorWithAlpha('#00ff9d', 0.1), 'rgba(0,255,157,0.1)');
+});
+
 function memoryStorage(seed) {
   const data = Object.assign({}, seed || {});
   return {
