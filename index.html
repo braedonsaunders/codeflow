@@ -5861,7 +5861,7 @@ var CODE_FAR_ZOOM=0.22;
 function zoomShowsColorBlocks(k){
     var zoom=Number(k);
     if(!isFinite(zoom)||zoom<=0)return false;
-    return zoom<COLOR_BLOCK_ZOOM;
+    return zoom<=COLOR_BLOCK_ZOOM;
 }
 
 function zoomHidesCodeText(k){
@@ -5872,7 +5872,16 @@ function zoomHidesCodeText(k){
 
 function graphColorBlockSize(d){
     var r=Math.max(8,Math.min(24,5+((d&&d.fnCount)||0)*0.8));
-    return Math.max(18,r*2);
+    return Math.max(22,r*2+4);
+}
+
+function graphColorBlockScale(k){
+    var zoom=Number(k);
+    if(!isFinite(zoom)||zoom<=0)return 1;
+    var minScreen=16;
+    var screen=22*zoom;
+    if(screen>=minScreen)return 1;
+    return Math.min(6,minScreen/screen);
 }
 
 function codeColorBlockKindColor(kind){
@@ -9581,12 +9590,13 @@ function App(){
         function collideR(d){return liveCodeCollideRadius(d,keepReadable&&codeCardPathsRef.current.has(d.id)?codeCardSizesRef.current[d.id]:null);}
         function applyCanvasColorBlocks(k){
             var on=zoomShowsColorBlocks(k);
+            var s=on?graphColorBlockScale(k):1;
             if(svgRef.current&&svgRef.current.classList){
                 if(on)svgRef.current.classList.add('color-blocks');
                 else svgRef.current.classList.remove('color-blocks');
             }
             if(nodesRef.current){
-                nodesRef.current.selectAll('rect.nb').attr('display',on?null:'none');
+                nodesRef.current.selectAll('rect.nb').attr('display',on?null:'none').attr('transform',on?'scale('+s+')':null);
             }
         }
         function applyReadableLabels(k){
@@ -9735,7 +9745,7 @@ function App(){
             node.selectAll('.nc,.nb').attr('opacity',1).attr('fill',getC);
         });
         node.append('circle').attr('class','nc').attr('r',getR).attr('fill',getC).attr('stroke',function(d){var c=d3.color(getC(d));return c?c.brighter(0.3):'#fff';}).attr('stroke-width',1.5);
-        node.append('rect').attr('class','nb').attr('x',function(d){return -graphColorBlockSize(d)/2;}).attr('y',function(d){return -graphColorBlockSize(d)/2;}).attr('width',graphColorBlockSize).attr('height',graphColorBlockSize).attr('rx',4).attr('fill',getC).attr('display','none');
+        node.append('rect').attr('class','nb').attr('x',function(d){return -graphColorBlockSize(d)/2;}).attr('y',function(d){return -graphColorBlockSize(d)/2;}).attr('width',graphColorBlockSize).attr('height',graphColorBlockSize).attr('rx',3).attr('fill',getC).attr('stroke',function(d){var c=d3.color(getC(d));return c?c.darker(0.35):'#000';}).attr('stroke-width',1).attr('display','none');
         // Hide labels for large graphs to reduce DOM overhead. Code view keeps titles readable.
         if(keepReadable||!isLargeGraph||graphConfig.showLabels){
             node.append('text').attr('class','node-label').attr('text-anchor','middle').attr('dy',0).attr('fill',theme==='light'?'#333':'#eee').attr('font-size',function(d){return (keepReadable?Math.max(9,Math.min(12,getR(d)*0.7)):Math.max(6,Math.min(10,getR(d)*0.6)))+'px';}).attr('font-family','JetBrains Mono').attr('font-weight','600').attr('pointer-events','none').text(function(d){var n=d.name.replace(/\.[^.]+$/,'');if(keepReadable)return n.length>18?n.slice(0,17)+'…':n;var maxLen=Math.max(4,Math.floor(getR(d)/2));return n.length>maxLen+1?n.slice(0,maxLen)+'…':n;});

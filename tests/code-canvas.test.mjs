@@ -29,9 +29,13 @@ test('color blocks replace fine chrome below the CodeCanvas zoom threshold', () 
   assert.equal(context.COLOR_BLOCK_ZOOM, 0.4);
   assert.equal(context.CODE_FAR_ZOOM, 0.22);
   assert.equal(context.zoomShowsColorBlocks(1), false);
-  assert.equal(context.zoomShowsColorBlocks(0.4), false);
+  assert.equal(context.zoomShowsColorBlocks(0.41), false);
+  assert.equal(context.zoomShowsColorBlocks(0.4), true);
   assert.equal(context.zoomShowsColorBlocks(0.39), true);
   assert.equal(context.zoomShowsColorBlocks(0.2), true);
+  assert.equal(context.graphColorBlockScale(1), 1);
+  assert.ok(context.graphColorBlockScale(0.4) >= 1);
+  assert.ok(context.graphColorBlockScale(0.2) > context.graphColorBlockScale(0.4));
   assert.equal(context.zoomHidesCodeText(0.4), false);
   assert.equal(context.zoomHidesCodeText(0.22), false);
   assert.equal(context.zoomHidesCodeText(0.21), true);
@@ -1234,6 +1238,7 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /vizHasZoomColorBlocks/);
   assert.match(htmlSource, /applyCanvasColorBlocks/);
   assert.match(htmlSource, /graphColorBlockSize/);
+  assert.match(htmlSource, /graphColorBlockScale/);
   assert.match(htmlSource, /className:'code-color-blocks'/);
   assert.match(htmlSource, /className:'code-color-block /);
   assert.match(htmlSource, /attr\('class','nb'\)/);
