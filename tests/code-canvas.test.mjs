@@ -115,6 +115,62 @@ test('visible code files are not capped at four', () => {
   assert.equal(seeded.length, 6);
 });
 
+test('root file count ignores nested files and unwraps a single zip prefix', () => {
+  const flat = {
+    files: [
+      { path: 'a.js', folder: 'root' },
+      { path: 'b.js', folder: 'root' },
+      { path: 'src/c.js', folder: 'src' }
+    ]
+  };
+  assert.equal(context.codeViewAnalysisRootFolder(flat), 'root');
+  assert.equal(context.countCodeViewRootFiles(flat), 2);
+  assert.equal(context.isCodeViewRootFile(flat.files[0], 'root'), true);
+  assert.equal(context.isCodeViewRootFile(flat.files[2], 'root'), false);
+  const wrapped = {
+    files: [
+      { path: 'repo/a.js', folder: 'repo' },
+      { path: 'repo/b.js', folder: 'repo' },
+      { path: 'repo/src/c.js', folder: 'repo/src' }
+    ]
+  };
+  assert.equal(context.codeViewAnalysisRootFolder(wrapped), 'repo');
+  assert.equal(context.countCodeViewRootFiles(wrapped), 2);
+  const nested = {
+    files: [
+      { path: 'src/a.js', folder: 'src' },
+      { path: 'lib/b.js', folder: 'lib' }
+    ]
+  };
+  assert.equal(context.codeViewAnalysisRootFolder(nested), 'root');
+  assert.equal(context.countCodeViewRootFiles(nested), 0);
+  assert.equal(context.countCodeViewRootFiles({ files: [] }), 0);
+});
+
+test('Code root gate waits for a folder or file when the root is crowded', () => {
+  const files = Array.from({ length: 60 }, (_, i) => ({
+    path: i < 50 ? 'f' + i + '.js' : 'src/n' + i + '.js',
+    folder: i < 50 ? 'root' : 'src',
+    name: i < 50 ? 'f' + i + '.js' : 'n' + i + '.js'
+  }));
+  const data = { files };
+  assert.equal(context.countCodeViewRootFiles(data), 50);
+  assert.equal(context.clampCodeViewRootGate(undefined), 50);
+  assert.equal(context.clampCodeViewRootGate(40), 50);
+  assert.equal(context.clampCodeViewRootGate(70), 75);
+  assert.equal(context.codeViewRootGateActive(data, null, null, [], 50), true);
+  assert.equal(context.codeViewRootGateActive(data, 'src', null, [], 50), false);
+  assert.equal(context.codeViewRootGateActive(data, null, 'f0.js', [], 50), false);
+  assert.equal(context.codeViewRootGateActive(data, null, null, ['f0.js'], 50), false);
+  assert.equal(context.codeViewRootGateActive(data, null, null, [], 75), false);
+  assert.equal(context.codeViewRootGateActive(data, null, null, [], 25), true);
+  assert.equal(context.shouldSeedOpenedCodeCards(true, false, [], true), false);
+  assert.equal(context.shouldSeedOpenedCodeCards(true, false, [], false), true);
+  assert.match(context.codeViewRootGateMessage(50, 50), /Pick a folder or file/);
+  const small = { files: files.slice(0, 10) };
+  assert.equal(context.codeViewRootGateActive(small, null, null, [], 50), false);
+});
+
 test('Code view seeds the filtered folder when the selection is outside it', () => {
   const data = {
     files: [
@@ -1445,6 +1501,21 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /setCodeViewWrap\(!codeViewWrap\)/);
   assert.match(htmlSource, /'aria-pressed':codeViewExpand/);
   assert.match(htmlSource, /'aria-pressed':codeViewWrap/);
+  assert.match(htmlSource, /CODE_VIEW_ROOT_GATE_DEFAULT/);
+  assert.match(htmlSource, /CODE_VIEW_ROOT_GATE_STEPS/);
+  assert.match(htmlSource, /function countCodeViewRootFiles\(/);
+  assert.match(htmlSource, /function codeViewRootGateActive\(/);
+  assert.match(htmlSource, /function codeViewRootGateMessage\(/);
+  assert.match(htmlSource, /function persistCodeViewRootGate\(/);
+  assert.match(htmlSource, /className:'code-root-gate'/);
+  assert.match(htmlSource, /className:'code-view-gate-select'/);
+  assert.match(htmlSource, /Pick a folder or file/);
+  assert.match(htmlSource, /codeRootGateActive/);
+  assert.match(htmlSource, /shouldSeedOpenedCodeCards\(true,codeViewSessionRef\.current,openedCodePaths,codeRootGateActive\)/);
+  assert.match(htmlSource, /if\(!data\|\|codeRootGateActive\)return\[\]/);
+  assert.match(htmlSource, /persistCodeViewRootGate\(e\.target\.value\)/);
+  assert.match(htmlSource, /useState\(readUiPrefs\(\)\.codeViewRootGate\)/);
+  assert.match(htmlSource, /persistUiPrefs\(\{codeViewRootGate:value\}\)/);
   assert.match(htmlSource, /normalizeCodeCardPrefs/);
   assert.match(htmlSource, /codeCardWrapColumns/);
   assert.match(htmlSource, /liveGraphNodeXY/);
@@ -1558,20 +1629,29 @@ test('line thickness defaults match current graph edges and stay in range', () =
 test('UI prefs persist line thickness in localStorage', () => {
   const storage = memoryStorage();
   assert.equal(context.readUiPrefs(storage).lineThickness, 1);
+  assert.equal(context.readUiPrefs(storage).codeViewRootGate, 50);
   assert.equal(context.readUiPrefs(null).lineThickness, 1);
   const written = context.writeUiPrefs(storage, { lineThickness: 5 });
   assert.equal(written.lineThickness, 5);
+  assert.equal(written.codeViewRootGate, 50);
   assert.equal(context.readUiPrefs(storage).lineThickness, 5);
   assert.equal(context.writeUiPrefs(storage, { lineThickness: 99 }).lineThickness, 6);
+  const gated = context.writeUiPrefs(storage, { codeViewRootGate: 75 });
+  assert.equal(gated.codeViewRootGate, 75);
+  assert.equal(context.writeUiPrefs(storage, { codeViewRootGate: 40 }).codeViewRootGate, 50);
   storage.setItem(context.UI_PREFS_STORAGE_KEY, '{not-json');
   assert.equal(context.readUiPrefs(storage).lineThickness, 1);
+  assert.equal(context.readUiPrefs(storage).codeViewRootGate, 50);
   const other = memoryStorage({ [context.UI_PREFS_STORAGE_KEY]: JSON.stringify({ lineThickness: 2, extra: true }) });
   const merged = context.writeUiPrefs(other, { lineThickness: 3 });
   assert.equal(merged.lineThickness, 3);
+  assert.equal(merged.codeViewRootGate, 50);
   context.window = { localStorage: storage };
   try {
     assert.equal(context.persistUiPrefs({ lineThickness: 4 }).lineThickness, 4);
     assert.equal(context.readUiPrefs().lineThickness, 4);
+    assert.equal(context.persistUiPrefs({ codeViewRootGate: 25 }).codeViewRootGate, 25);
+    assert.equal(context.readUiPrefs().codeViewRootGate, 25);
   } finally {
     delete context.window;
   }

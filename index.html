@@ -225,6 +225,11 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .empty-icon{margin-bottom:16px;opacity:0.3;color:var(--t2)}
 .empty-title{font-size:16px;font-weight:600;color:var(--t1);margin-bottom:8px}
 .empty-desc{font-size:12px;color:var(--t3);max-width:300px}
+.code-root-gate{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;pointer-events:none;background:color-mix(in srgb,var(--bg0) 70%,transparent)}
+.code-root-gate .empty-title{font-size:14px}
+.code-root-gate .empty-desc{font-size:11px;max-width:320px;line-height:1.45;white-space:pre-wrap}
+.code-view-gate-select{background:var(--bg0);border:1px solid var(--border);border-radius:5px;color:var(--t1);font-family:inherit;font-size:9px;padding:2px 4px;margin-left:2px;cursor:pointer}
+.code-view-gate-select:focus{outline:none;border-color:var(--acc)}
 .loading{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%}
 .spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--acc);border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:16px}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -507,7 +512,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .code-card.wrap .file-preview-line{align-items:flex-start;height:auto}
 .code-card.wrap .file-preview-text{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;min-width:0}
 .code-card-body .file-preview-code{padding:8px 0;font-size:11px}
-.color-by.code-view-prefs{flex-direction:row;align-items:center;gap:2px;padding:3px 3px 3px 6px}
+.color-by.code-view-prefs{flex-direction:row;flex-wrap:wrap;align-items:center;gap:2px;padding:3px 3px 3px 6px;max-width:min(360px,calc(100% - 24px))}
 .code-card-resize{position:absolute;z-index:3;background:transparent}
 .code-card-resize-e{top:14px;right:-4px;width:10px;bottom:14px;cursor:ew-resize}
 .code-card-resize-s{left:14px;right:14px;bottom:-4px;height:10px;cursor:ns-resize}
@@ -5632,6 +5637,8 @@ var UI_PREFS_STORAGE_KEY='codeflow-ui-prefs';
 var LINE_THICKNESS_MIN=1;
 var LINE_THICKNESS_MAX=6;
 var LINE_THICKNESS_DEFAULT=1;
+var CODE_VIEW_ROOT_GATE_DEFAULT=50;
+var CODE_VIEW_ROOT_GATE_STEPS=[25,50,75,100];
 
 function clampLineThickness(value){
     var n=Number(value);
@@ -5642,14 +5649,29 @@ function clampLineThickness(value){
     return n;
 }
 
+function clampCodeViewRootGate(value){
+    var n=Number(value);
+    if(!isFinite(n))return CODE_VIEW_ROOT_GATE_DEFAULT;
+    n=Math.round(n);
+    var best=CODE_VIEW_ROOT_GATE_STEPS[0];
+    var bestD=Math.abs(n-best);
+    for(var i=1;i<CODE_VIEW_ROOT_GATE_STEPS.length;i++){
+        var step=CODE_VIEW_ROOT_GATE_STEPS[i];
+        var d=Math.abs(n-step);
+        if(d<bestD){best=step;bestD=d;}
+    }
+    return best;
+}
+
 function defaultUiPrefs(){
-    return{lineThickness:LINE_THICKNESS_DEFAULT};
+    return{lineThickness:LINE_THICKNESS_DEFAULT,codeViewRootGate:CODE_VIEW_ROOT_GATE_DEFAULT};
 }
 
 function normalizeUiPrefs(prefs){
     prefs=prefs&&typeof prefs==='object'?prefs:{};
     var next=defaultUiPrefs();
     if(prefs.lineThickness!=null)next.lineThickness=clampLineThickness(prefs.lineThickness);
+    if(prefs.codeViewRootGate!=null)next.codeViewRootGate=clampCodeViewRootGate(prefs.codeViewRootGate);
     return next;
 }
 
@@ -5975,10 +5997,54 @@ function codeViewSeedPath(selectedPath,data,folderFilter){
     return defaultCodeViewSeed(data,folderFilter);
 }
 
-function shouldSeedOpenedCodeCards(inCode,sessionActive,openedPaths){
+function shouldSeedOpenedCodeCards(inCode,sessionActive,openedPaths,gateActive){
+    if(gateActive)return false;
     if(!inCode)return false;
     if(!sessionActive)return true;
     return !(openedPaths&&openedPaths.length);
+}
+
+function codeViewAnalysisRootFolder(data){
+    if(!data||!data.files||!data.files.length)return'root';
+    var hasBareRoot=false;
+    var tops=Object.create(null);
+    for(var i=0;i<data.files.length;i++){
+        var folder=data.files[i]&&data.files[i].folder?data.files[i].folder:'root';
+        if(folder==='root')hasBareRoot=true;
+        else tops[String(folder).split('/')[0]]=true;
+    }
+    if(hasBareRoot)return'root';
+    var keys=Object.keys(tops);
+    if(keys.length===1)return keys[0];
+    return'root';
+}
+
+function isCodeViewRootFile(file,rootFolder){
+    if(!file)return false;
+    var folder=file.folder||'root';
+    return folder===(rootFolder||'root');
+}
+
+function countCodeViewRootFiles(data){
+    if(!data||!data.files)return 0;
+    var root=codeViewAnalysisRootFolder(data);
+    var n=0;
+    for(var i=0;i<data.files.length;i++){
+        if(isCodeViewRootFile(data.files[i],root))n++;
+    }
+    return n;
+}
+
+function codeViewRootGateActive(data,folderFilter,selectedPath,openedPaths,threshold){
+    if(!data||!data.files||!data.files.length)return false;
+    if(folderFilter)return false;
+    if(selectedPath)return false;
+    if(openedPaths&&openedPaths.length)return false;
+    return countCodeViewRootFiles(data)>=clampCodeViewRootGate(threshold);
+}
+
+function codeViewRootGateMessage(count,threshold){
+    return'This project root has '+count+' files (gate is '+clampCodeViewRootGate(threshold)+'). Pick a folder or file in the Files tree before opening Code cards.';
 }
 
 function codeFileNavOpensCard(vizType){
@@ -8069,6 +8135,7 @@ function App(){
     var _pillScroll=useState(0),codePillScroll=_pillScroll[0],setCodePillScroll=_pillScroll[1];
     var _codeExpand=useState(false),codeViewExpand=_codeExpand[0],setCodeViewExpand=_codeExpand[1];
     var _codeWrap=useState(true),codeViewWrap=_codeWrap[0],setCodeViewWrap=_codeWrap[1];
+    var _codeGate=useState(readUiPrefs().codeViewRootGate),codeViewRootGate=_codeGate[0],setCodeViewRootGate=_codeGate[1];
     var _lineThick=useState(readUiPrefs().lineThickness),lineThickness=_lineThick[0],setLineThickness=_lineThick[1];
     var lineThicknessRef=useRef(lineThickness);
     lineThicknessRef.current=lineThickness;
@@ -9551,8 +9618,11 @@ function App(){
             graphConfig.curvedLinks
         ].join('\0');
     },[currentHydrationId,data,folderFilter,colorMode,theme,graphConfig]);
+    var codeRootGateActive=useMemo(function(){
+        return graphConfig.vizType==='code'&&codeViewRootGateActive(data,folderFilter,selected&&selected.path,openedCodePaths,codeViewRootGate);
+    },[data,folderFilter,openedCodePaths,selected&&selected.path,codeViewRootGate,graphConfig.vizType]);
     var codeViewFiles=useMemo(function(){
-        if(!data)return[];
+        if(!data||codeRootGateActive)return[];
         var paths=openedCodePaths;
         var files=filesForOpenedCodePaths(paths,data,folderFilter);
         if((!files.length)&&graphConfig.vizType==='code'){
@@ -9560,7 +9630,7 @@ function App(){
             if(seed)files=filesForOpenedCodePaths([seed],data,folderFilter);
         }
         return files;
-    },[data,openedCodePaths,folderFilter,graphConfig.vizType,selected&&selected.path]);
+    },[data,openedCodePaths,folderFilter,graphConfig.vizType,selected&&selected.path,codeRootGateActive]);
     useEffect(function(){
         if(currentHydrationId===openedSceneRef.current)return;
         openedSceneRef.current=currentHydrationId;
@@ -9576,7 +9646,7 @@ function App(){
             codeViewSessionRef.current=false;
             return;
         }
-        if(!shouldSeedOpenedCodeCards(true,codeViewSessionRef.current,openedCodePaths)){
+        if(!shouldSeedOpenedCodeCards(true,codeViewSessionRef.current,openedCodePaths,codeRootGateActive)){
             codeViewSessionRef.current=true;
             return;
         }
@@ -9584,7 +9654,7 @@ function App(){
         var seed=codeViewSeedPath(selected&&selected.path,data,folderFilter);
         if(!seed)return;
         if(openCodeFileRef.current)openCodeFileRef.current(seed,true);
-    },[graphConfig.vizType,data,folderFilter,openedCodePaths.length,selected&&selected.path]);
+    },[graphConfig.vizType,data,folderFilter,openedCodePaths.length,selected&&selected.path,codeRootGateActive]);
     useEffect(function(){
         var el=codeCanvasRef.current;
         if(!el||graphConfig.vizType!=='code')return;
@@ -9666,6 +9736,10 @@ function App(){
     function persistLineThickness(value){
         var next=persistUiPrefs({lineThickness:value}).lineThickness;
         setLineThickness(next);
+    }
+    function persistCodeViewRootGate(value){
+        var next=persistUiPrefs({codeViewRootGate:value}).codeViewRootGate;
+        setCodeViewRootGate(next);
     }
     function applyLinkThickness(){
         var thickness=lineThicknessRef.current;
@@ -11580,7 +11654,11 @@ function App(){
         if(graphConfig.vizType!=='code')return null;
         return React.createElement('div',{className:'color-by code-view-prefs',role:'toolbar','aria-label':'Code view options'},
             React.createElement('button',{type:'button',className:'color-by-btn'+(codeViewExpand?' active':''),'aria-pressed':codeViewExpand?'true':'false',onClick:function(){setCodeViewExpand(!codeViewExpand);}},'Expand All'),
-            React.createElement('button',{type:'button',className:'color-by-btn'+(codeViewWrap?' active':''),'aria-pressed':codeViewWrap?'true':'false',onClick:function(){setCodeViewWrap(!codeViewWrap);}},'Wrap Text')
+            React.createElement('button',{type:'button',className:'color-by-btn'+(codeViewWrap?' active':''),'aria-pressed':codeViewWrap?'true':'false',onClick:function(){setCodeViewWrap(!codeViewWrap);}},'Wrap Text'),
+            React.createElement('span',{className:'color-by-label',title:'Skip Code cards when this many files sit at the project root'},'Root'),
+            React.createElement('select',{className:'code-view-gate-select','aria-label':'Root file gate',title:'Skip Code cards when this many files sit at the project root',value:String(codeViewRootGate),onChange:function(e){persistCodeViewRootGate(e.target.value);}},
+                CODE_VIEW_ROOT_GATE_STEPS.map(function(n){return React.createElement('option',{key:n,value:String(n)},String(n));})
+            )
         );
     }
     function renderSidebarEmpty(title,desc){
@@ -11863,13 +11941,18 @@ function App(){
     }
     function renderCodeView(){
         var primaryPath=selected&&selected.path;
+        var rootCount=countCodeViewRootFiles(data);
         return React.createElement('div',{className:'code-canvas',ref:codeCanvasRef},
             React.createElement('svg',{ref:svgRef}),
             React.createElement('div',{className:'code-canvas-cards',ref:codeCardsLayerRef},
                 codeViewFiles.map(function(file){return renderCodeFileCard(file,file.path===primaryPath);})
             ),
+            codeRootGateActive&&React.createElement('div',{className:'code-root-gate',role:'status'},
+                React.createElement('div',{className:'empty-title'},'Pick a folder or file'),
+                React.createElement('div',{className:'empty-desc'},codeViewRootGateMessage(rootCount,codeViewRootGate))
+            ),
             React.createElement('div',{className:'code-canvas-hud'},
-                React.createElement('div',{className:'code-canvas-hint'},codeViewFiles.length?'Open files from leftover nodes or the Files tree. Open cards stay put. Wheel pans · Ctrl+wheel zooms.':'No files to open as cards.'),
+                React.createElement('div',{className:'code-canvas-hint'},codeRootGateActive?codeViewRootGateMessage(rootCount,codeViewRootGate):(codeViewFiles.length?'Open files from leftover nodes or the Files tree. Open cards stay put. Wheel pans · Ctrl+wheel zooms.':'No files to open as cards.')),
                 codeViewSymbols.length>0&&React.createElement('div',{className:'code-sym-list'},
                     codeViewSymbols.map(function(sym){
                         return React.createElement('button',{key:sym.name,className:'code-sym-chip '+sym.kind+(activeSymbol===sym.name?' active':''),title:sym.name,onClick:function(){setActiveSymbol(function(prev){return prev===sym.name?null:sym.name;});}},sym.name);
