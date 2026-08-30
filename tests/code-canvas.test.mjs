@@ -47,6 +47,24 @@ test('color blocks replace fine chrome below the CodeCanvas zoom threshold', () 
   assert.ok(context.graphColorBlockSize({ fnCount: 20 }) > context.graphColorBlockSize({ fnCount: 0 }));
 });
 
+test('zoom-out color blocks avoid red and green diff colors', () => {
+  ['fn', 'import', 'export', 'var', 'file', 'class'].forEach((kind) => {
+    const fill = context.codeColorBlockKindColor(kind);
+    assert.equal(context.colorBlockLooksLikeDiff(fill), false, kind + ' ' + fill);
+  });
+  ['#00ff9d', '#22c55e', '#84cc16', '#98c379', '#ff5f5f', '#e06c75'].forEach((hex) => {
+    assert.equal(context.colorBlockLooksLikeDiff(hex), true, hex);
+    assert.equal(context.colorBlockLooksLikeDiff(context.graphColorBlockFill(hex)), false, hex);
+  });
+  ['#4d9fff', '#a78bfa', '#22d3ee', '#ff9f43', '#61afef'].forEach((hex) => {
+    assert.equal(context.graphColorBlockFill(hex).toLowerCase(), hex.toLowerCase());
+  });
+  const churnHigh = context.graphColorBlockFill('#ff5f5f');
+  const churnLow = context.graphColorBlockFill('#22c55e');
+  assert.notEqual(churnHigh.toLowerCase(), '#ff5f5f');
+  assert.notEqual(churnLow.toLowerCase(), '#22c55e');
+});
+
 test('code color blocks cover functions and leftover file regions', () => {
   const file = {
     path: 'src/app.js',
@@ -1239,6 +1257,11 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /applyCanvasColorBlocks/);
   assert.match(htmlSource, /graphColorBlockSize/);
   assert.match(htmlSource, /graphColorBlockScale/);
+  assert.match(htmlSource, /graphColorBlockFill/);
+  assert.match(htmlSource, /colorBlockLooksLikeDiff/);
+  assert.match(htmlSource, /graphColorBlockFill\(getC\(d\)\)/);
+  assert.doesNotMatch(htmlSource, /function codeColorBlockKindColor[\s\S]*#98c379/);
+  assert.doesNotMatch(htmlSource, /function codeColorBlockKindColor[\s\S]*#e06c75/);
   assert.match(htmlSource, /className:'code-color-blocks'/);
   assert.match(htmlSource, /className:'code-color-block /);
   assert.match(htmlSource, /attr\('class','nb'\)/);

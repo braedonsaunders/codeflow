@@ -5884,10 +5884,57 @@ function graphColorBlockScale(k){
     return Math.min(6,minScreen/screen);
 }
 
+function parseCssHex(color){
+    var raw=String(color||'').trim();
+    var m=raw.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if(!m)return null;
+    var h=m[1];
+    if(h.length===3)h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+    return{r:parseInt(h.slice(0,2),16),g:parseInt(h.slice(2,4),16),b:parseInt(h.slice(4,6),16)};
+}
+
+function cssHexHue(color){
+    var rgb=parseCssHex(color);
+    if(!rgb)return NaN;
+    var r=rgb.r/255,g=rgb.g/255,b=rgb.b/255;
+    var max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;
+    if(d===0)return 0;
+    var h=max===r?((g-b)/d)%6:max===g?(b-r)/d+2:(r-g)/d+4;
+    h=h*60;
+    if(h<0)h+=360;
+    return h;
+}
+
+function colorBlockLooksLikeDiff(color){
+    var h=cssHexHue(color);
+    if(!isFinite(h))return false;
+    return h<=25||h>=335||(h>=70&&h<=165);
+}
+
+function graphColorBlockFill(color){
+    var hex=String(color||'').trim();
+    var known={
+        '#00ff9d':'#22d3ee',
+        '#00cc7d':'#22d3ee',
+        '#00a86b':'#4d9fff',
+        '#22c55e':'#4d9fff',
+        '#84cc16':'#ff9f43',
+        '#98c379':'#56b6c2',
+        '#ff5f5f':'#a78bfa',
+        '#e06c75':'#d19a66',
+        '#ff6b6b':'#a78bfa'
+    };
+    var key=hex.toLowerCase();
+    if(known[key])return known[key];
+    if(!colorBlockLooksLikeDiff(hex))return hex||'#4d9fff';
+    var h=cssHexHue(hex);
+    return (h<=25||h>=335)?'#a78bfa':'#22d3ee';
+}
+
 function codeColorBlockKindColor(kind){
     if(kind==='import')return '#c678dd';
-    if(kind==='export')return '#98c379';
-    if(kind==='var'||kind==='file')return '#e06c75';
+    if(kind==='export')return '#56b6c2';
+    if(kind==='var'||kind==='file')return '#d19a66';
     if(kind==='class')return '#e5c07b';
     return '#61afef';
 }
@@ -9104,7 +9151,10 @@ function App(){
         var affectedSet=new Set(blast?blast.affected:[]);
         nodesRef.current.selectAll('.nc,.nb').transition().duration(200)
             .attr('opacity',function(n){if(n.id===path)return 1;if(affectedSet.has(n.id))return 1;return path?0.2:1;})
-            .attr('fill',function(n){if(n.id===path)return'#ff5f5f';if(affectedSet.has(n.id))return'#ff9f43';return getNodeColor(n);});
+            .attr('fill',function(n){
+                var fill=n.id===path?'#ff5f5f':affectedSet.has(n.id)?'#ff9f43':getNodeColor(n);
+                return d3.select(this).classed('nb')?graphColorBlockFill(fill):fill;
+            });
         linksRef.current.transition().duration(200)
             .attr('stroke-opacity',function(l){var src=l.source.id||l.source;var tgt=l.target.id||l.target;if(src===path||tgt===path)return 0.8;return path?0.05:0.4;})
             .attr('stroke',function(l){var src=l.source.id||l.source;var tgt=l.target.id||l.target;if(src===path||tgt===path)return'var(--acc)';return theme==='light'?'#ccc':'#333';});
@@ -9742,10 +9792,11 @@ function App(){
             setActiveSymbol(null);
             if(keepReadable)return;
             link.attr('stroke',theme==='light'?'#ccc':'#333').attr('stroke-opacity',0.4);
-            node.selectAll('.nc,.nb').attr('opacity',1).attr('fill',getC);
+            node.selectAll('.nc').attr('opacity',1).attr('fill',getC);
+            node.selectAll('.nb').attr('opacity',1).attr('fill',function(d){return graphColorBlockFill(getC(d));});
         });
         node.append('circle').attr('class','nc').attr('r',getR).attr('fill',getC).attr('stroke',function(d){var c=d3.color(getC(d));return c?c.brighter(0.3):'#fff';}).attr('stroke-width',1.5);
-        node.append('rect').attr('class','nb').attr('x',function(d){return -graphColorBlockSize(d)/2;}).attr('y',function(d){return -graphColorBlockSize(d)/2;}).attr('width',graphColorBlockSize).attr('height',graphColorBlockSize).attr('rx',3).attr('fill',getC).attr('stroke',function(d){var c=d3.color(getC(d));return c?c.darker(0.35):'#000';}).attr('stroke-width',1).attr('display','none');
+        node.append('rect').attr('class','nb').attr('x',function(d){return -graphColorBlockSize(d)/2;}).attr('y',function(d){return -graphColorBlockSize(d)/2;}).attr('width',graphColorBlockSize).attr('height',graphColorBlockSize).attr('rx',3).attr('fill',function(d){return graphColorBlockFill(getC(d));}).attr('stroke',function(d){var c=d3.color(graphColorBlockFill(getC(d)));return c?c.darker(0.35):'#000';}).attr('stroke-width',1).attr('display','none');
         // Hide labels for large graphs to reduce DOM overhead. Code view keeps titles readable.
         if(keepReadable||!isLargeGraph||graphConfig.showLabels){
             node.append('text').attr('class','node-label').attr('text-anchor','middle').attr('dy',0).attr('fill',theme==='light'?'#333':'#eee').attr('font-size',function(d){return (keepReadable?Math.max(9,Math.min(12,getR(d)*0.7)):Math.max(6,Math.min(10,getR(d)*0.6)))+'px';}).attr('font-family','JetBrains Mono').attr('font-weight','600').attr('pointer-events','none').text(function(d){var n=d.name.replace(/\.[^.]+$/,'');if(keepReadable)return n.length>18?n.slice(0,17)+'…':n;var maxLen=Math.max(4,Math.floor(getR(d)/2));return n.length>maxLen+1?n.slice(0,maxLen)+'…':n;});
@@ -12008,7 +12059,7 @@ function App(){
                     ),
                     React.createElement('div',{className:'panel-content'},
                         rightTab==='details'&&(selected?React.createElement(React.Fragment,null,
-                            React.createElement('button',{className:'top-btn',style:{width:'100%',marginBottom:12},onClick:function(){setSelected(null);setBlastRadius(null);if(nodesRef.current){nodesRef.current.selectAll('.nc,.nb').transition().duration(200).attr('opacity',1).attr('fill',getNodeColor);}if(linksRef.current){linksRef.current.transition().duration(200).attr('stroke-opacity',0.4).attr('stroke',theme==='light'?'#ccc':'#333');}}},'← Back to Issues'),
+                            React.createElement('button',{className:'top-btn',style:{width:'100%',marginBottom:12},onClick:function(){setSelected(null);setBlastRadius(null);if(nodesRef.current){nodesRef.current.selectAll('.nc,.nb').transition().duration(200).attr('opacity',1).attr('fill',function(n){return d3.select(this).classed('nb')?graphColorBlockFill(getNodeColor(n)):getNodeColor(n);});}if(linksRef.current){linksRef.current.transition().duration(200).attr('stroke-opacity',0.4).attr('stroke',theme==='light'?'#ccc':'#333');}}},'← Back to Issues'),
                             React.createElement('div',{className:'panel-header',style:{margin:'0 -12px 12px',padding:12}},
                                 React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},
                                     React.createElement('div',null,
