@@ -1790,6 +1790,9 @@ test('canvas mini-map is wired for Graph and Code only', () => {
   assert.match(htmlSource, /Click or drag to pan/);
   assert.match(htmlSource, /function zoomTransformFromMinimapPoint\(/);
   assert.match(htmlSource, /function drawCanvasMinimap\(/);
+  assert.match(htmlSource, /function minimapCardInputs\(/);
+  assert.match(htmlSource, /function clampMinimapPoint\(/);
+  assert.match(htmlSource, /minimapCardInputs\(graphConfig\.vizType,codeCardSizesRef\.current,codeCardPathsRef\.current\)/);
   assert.match(htmlSource, /if\(drawMinimapRef\.current\)drawMinimapRef\.current\(\)/);
   assert.doesNotMatch(htmlSource, /minimap-drag-handle|drag indicator/);
   assert.match(htmlSource, /'aria-label':'Line thickness'/);
@@ -1815,6 +1818,17 @@ test('mini-map world bounds include nodes and code cards', () => {
   assert.equal(content.marks.some((m) => m.kind === 'node'), true);
   assert.equal(content.hulls.length, 1);
   assert.equal(content.hulls[0].folder, 'src');
+  const stale = context.minimapCardInputs('graph', sizes, cards);
+  assert.equal(stale.sizesByPath, null);
+  assert.equal(stale.cardPaths, null);
+  const graphWorld = context.collectMinimapWorldBounds(nodes, stale.sizesByPath, stale.cardPaths, 0);
+  assert.equal(graphWorld.minX, -16);
+  assert.equal(graphWorld.maxX, 216);
+  const graphContent = context.collectMinimapContent(nodes, stale.sizesByPath, stale.cardPaths, (n) => n.id === 'src/a.js' ? '#4d9fff' : '#22c55e', 0);
+  assert.equal(graphContent.marks.some((m) => m.kind === 'card'), false);
+  const live = context.minimapCardInputs('code', sizes, cards);
+  assert.equal(live.sizesByPath, sizes);
+  assert.equal(live.cardPaths, cards);
 });
 
 test('mini-map click centers the current camera on that world point', () => {
@@ -1845,6 +1859,33 @@ test('mini-map click centers the current camera on that world point', () => {
   const ptr = J(context.minimapPointerXY(120, 80, { left: 20, top: 30 }));
   assert.deepEqual(ptr, { x: 100, y: 50 });
   assert.equal(context.colorWithAlpha('#00ff9d', 0.1), 'rgba(0,255,157,0.1)');
+
+  const wide = { minX: 0, minY: 0, maxX: 400, maxY: 100, width: 400, height: 100 };
+  const letterbox = context.minimapFitRect(wide, 200, 150, 0);
+  assert.ok(letterbox);
+  assert.equal(letterbox.scale, 0.5);
+  assert.equal(letterbox.ox, 0);
+  assert.equal(letterbox.oy, 50);
+  const unclampedY = (0 - letterbox.oy) / letterbox.scale + wide.minY;
+  assert.ok(unclampedY < wide.minY);
+  const clampedTop = context.clampMinimapPoint(100, 0, wide, letterbox);
+  assert.deepEqual(J(clampedTop), { x: 100, y: 50 });
+  const edge = context.minimapToWorld(100, 0, wide, letterbox);
+  assert.equal(edge.x, 200);
+  assert.equal(edge.y, 0);
+  const bottom = context.minimapToWorld(100, 149, wide, letterbox);
+  assert.equal(bottom.x, 200);
+  assert.equal(bottom.y, 100);
+  const left = context.minimapToWorld(-20, 75, wide, letterbox);
+  assert.equal(left.x, 0);
+  assert.equal(left.y, 50);
+  const right = context.minimapToWorld(300, 75, wide, letterbox);
+  assert.equal(right.x, 400);
+  assert.equal(right.y, 50);
+  const jumpedEdge = context.zoomTransformFromMinimapPoint(100, 0, wide, letterbox, transform, 800, 600);
+  assert.equal(jumpedEdge.k, 2);
+  assert.equal(jumpedEdge.x, 400 - 200 * 2);
+  assert.equal(jumpedEdge.y, 300 - 0 * 2);
 });
 
 function memoryStorage(seed) {

@@ -7335,6 +7335,11 @@ function minimapWorldFromBoxes(boxes,pad){
     };
 }
 
+function minimapCardInputs(vizType,sizesByPath,cardPaths){
+    if(vizType!=='code')return{sizesByPath:null,cardPaths:null};
+    return{sizesByPath:sizesByPath||null,cardPaths:cardPaths||null};
+}
+
 function collectMinimapWorldBounds(nodes,sizesByPath,cardPaths,pad){
     var boxes=[];
     (nodes||[]).forEach(function(node){
@@ -7412,9 +7417,31 @@ function worldToMinimap(x,y,world,fit){
     return{x:(Number(x)-world.minX)*fit.scale+fit.ox,y:(Number(y)-world.minY)*fit.scale+fit.oy};
 }
 
+function clampMinimapPoint(mx,my,world,fit){
+    mx=Number(mx);
+    my=Number(my);
+    if(!world||!fit||!isFinite(Number(fit.scale))||!fit.scale){
+        return{x:isFinite(mx)?mx:0,y:isFinite(my)?my:0};
+    }
+    var minX=Number(fit.ox)||0;
+    var minY=Number(fit.oy)||0;
+    var maxX=minX+Number(world.width)*Number(fit.scale);
+    var maxY=minY+Number(world.height)*Number(fit.scale);
+    if(!isFinite(maxX)||maxX<minX)maxX=minX;
+    if(!isFinite(maxY)||maxY<minY)maxY=minY;
+    if(!isFinite(mx))mx=minX;
+    if(!isFinite(my))my=minY;
+    if(mx<minX)mx=minX;
+    else if(mx>maxX)mx=maxX;
+    if(my<minY)my=minY;
+    else if(my>maxY)my=maxY;
+    return{x:mx,y:my};
+}
+
 function minimapToWorld(mx,my,world,fit){
     if(!world||!fit||!fit.scale)return{x:0,y:0};
-    return{x:(Number(mx)-fit.ox)/fit.scale+world.minX,y:(Number(my)-fit.oy)/fit.scale+world.minY};
+    var p=clampMinimapPoint(mx,my,world,fit);
+    return{x:(p.x-fit.ox)/fit.scale+world.minX,y:(p.y-fit.oy)/fit.scale+world.minY};
 }
 
 function zoomTransformToCenterWorld(worldX,worldY,scale,viewW,viewH){
@@ -10167,7 +10194,8 @@ function App(){
         var viewW=svg.clientWidth||800;
         var viewH=svg.clientHeight||600;
         var nodes=simRef.current?simRef.current.nodes():[];
-        var content=collectMinimapContent(nodes,codeCardSizesRef.current,codeCardPathsRef.current,getNodeColor);
+        var overlay=minimapCardInputs(graphConfig.vizType,codeCardSizesRef.current,codeCardPathsRef.current);
+        var content=collectMinimapContent(nodes,overlay.sizesByPath,overlay.cardPaths,getNodeColor);
         if(!content.world||!content.world.width){
             minimapModelRef.current=null;
             clearCanvasMinimap(canvas);
