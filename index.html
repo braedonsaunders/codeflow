@@ -6005,16 +6005,9 @@ function shouldSeedOpenedCodeCards(inCode,sessionActive,openedPaths,gateActive){
 
 function codeViewAnalysisRootFolder(data){
     if(!data||!data.files||!data.files.length)return'root';
-    var hasBareRoot=false;
-    var tops=Object.create(null);
-    for(var i=0;i<data.files.length;i++){
-        var folder=data.files[i]&&data.files[i].folder?data.files[i].folder:'root';
-        if(folder==='root')hasBareRoot=true;
-        else tops[String(folder).split('/')[0]]=true;
-    }
-    if(hasBareRoot)return'root';
-    var keys=Object.keys(tops);
-    if(keys.length===1)return keys[0];
+    // Folder and ZIP loaders already strip a common archive prefix before
+    // assigning folder. A remaining lone top-level directory (src/, lib/, …)
+    // is nested project structure, not an analysis-root wrapper.
     return'root';
 }
 

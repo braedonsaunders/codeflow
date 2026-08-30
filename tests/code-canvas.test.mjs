@@ -115,7 +115,7 @@ test('visible code files are not capped at four', () => {
   assert.equal(seeded.length, 6);
 });
 
-test('root file count ignores nested files and unwraps a single zip prefix', () => {
+test('root file count ignores nested files including a lone top-level directory', () => {
   const flat = {
     files: [
       { path: 'a.js', folder: 'root' },
@@ -134,8 +134,8 @@ test('root file count ignores nested files and unwraps a single zip prefix', () 
       { path: 'repo/src/c.js', folder: 'repo/src' }
     ]
   };
-  assert.equal(context.codeViewAnalysisRootFolder(wrapped), 'repo');
-  assert.equal(context.countCodeViewRootFiles(wrapped), 2);
+  assert.equal(context.codeViewAnalysisRootFolder(wrapped), 'root');
+  assert.equal(context.countCodeViewRootFiles(wrapped), 0);
   const nested = {
     files: [
       { path: 'src/a.js', folder: 'src' },
@@ -145,6 +145,16 @@ test('root file count ignores nested files and unwraps a single zip prefix', () 
   assert.equal(context.codeViewAnalysisRootFolder(nested), 'root');
   assert.equal(context.countCodeViewRootFiles(nested), 0);
   assert.equal(context.countCodeViewRootFiles({ files: [] }), 0);
+  const loneTop = {
+    files: Array.from({ length: 60 }, (_, i) => ({
+      path: 'src/f' + i + '.js',
+      folder: 'src',
+      name: 'f' + i + '.js'
+    }))
+  };
+  assert.equal(context.codeViewAnalysisRootFolder(loneTop), 'root');
+  assert.equal(context.countCodeViewRootFiles(loneTop), 0);
+  assert.equal(context.codeViewRootGateActive(loneTop, null, null, [], 50), false);
 });
 
 test('Code root gate waits for a folder or file when the root is crowded', () => {
