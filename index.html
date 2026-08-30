@@ -228,8 +228,6 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .code-root-gate{position:absolute;inset:0;z-index:6;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px;pointer-events:none;background:color-mix(in srgb,var(--bg0) 70%,transparent)}
 .code-root-gate .empty-title{font-size:14px}
 .code-root-gate .empty-desc{font-size:11px;max-width:320px;line-height:1.45;white-space:pre-wrap}
-.code-view-gate-select{background:var(--bg0);border:1px solid var(--border);border-radius:5px;color:var(--t1);font-family:inherit;font-size:9px;padding:2px 4px;margin-left:2px;cursor:pointer}
-.code-view-gate-select:focus{outline:none;border-color:var(--acc)}
 .loading{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%}
 .spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--acc);border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:16px}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -512,7 +510,8 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .code-card.wrap .file-preview-line{align-items:flex-start;height:auto}
 .code-card.wrap .file-preview-text{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;min-width:0}
 .code-card-body .file-preview-code{padding:8px 0;font-size:11px}
-.color-by.code-view-prefs{flex-direction:row;flex-wrap:wrap;align-items:center;gap:2px;padding:3px 3px 3px 6px;max-width:min(360px,calc(100% - 24px))}
+.color-by.code-view-prefs{flex-direction:column;align-items:stretch;gap:2px;padding:3px 4px;max-width:min(280px,calc(100% - 24px))}
+.code-view-prefs-row{display:flex;flex-direction:row;align-items:center;gap:2px}
 .code-card-resize{position:absolute;z-index:3;background:transparent}
 .code-card-resize-e{top:14px;right:-4px;width:10px;bottom:14px;cursor:ew-resize}
 .code-card-resize-s{left:14px;right:14px;bottom:-4px;height:10px;cursor:ns-resize}
@@ -11653,11 +11652,15 @@ function App(){
     function renderCodeViewPrefs(){
         if(graphConfig.vizType!=='code')return null;
         return React.createElement('div',{className:'color-by code-view-prefs',role:'toolbar','aria-label':'Code view options'},
-            React.createElement('button',{type:'button',className:'color-by-btn'+(codeViewExpand?' active':''),'aria-pressed':codeViewExpand?'true':'false',onClick:function(){setCodeViewExpand(!codeViewExpand);}},'Expand All'),
-            React.createElement('button',{type:'button',className:'color-by-btn'+(codeViewWrap?' active':''),'aria-pressed':codeViewWrap?'true':'false',onClick:function(){setCodeViewWrap(!codeViewWrap);}},'Wrap Text'),
-            React.createElement('span',{className:'color-by-label',title:'Skip Code cards when this many files sit at the project root'},'Root'),
-            React.createElement('select',{className:'code-view-gate-select','aria-label':'Root file gate',title:'Skip Code cards when this many files sit at the project root',value:String(codeViewRootGate),onChange:function(e){persistCodeViewRootGate(e.target.value);}},
-                CODE_VIEW_ROOT_GATE_STEPS.map(function(n){return React.createElement('option',{key:n,value:String(n)},String(n));})
+            React.createElement('div',{className:'code-view-prefs-row'},
+                React.createElement('button',{type:'button',className:'color-by-btn'+(codeViewExpand?' active':''),'aria-pressed':codeViewExpand?'true':'false',onClick:function(){setCodeViewExpand(!codeViewExpand);}},'Expand All'),
+                React.createElement('button',{type:'button',className:'color-by-btn'+(codeViewWrap?' active':''),'aria-pressed':codeViewWrap?'true':'false',onClick:function(){setCodeViewWrap(!codeViewWrap);}},'Wrap Text')
+            ),
+            React.createElement('div',{className:'code-view-prefs-row',role:'group','aria-label':'Load Files'},
+                React.createElement('span',{className:'color-by-label',title:'Skip Code cards when this many files sit at the project root'},'Load Files'),
+                CODE_VIEW_ROOT_GATE_STEPS.map(function(n){
+                    return React.createElement('button',{key:n,type:'button',className:'color-by-btn'+(codeViewRootGate===n?' active':''),'aria-pressed':codeViewRootGate===n?'true':'false',title:'Skip Code cards when this many files sit at the project root',onClick:function(){persistCodeViewRootGate(n);}},String(n));
+                })
             )
         );
     }

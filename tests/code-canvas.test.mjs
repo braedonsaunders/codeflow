@@ -1508,12 +1508,15 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /function codeViewRootGateMessage\(/);
   assert.match(htmlSource, /function persistCodeViewRootGate\(/);
   assert.match(htmlSource, /className:'code-root-gate'/);
-  assert.match(htmlSource, /className:'code-view-gate-select'/);
+  assert.match(htmlSource, /className:'code-view-prefs-row'/);
+  assert.match(htmlSource, /Load Files/);
+  assert.match(htmlSource, /persistCodeViewRootGate\(n\)/);
+  assert.doesNotMatch(htmlSource, /className:'code-view-gate-select'/);
+  assert.doesNotMatch(htmlSource, /code-view-prefs[\s\S]{0,400}createElement\('select'/);
   assert.match(htmlSource, /Pick a folder or file/);
   assert.match(htmlSource, /codeRootGateActive/);
   assert.match(htmlSource, /shouldSeedOpenedCodeCards\(true,codeViewSessionRef\.current,openedCodePaths,codeRootGateActive\)/);
   assert.match(htmlSource, /if\(!data\|\|codeRootGateActive\)return\[\]/);
-  assert.match(htmlSource, /persistCodeViewRootGate\(e\.target\.value\)/);
   assert.match(htmlSource, /useState\(readUiPrefs\(\)\.codeViewRootGate\)/);
   assert.match(htmlSource, /persistUiPrefs\(\{codeViewRootGate:value\}\)/);
   assert.match(htmlSource, /normalizeCodeCardPrefs/);
