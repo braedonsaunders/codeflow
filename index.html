@@ -6270,9 +6270,17 @@ function nodeWorldBox(node,size){
 
 function cardWorldBox(node,sizesByPath,boxesByPath){
     if(!node)return null;
-    if(boxesByPath&&boxesByPath[node.id])return boxesByPath[node.id];
     var size=(sizesByPath&&sizesByPath[node.id])||codeCardSize(null);
-    return nodeWorldBox(node,size);
+    var live=nodeWorldBox(node,size);
+    var snap=boxesByPath&&boxesByPath[node.id];
+    if(!snap)return live;
+    if(!live)return snap;
+    var liveCx=live.x+live.width/2,liveCy=live.y+live.height/2;
+    var snapCx=snap.x+snap.width/2,snapCy=snap.y+snap.height/2;
+    if(Math.abs(liveCx-snapCx)>0.5||Math.abs(liveCy-snapCy)>0.5){
+        return{x:liveCx-snap.width/2,y:liveCy-snap.height/2,width:snap.width,height:snap.height};
+    }
+    return snap;
 }
 
 function resolveBoxOverlap(box,obstacles,gap){
@@ -6379,6 +6387,41 @@ function nudgeLeftoverGroupsFromCards(nodes,cardPaths,sizesByPath,pad,boxesByPat
     return nodes;
 }
 
+function leftoverSpatialCellKey(x,y,cell){
+    var size=Number(cell);
+    if(!isFinite(size)||size<=0)size=36;
+    return Math.floor((Number(x)||0)/size)+'\t'+Math.floor((Number(y)||0)/size);
+}
+
+function leftoverSeparationNeighbors(a,b,gap){
+    if(!a||!b||a===b)return false;
+    var dx=b.x-a.x,dy=b.y-a.y;
+    var dist=Math.hypot(dx,dy);
+    if(dist>=gap)return false;
+    var push=(gap-(dist||0.01))/2;
+    var nx=dist<1e-6?1:dx/dist;
+    var ny=dist<1e-6?0:dy/dist;
+    a.x-=nx*push;
+    a.y-=ny*push;
+    b.x+=nx*push;
+    b.y+=ny*push;
+    if(a.fx!=null)a.fx=a.x;
+    if(a.fy!=null)a.fy=a.y;
+    if(b.fx!=null)b.fx=b.x;
+    if(b.fy!=null)b.fy=b.y;
+    return true;
+}
+
+function leftoverSeparationBuckets(leftovers,cell){
+    var buckets=Object.create(null);
+    (leftovers||[]).forEach(function(node,i){
+        var key=leftoverSpatialCellKey(node.x,node.y,cell);
+        if(!buckets[key])buckets[key]=[];
+        buckets[key].push(i);
+    });
+    return buckets;
+}
+
 function separateLeftoverCodeNodes(nodes,cardPaths,gap){
     gap=gap==null?36:Number(gap)||36;
     var leftovers=[];
@@ -6387,27 +6430,25 @@ function separateLeftoverCodeNodes(nodes,cardPaths,gap){
         if(!isFinite(node.x)||!isFinite(node.y))return;
         leftovers.push(node);
     });
-    var pass,i,j;
+    if(leftovers.length<2)return nodes;
+    var cell=Math.max(gap,1);
+    var pass,i,ox,oy;
     for(pass=0;pass<6;pass++){
+        var buckets=leftoverSeparationBuckets(leftovers,cell);
         var moved=false;
         for(i=0;i<leftovers.length;i++){
-            for(j=i+1;j<leftovers.length;j++){
-                var a=leftovers[i],b=leftovers[j];
-                var dx=b.x-a.x,dy=b.y-a.y;
-                var dist=Math.hypot(dx,dy);
-                if(dist>=gap)continue;
-                var push=(gap-(dist||0.01))/2;
-                var nx=dist<1e-6?1:dx/dist;
-                var ny=dist<1e-6?0:dy/dist;
-                a.x-=nx*push;
-                a.y-=ny*push;
-                b.x+=nx*push;
-                b.y+=ny*push;
-                if(a.fx!=null)a.fx=a.x;
-                if(a.fy!=null)a.fy=a.y;
-                if(b.fx!=null)b.fx=b.x;
-                if(b.fy!=null)b.fy=b.y;
-                moved=true;
+            var a=leftovers[i];
+            var cx=Math.floor(a.x/cell);
+            var cy=Math.floor(a.y/cell);
+            for(ox=-1;ox<=1;ox++){
+                for(oy=-1;oy<=1;oy++){
+                    var group=buckets[cx+ox+'\t'+(cy+oy)];
+                    if(!group)continue;
+                    group.forEach(function(j){
+                        if(j<=i)return;
+                        if(leftoverSeparationNeighbors(a,leftovers[j],gap))moved=true;
+                    });
+                }
             }
         }
         if(!moved)break;

@@ -718,6 +718,97 @@ test('dropped Code cards bump off other cards and leftover hulls move aside', ()
   assert.ok(context.leftoverHullObstacles(tall, tallCards).length >= 1);
 });
 
+test('cardWorldBox keeps snapshot size but follows a live node after bump', () => {
+  const node = { id: 'src/b.js', x: 321, y: 50, fx: 321, fy: 50 };
+  const sizes = { 'src/b.js': { width: 180, height: 90 } };
+  const stale = { 'src/b.js': { x: 120, y: 0, width: 200, height: 100 } };
+  const live = context.cardWorldBox(node, sizes, stale);
+  assert.deepEqual(J(live), { x: 221, y: 0, width: 200, height: 100 });
+  const same = context.cardWorldBox(node, sizes, {
+    'src/b.js': { x: 221, y: 0, width: 200, height: 100 }
+  });
+  assert.deepEqual(J(same), { x: 221, y: 0, width: 200, height: 100 });
+});
+
+test('settleCodeViewAfterDrag uses bumped card coords when boxesByPath is stale', () => {
+  const sizes = {
+    'src/a.js': { width: 200, height: 100 },
+    'src/b.js': { width: 200, height: 100 }
+  };
+  const cards = new Set(['src/a.js', 'src/b.js']);
+  const cardA = { id: 'src/a.js', folder: 'src', x: 100, y: 50, fx: 100, fy: 50 };
+  const cardB = { id: 'src/b.js', folder: 'src', x: 220, y: 50, fx: 220, fy: 50 };
+  const leftover = { id: 'lib/c.js', folder: 'lib', x: 450, y: 50, fx: 450, fy: 50 };
+  const staleBoxes = {
+    'src/a.js': { x: 0, y: 0, width: 200, height: 100 },
+    'src/b.js': { x: 120, y: 0, width: 200, height: 100 }
+  };
+  const leftoverStartBox = { x: leftover.x - 22, y: leftover.y - 22, width: 44, height: 44 };
+  assert.equal(context.boxesOverlap(staleBoxes['src/b.js'], leftoverStartBox, 40), false);
+  const beforeB = { x: cardB.x, y: cardB.y };
+  context.settleCodeViewAfterDrag([cardA, cardB, leftover], cards, sizes, 'src/b.js', {
+    boxesByPath: staleBoxes,
+    cardGap: 20,
+    hullPad: 40,
+    nodePad: 48
+  });
+  assert.notDeepEqual({ x: cardB.x, y: cardB.y }, beforeB);
+  const bumpedBox = context.nodeWorldBox(cardB, sizes['src/b.js']);
+  const leftoverBox = { x: leftover.x - 22, y: leftover.y - 22, width: 44, height: 44 };
+  assert.equal(context.boxesOverlap(bumpedBox, leftoverBox, 0), false);
+});
+
+test('leftoverSpatialCellKey buckets leftover centers into coarse cells', () => {
+  assert.equal(context.leftoverSpatialCellKey(10, 10, 40), '0\t0');
+  assert.equal(context.leftoverSpatialCellKey(39.9, 0, 40), '0\t0');
+  assert.equal(context.leftoverSpatialCellKey(40, 0, 40), '1\t0');
+  assert.equal(context.leftoverSpatialCellKey(-1, -1, 40), '-1\t-1');
+});
+
+test('leftoverSeparationBuckets groups leftover nodes by spatial cell', () => {
+  const leftovers = [
+    { id: 'a', x: 5, y: 5 },
+    { id: 'b', x: 8, y: 6 },
+    { id: 'c', x: 80, y: 5 }
+  ];
+  const buckets = context.leftoverSeparationBuckets(leftovers, 40);
+  assert.deepEqual(J(buckets['0\t0']), [0, 1]);
+  assert.deepEqual(J(buckets['2\t0']), [2]);
+});
+
+test('leftoverSeparationNeighbors pushes only overlapping leftover pairs', () => {
+  const a = { id: 'src/a.js', x: 100, y: 80, fx: 100, fy: 80 };
+  const b = { id: 'src/b.js', x: 102, y: 80, fx: 102, fy: 80 };
+  const far = { id: 'lib/far.js', x: 800, y: 80, fx: 800, fy: 80 };
+  assert.equal(context.leftoverSeparationNeighbors(a, b, 36), true);
+  assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 36);
+  assert.equal(context.leftoverSeparationNeighbors(a, far, 36), false);
+  assert.equal(far.x, 800);
+});
+
+test('separateLeftoverCodeNodes still separates nearby leftovers after spatial bucketing', () => {
+  const a = { id: 'src/a.js', folder: 'src', x: 100, y: 80, fx: 100, fy: 80 };
+  const b = { id: 'src/b.js', folder: 'src', x: 102, y: 80, fx: 102, fy: 80 };
+  const far = { id: 'lib/far.js', folder: 'lib', x: 800, y: 80, fx: 800, fy: 80 };
+  context.separateLeftoverCodeNodes([a, b, far], new Set(), 36);
+  assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 36);
+  assert.equal(far.x, 800);
+  assert.equal(far.y, 80);
+});
+
+test('separateLeftoverCodeNodes leaves a sparse leftover field in place', () => {
+  const leftovers = [];
+  for (let col = 0; col < 8; col += 1) {
+    leftovers.push({ id: `src/n${col}.js`, folder: 'src', x: col * 200, y: 40, fx: col * 200, fy: 40 });
+  }
+  const before = leftovers.map((node) => ({ x: node.x, y: node.y }));
+  context.separateLeftoverCodeNodes(leftovers, new Set(), 36);
+  leftovers.forEach((node, index) => {
+    assert.equal(node.x, before[index].x);
+    assert.equal(node.y, before[index].y);
+  });
+});
+
 test('expensive Code layout waits until drag release', () => {
   assert.equal(context.codeViewDragRefresh('move'), false);
   assert.equal(context.codeViewDragRefresh('release'), true);
@@ -1374,6 +1465,9 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /bumpOverlappingCodeCards/);
   assert.match(htmlSource, /nudgeLeftoverGroupsFromCards/);
   assert.match(htmlSource, /separateLeftoverCodeNodes/);
+  assert.match(htmlSource, /leftoverSpatialCellKey/);
+  assert.match(htmlSource, /leftoverSeparationNeighbors/);
+  assert.match(htmlSource, /leftoverSeparationBuckets/);
   assert.match(htmlSource, /leftoverHullObstacles/);
   assert.match(htmlSource, /cardWorldBox/);
   assert.match(htmlSource, /boxesByPath:readCodeCardWorldBoxes/);
