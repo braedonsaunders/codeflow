@@ -5914,21 +5914,21 @@ function colorBlockLooksLikeDiff(color){
 function graphColorBlockFill(color){
     var hex=String(color||'').trim();
     var known={
-        '#00ff9d':'#22d3ee',
-        '#00cc7d':'#22d3ee',
-        '#00a86b':'#4d9fff',
-        '#22c55e':'#4d9fff',
-        '#84cc16':'#ff9f43',
-        '#98c379':'#56b6c2',
-        '#ff5f5f':'#a78bfa',
-        '#e06c75':'#d19a66',
-        '#ff6b6b':'#a78bfa'
+        '#00ff9d':'#38bdf8',
+        '#00cc7d':'#67e8f9',
+        '#00a86b':'#93c5fd',
+        '#22c55e':'#2dd4bf',
+        '#84cc16':'#e879f9',
+        '#98c379':'#5eead4',
+        '#ff5f5f':'#818cf8',
+        '#e06c75':'#f472b6',
+        '#ff6b6b':'#fbbf24'
     };
     var key=hex.toLowerCase();
     if(known[key])return known[key];
     if(!colorBlockLooksLikeDiff(hex))return hex||'#4d9fff';
     var h=cssHexHue(hex);
-    return (h<=25||h>=335)?'#a78bfa':'#22d3ee';
+    return (h<=25||h>=335)?'#c4b5fd':'#7dd3fc';
 }
 
 function codeColorBlockKindColor(kind){
@@ -6201,6 +6201,16 @@ function codeCardVisualLineIndex(file,line,prefs){
         visual+=Math.max(1,Math.ceil((chars[i]||0)/cols)||1);
     }
     return visual+1;
+}
+
+function codeCardVisualLineEndIndex(file,line,prefs){
+    var n=Math.max(1,Number(line)||1);
+    prefs=normalizeCodeCardPrefs(prefs);
+    if(!prefs.wrap)return n;
+    var metrics=codeCardContentMetrics(file);
+    var total=codeCardWrappedLineCount(metrics,prefs);
+    if(n>=Math.max(1,metrics.lines||1))return total;
+    return Math.max(n,codeCardVisualLineIndex(file,n+1,prefs)-1);
 }
 
 function codeCardNaturalWidth(metrics){
@@ -7042,7 +7052,7 @@ function codeColorBlockSections(file,connections,prefs){
     }
     return sections.map(function(section){
         var startVisual=file?codeCardVisualLineIndex(file,section.startLine,prefs):section.startLine;
-        var endVisual=file?codeCardVisualLineIndex(file,section.endLine,prefs):section.endLine;
+        var endVisual=file?codeCardVisualLineEndIndex(file,section.endLine,prefs):section.endLine;
         if(endVisual<startVisual)endVisual=startVisual;
         return Object.assign({},section,{
             color:codeColorBlockKindColor(section.kind),

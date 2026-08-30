@@ -63,6 +63,18 @@ test('zoom-out color blocks avoid red and green diff colors', () => {
   const churnLow = context.graphColorBlockFill('#22c55e');
   assert.notEqual(churnHigh.toLowerCase(), '#ff5f5f');
   assert.notEqual(churnLow.toLowerCase(), '#22c55e');
+  const folderPalette = ['#4d9fff', '#a78bfa', '#22d3ee', '#00ff9d', '#ff9f43', '#ec4899', '#ff5f5f', '#84cc16'];
+  const folderFills = folderPalette.map((hex) => context.graphColorBlockFill(hex).toLowerCase());
+  assert.equal(new Set(folderFills).size, folderPalette.length);
+  folderFills.forEach((hex) => {
+    assert.equal(context.colorBlockLooksLikeDiff(hex), false, hex);
+  });
+  const layerPalette = ['#4d9fff', '#22d3ee', '#a78bfa', '#00ff9d', '#ff9f43', '#ec4899', '#f59e0b', '#c084fc'];
+  const layerFills = layerPalette.map((hex) => context.graphColorBlockFill(hex).toLowerCase());
+  assert.equal(new Set(layerFills).size, layerPalette.length);
+  assert.notEqual(context.graphColorBlockFill('#00ff9d').toLowerCase(), '#22d3ee');
+  assert.notEqual(context.graphColorBlockFill('#ff5f5f').toLowerCase(), '#a78bfa');
+  assert.notEqual(context.graphColorBlockFill('#84cc16').toLowerCase(), '#ff9f43');
 });
 
 test('code color blocks cover functions and leftover file regions', () => {
@@ -93,6 +105,32 @@ test('code color blocks cover functions and leftover file regions', () => {
   assert.equal(empty.length, 1);
   assert.equal(empty[0].name, 'notes.md');
   assert.equal(empty[0].kind, 'file');
+  const wrapCols = context.codeCardWrapColumns();
+  const long = 'x'.repeat(800);
+  const oneLiner = { name: 'one.js', path: 'one.js', content: long };
+  const visualRows = context.codeCardWrappedLineCount(context.codeCardContentMetrics(oneLiner), { wrap: true });
+  assert.ok(visualRows > 8);
+  assert.equal(context.codeCardVisualLineIndex(oneLiner, 1, { wrap: true }), 1);
+  assert.equal(context.codeCardVisualLineEndIndex(oneLiner, 1, { wrap: true }), visualRows);
+  const wrappedFile = context.codeColorBlockSections(oneLiner, [], { wrap: true });
+  assert.equal(wrappedFile.length, 1);
+  assert.equal(wrappedFile[0].height, visualRows * context.CODE_CARD_LINE_HEIGHT);
+  assert.ok(wrappedFile[0].height > context.CODE_CARD_LINE_HEIGHT);
+  const mid = {
+    name: 'mid.js',
+    path: 'mid.js',
+    content: 'function foo(){\n' + long + '\n}\nfunction bar(){\n  return 1;\n}\n',
+    functions: [
+      { name: 'foo', line: 1, isExported: false },
+      { name: 'bar', line: 4, isExported: false }
+    ]
+  };
+  const midSections = context.codeColorBlockSections(mid, [], { wrap: true });
+  const foo = midSections.find((s) => s.name === 'foo');
+  const fooEnd = 1 + Math.ceil(800 / wrapCols) + 1;
+  assert.equal(foo.endLine, 3);
+  assert.equal(context.codeCardVisualLineEndIndex(mid, 3, { wrap: true }), fooEnd);
+  assert.equal(foo.height, fooEnd * context.CODE_CARD_LINE_HEIGHT);
 });
 
 test('card layout toggles color-block and far-zoom classes at the thresholds', () => {
@@ -401,6 +439,13 @@ test('code cards use a uniform width and grow with line count', () => {
   assert.ok(wrapCols >= 20);
   assert.equal(context.codeCardWrappedLineCount({ lines: 1, lineChars: [200] }, { wrap: true }), Math.ceil(200 / wrapCols));
   assert.equal(context.codeCardVisualLineIndex({ content: 'short\n' + 'x'.repeat(200) }, 2, { wrap: true }), 2);
+  const wrappedTwo = { content: 'short\n' + 'x'.repeat(200) };
+  assert.equal(context.codeCardVisualLineEndIndex(wrappedTwo, 1, { wrap: true }), 1);
+  assert.equal(
+    context.codeCardVisualLineEndIndex(wrappedTwo, 2, { wrap: true }),
+    1 + Math.ceil(200 / wrapCols)
+  );
+  assert.equal(context.codeCardVisualLineEndIndex(wrappedTwo, 2, {}), 2);
 });
 
 test('opened code paths append without reshuffling the set', () => {
@@ -1376,6 +1421,7 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /'aria-pressed':codeViewWrap/);
   assert.match(htmlSource, /normalizeCodeCardPrefs/);
   assert.match(htmlSource, /codeCardWrapColumns/);
+  assert.match(htmlSource, /codeCardVisualLineEndIndex/);
   assert.match(htmlSource, /liveGraphNodeXY/);
   assert.match(htmlSource, /readCodeCardWorldBoxes/);
   assert.match(htmlSource, /codeFolderHullBounds/);
