@@ -698,12 +698,24 @@ test('dropped Code cards bump off other cards and leftover hulls move aside', ()
   const cardPaths = new Set(['src/card.js']);
   const cardSizes = { 'src/card.js': { width: 200, height: 140 } };
   context.settleCodeViewAfterDrag(buried, cardPaths, cardSizes, 'src/card.js');
-  const cardBox = context.nodeWorldBox(buried[0], cardSizes['src/card.js']);
+  const cardBox = context.cardWorldBox(buried[0], cardSizes);
   buried.slice(1).forEach((node) => {
     const leftover = { x: node.x - 16, y: node.y - 16, width: 32, height: 32 };
     assert.equal(context.boxesOverlap(cardBox, leftover, 20), false);
   });
   assert.ok(Math.abs(buried[1].x - buried[2].x) >= 20 || Math.abs(buried[1].y - buried[2].y) >= 20);
+
+  const tall = [
+    { id: 'src/big.js', folder: 'src', x: 200, y: 400, fx: 200, fy: 400 },
+    { id: 'src/under.js', folder: 'src', x: 200, y: 900, fx: 200, fy: 900 }
+  ];
+  const tallSizes = { 'src/big.js': { width: 200, height: 1200 } };
+  const tallCards = new Set(['src/big.js']);
+  context.settleCodeViewAfterDrag(tall, tallCards, tallSizes, 'src/big.js');
+  const tallBox = context.cardWorldBox(tall[0], tallSizes);
+  const under = { x: tall[1].x - 16, y: tall[1].y - 16, width: 32, height: 32 };
+  assert.equal(context.boxesOverlap(tallBox, under, 20), false);
+  assert.ok(context.leftoverHullObstacles(tall, tallCards).length >= 1);
 });
 
 test('expensive Code layout waits until drag release', () => {
@@ -1362,6 +1374,9 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /bumpOverlappingCodeCards/);
   assert.match(htmlSource, /nudgeLeftoverGroupsFromCards/);
   assert.match(htmlSource, /separateLeftoverCodeNodes/);
+  assert.match(htmlSource, /leftoverHullObstacles/);
+  assert.match(htmlSource, /cardWorldBox/);
+  assert.match(htmlSource, /boxesByPath:readCodeCardWorldBoxes/);
   assert.match(htmlSource, /beginCodeCardResize/);
   assert.match(htmlSource, /data-code-resize/);
   assert.match(htmlSource, /code-card-resize-e/);

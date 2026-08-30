@@ -5851,31 +5851,35 @@ function nodeReplacedByCard(path,cardPaths){
     return !!(cardPaths&&cardPaths.has(path));
 }
 
-function unburyNodesFromCards(nodes,cardPaths,sizesByPath,pad){
+function unburyNodesFromCards(nodes,cardPaths,sizesByPath,pad,boxesByPath){
     pad=pad==null?36:pad;
     var list=nodes||[];
     var cards=[];
     list.forEach(function(node){
-        if(!node||!cardPaths||!cardPaths.has(node.id)||!isFinite(node.x)||!isFinite(node.y))return;
-        cards.push(node);
+        if(!node||!cardPaths||!cardPaths.has(node.id))return;
+        var box=cardWorldBox(node,sizesByPath,boxesByPath);
+        if(!box)return;
+        cards.push({node:node,box:box});
     });
     if(!cards.length)return list;
     var pass;
     for(pass=0;pass<4;pass++){
         var moved=false;
         list.forEach(function(node){
-            if(!node||(cardPaths&&cardPaths.has(node.id))||!isFinite(node.x)||!isFinite(node.y))return;
+            if(!node||(cardPaths&&cardPaths.has(node.id)))return;
+            var xy=liveGraphNodeXY(node);
+            if(!xy)return;
             cards.forEach(function(card){
-                var size=(sizesByPath&&sizesByPath[card.id])||codeCardSize(null);
-                var hw=size.width/2+pad,hh=size.height/2+pad;
-                var dx=node.x-card.x,dy=node.y-card.y;
-                if(Math.abs(dx)>=hw||Math.abs(dy)>=hh)return;
-                var left=hw+dx,right=hw-dx,top=hh+dy,bottom=hh-dy;
-                var min=Math.min(left,right,top,bottom);
-                if(min===left)node.x=card.x-hw;
-                else if(min===right)node.x=card.x+hw;
-                else if(min===top)node.y=card.y-hh;
-                else node.y=card.y+hh;
+                var box=card.box;
+                var left=box.x-pad,top=box.y-pad,right=box.x+box.width+pad,bottom=box.y+box.height+pad;
+                if(xy.x<left||xy.x>right||xy.y<top||xy.y>bottom)return;
+                var dLeft=xy.x-left,dRight=right-xy.x,dTop=xy.y-top,dBottom=bottom-xy.y;
+                var min=Math.min(dLeft,dRight,dTop,dBottom);
+                if(min===dLeft)xy.x=left;
+                else if(min===dRight)xy.x=right;
+                else if(min===dTop)xy.y=top;
+                else xy.y=bottom;
+                node.x=xy.x;node.y=xy.y;
                 if(node.fx!=null)node.fx=node.x;
                 if(node.fy!=null)node.fy=node.y;
                 moved=true;
@@ -6264,6 +6268,13 @@ function nodeWorldBox(node,size){
     return{x:xy.x-width/2,y:xy.y-height/2,width:width,height:height};
 }
 
+function cardWorldBox(node,sizesByPath,boxesByPath){
+    if(!node)return null;
+    if(boxesByPath&&boxesByPath[node.id])return boxesByPath[node.id];
+    var size=(sizesByPath&&sizesByPath[node.id])||codeCardSize(null);
+    return nodeWorldBox(node,size);
+}
+
 function resolveBoxOverlap(box,obstacles,gap){
     if(!box)return null;
     gap=gap==null?24:Number(gap)||0;
@@ -6313,20 +6324,35 @@ function leftoverGroupBox(nodes,pad){
     (nodes||[]).forEach(function(node){
         var xy=liveGraphNodeXY(node);
         if(!xy)return;
-        boxes.push({x:xy.x-16,y:xy.y-16,width:32,height:32});
+        boxes.push({x:xy.x-22,y:xy.y-22,width:44,height:44});
     });
-    return unionPaddedBoxes(boxes,pad==null?12:pad,0);
+    return unionPaddedBoxes(boxes,pad==null?16:pad,0);
 }
 
-function nudgeLeftoverGroupsFromCards(nodes,cardPaths,sizesByPath,pad){
-    pad=pad==null?28:pad;
+function leftoverHullObstacles(nodes,cardPaths){
+    var leftoversByFolder=Object.create(null);
+    (nodes||[]).forEach(function(node){
+        if(!node||(cardPaths&&cardPaths.has(node.id)))return;
+        var folder=node.folder||'root';
+        if(!leftoversByFolder[folder])leftoversByFolder[folder]=[];
+        leftoversByFolder[folder].push(node);
+    });
+    var hulls=[];
+    Object.keys(leftoversByFolder).forEach(function(folder){
+        var hull=leftoverGroupBox(leftoversByFolder[folder],16);
+        if(hull)hulls.push(hull);
+    });
+    return hulls;
+}
+
+function nudgeLeftoverGroupsFromCards(nodes,cardPaths,sizesByPath,pad,boxesByPath){
+    pad=pad==null?40:pad;
     var cards=[];
     var leftoversByFolder=Object.create(null);
     (nodes||[]).forEach(function(node){
         if(!node)return;
         if(cardPaths&&cardPaths.has(node.id)){
-            var size=(sizesByPath&&sizesByPath[node.id])||codeCardSize(null);
-            var box=nodeWorldBox(node,size);
+            var box=cardWorldBox(node,sizesByPath,boxesByPath);
             if(box)cards.push(box);
             return;
         }
@@ -6336,7 +6362,7 @@ function nudgeLeftoverGroupsFromCards(nodes,cardPaths,sizesByPath,pad){
     });
     Object.keys(leftoversByFolder).forEach(function(folder){
         var group=leftoversByFolder[folder];
-        var hull=leftoverGroupBox(group,12);
+        var hull=leftoverGroupBox(group,16);
         if(!hull)return;
         var next=resolveBoxOverlap(hull,cards,pad);
         if(!next)return;
@@ -6391,6 +6417,7 @@ function separateLeftoverCodeNodes(nodes,cardPaths,gap){
 
 function settleCodeViewAfterDrag(nodes,cardPaths,sizesByPath,droppedId,options){
     options=options||{};
+    var boxesByPath=options.boxesByPath||null;
     var dropped=null;
     if(droppedId){
         (nodes||[]).some(function(node){
@@ -6398,18 +6425,36 @@ function settleCodeViewAfterDrag(nodes,cardPaths,sizesByPath,droppedId,options){
             return false;
         });
     }
-    var before=dropped&&isFinite(dropped.x)&&isFinite(dropped.y)?{x:dropped.x,y:dropped.y}:null;
+    function applyDroppedDelta(before){
+        if(!dropped||!before)return;
+        var dx=dropped.x-before.x,dy=dropped.y-before.y;
+        if(dx||dy)translateCodeViewSiblings(nodes,dropped,dx,dy,cardPaths);
+    }
+    var before=dropped?liveGraphNodeXY(dropped):null;
     if(dropped&&cardPaths&&cardPaths.has(dropped.id)){
         bumpOverlappingCodeCards(nodes,dropped.id,cardPaths,sizesByPath,options.cardGap==null?24:options.cardGap);
-        if(before){
-            var bumpDx=dropped.x-before.x;
-            var bumpDy=dropped.y-before.y;
-            if(bumpDx||bumpDy)translateCodeViewSiblings(nodes,dropped,bumpDx,bumpDy,cardPaths);
+        applyDroppedDelta(before);
+        before=liveGraphNodeXY(dropped);
+    }
+    var pass;
+    for(pass=0;pass<3;pass++){
+        nudgeLeftoverGroupsFromCards(nodes,cardPaths,sizesByPath,options.hullPad==null?40:options.hullPad,boxesByPath);
+    }
+    unburyNodesFromCards(nodes,cardPaths,sizesByPath,options.nodePad==null?48:options.nodePad,boxesByPath);
+    if(dropped&&cardPaths&&cardPaths.has(dropped.id)){
+        before=liveGraphNodeXY(dropped);
+        var hulls=leftoverHullObstacles(nodes,cardPaths);
+        var box=cardWorldBox(dropped,sizesByPath,boxesByPath);
+        if(box&&hulls.length){
+            var next=resolveBoxOverlap(box,hulls,options.hullPad==null?40:options.hullPad);
+            if(next&&(next.x!==box.x||next.y!==box.y)){
+                dropped.x=dropped.fx=next.x+next.width/2;
+                dropped.y=dropped.fy=next.y+next.height/2;
+                applyDroppedDelta(before);
+            }
         }
     }
-    nudgeLeftoverGroupsFromCards(nodes,cardPaths,sizesByPath,options.hullPad==null?28:options.hullPad);
-    unburyNodesFromCards(nodes,cardPaths,sizesByPath,options.nodePad==null?36:options.nodePad);
-    separateLeftoverCodeNodes(nodes,cardPaths,options.nodeGap==null?36:options.nodeGap);
+    separateLeftoverCodeNodes(nodes,cardPaths,options.nodeGap==null?40:options.nodeGap);
     return nodes;
 }
 
@@ -9655,7 +9700,9 @@ function App(){
         var sim=simRef.current;
         if(!sim)return;
         parkLeftoverCodeNodes(sim.nodes(),codeCardPathsRef.current,codeFolderCentersRef.current);
-        settleCodeViewAfterDrag(sim.nodes(),codeCardPathsRef.current,codeCardSizesRef.current,null);
+        settleCodeViewAfterDrag(sim.nodes(),codeCardPathsRef.current,codeCardSizesRef.current,null,{
+            boxesByPath:readCodeCardWorldBoxes(codeCardsLayerRef.current)
+        });
         refreshCodeCardForces();
         redrawGraphLinksAndNodes();
     }
@@ -9900,7 +9947,9 @@ function App(){
             delete codeNodeDragPrev[d.id];
             if(codeCardPathsRef.current.has(d.id))codeCardUserPinnedRef.current.add(d.id);
             if(codeViewDragRefresh('release')){
-                settleCodeViewAfterDrag(sim.nodes(),codeCardPathsRef.current,codeCardSizesRef.current,d.id);
+                settleCodeViewAfterDrag(sim.nodes(),codeCardPathsRef.current,codeCardSizesRef.current,d.id,{
+                    boxesByPath:readCodeCardWorldBoxes(codeCardsLayerRef.current)
+                });
                 redrawGraphLinksAndNodes();
                 if(updateHullsRef.current)updateHullsRef.current();
             }
@@ -11612,7 +11661,9 @@ function App(){
             if(moved){
                 codeCardUserPinnedRef.current.add(file.path);
                 if(codeViewDragRefresh('release')){
-                    settleCodeViewAfterDrag((simRef.current&&simRef.current.nodes())||[],codeCardPathsRef.current,codeCardSizesRef.current,file.path);
+                    settleCodeViewAfterDrag((simRef.current&&simRef.current.nodes())||[],codeCardPathsRef.current,codeCardSizesRef.current,file.path,{
+                        boxesByPath:readCodeCardWorldBoxes(codeCardsLayerRef.current)
+                    });
                 }
                 node.x=node.fx;node.y=node.fy;
                 writePlacement();
@@ -11685,7 +11736,9 @@ function App(){
             if(moved){
                 codeCardUserPinnedRef.current.add(file.path);
                 if(codeViewDragRefresh('release')){
-                    settleCodeViewAfterDrag((simRef.current&&simRef.current.nodes())||[],codeCardPathsRef.current,codeCardSizesRef.current,file.path);
+                    settleCodeViewAfterDrag((simRef.current&&simRef.current.nodes())||[],codeCardPathsRef.current,codeCardSizesRef.current,file.path,{
+                        boxesByPath:readCodeCardWorldBoxes(codeCardsLayerRef.current)
+                    });
                 }
                 syncCodeCards();
                 redrawGraphLinksAndNodes();
