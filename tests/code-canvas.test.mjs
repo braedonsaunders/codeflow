@@ -1788,7 +1788,15 @@ test('canvas mini-map is wired for Graph and Code only', () => {
   assert.match(htmlSource, /vizHasCanvasMinimap\(graphConfig\.vizType\)&&React\.createElement\('div',\{/);
   assert.match(htmlSource, /className:'canvas-minimap'/);
   assert.match(htmlSource, /Click or drag to pan/);
+  assert.match(htmlSource, /tabIndex:0/);
+  assert.match(htmlSource, /role:'application'/);
+  assert.match(htmlSource, /Arrow keys pan the view/);
+  assert.match(htmlSource, /onKeyDown:handleMinimapKeyDown/);
+  assert.match(htmlSource, /\.canvas-minimap:focus-visible\{outline:2px solid var\(--acc\)/);
   assert.match(htmlSource, /function zoomTransformFromMinimapPoint\(/);
+  assert.match(htmlSource, /function zoomTransformNudgeWorld\(/);
+  assert.match(htmlSource, /function panTransformByViewportFraction\(/);
+  assert.match(htmlSource, /function panTransformToWorldMidpoint\(/);
   assert.match(htmlSource, /function drawCanvasMinimap\(/);
   assert.match(htmlSource, /function minimapCardInputs\(/);
   assert.match(htmlSource, /function clampMinimapPoint\(/);
@@ -1900,6 +1908,50 @@ test('mini-map click centers the current camera on that world point', () => {
   assert.equal(jumpedEdge.k, 2);
   assert.equal(jumpedEdge.x, 400 - 200 * 2);
   assert.equal(jumpedEdge.y, 300 - 0 * 2);
+});
+
+test('mini-map keyboard pans the viewport by a fraction of the view', () => {
+  const transform = { k: 2, x: 100, y: 50 };
+  const before = context.viewportWorldRect(transform, 800, 600);
+  assert.equal(before.x, -50);
+  assert.equal(before.y, -25);
+  assert.equal(before.width, 400);
+  assert.equal(before.height, 300);
+
+  const right = context.panTransformByViewportFraction(transform, 0.25, 0, 800, 600);
+  assert.equal(right.k, 2);
+  const afterRight = context.viewportWorldRect(right, 800, 600);
+  assert.equal(afterRight.x, before.x + before.width * 0.25);
+  assert.equal(afterRight.y, before.y);
+  assert.equal(afterRight.width, before.width);
+
+  const left = context.panTransformByViewportFraction(transform, -0.25, 0, 800, 600);
+  assert.equal(left.k, 2);
+  assert.equal(context.viewportWorldRect(left, 800, 600).x, before.x - before.width * 0.25);
+
+  const down = context.panTransformByViewportFraction(transform, 0, 0.25, 800, 600);
+  assert.equal(down.k, 2);
+  assert.equal(context.viewportWorldRect(down, 800, 600).y, before.y + before.height * 0.25);
+
+  const up = context.panTransformByViewportFraction(transform, 0, -0.25, 800, 600);
+  assert.equal(up.k, 2);
+  assert.equal(context.viewportWorldRect(up, 800, 600).y, before.y - before.height * 0.25);
+
+  const far = context.panTransformByViewportFraction(transform, 0.5, 0, 800, 600);
+  assert.equal(far.k, 2);
+  assert.equal(context.viewportWorldRect(far, 800, 600).x, before.x + before.width * 0.5);
+
+  const nudged = context.zoomTransformNudgeWorld(transform, before.width * 0.25, 0);
+  assert.equal(nudged.k, 2);
+  assert.deepEqual(J(nudged), J(right));
+
+  const world = { minX: 0, minY: 0, maxX: 400, maxY: 300, width: 400, height: 300 };
+  const home = context.panTransformToWorldMidpoint(transform, world, 800, 600);
+  const centered = context.zoomTransformToCenterWorld(200, 150, 2, 800, 600);
+  assert.equal(home.k, 2);
+  assert.deepEqual(J(home), J(centered));
+  const missing = context.panTransformToWorldMidpoint(transform, null, 800, 600);
+  assert.deepEqual(J(missing), J(context.snapshotZoomTransform(transform)));
 });
 
 function memoryStorage(seed) {

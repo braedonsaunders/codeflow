@@ -118,6 +118,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .canvas-toolbar{position:absolute;top:12px;left:12px;display:flex;gap:4px;z-index:50}
 .canvas-info{position:absolute;bottom:12px;left:12px;display:flex;gap:8px;z-index:50}
 .canvas-minimap{position:absolute;right:12px;bottom:12px;z-index:50;width:176px;height:118px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;overflow:hidden;cursor:crosshair;touch-action:none;user-select:none;-webkit-user-select:none}
+.canvas-minimap:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .canvas-minimap canvas{display:block;width:100%;height:100%;pointer-events:none}
 .info-chip{padding:6px 10px;background:var(--bg1);border:1px solid var(--border);border-radius:6px;font-size:10px;color:var(--t2)}
 .info-chip strong{color:var(--acc)}
@@ -7460,6 +7461,33 @@ function zoomTransformFromMinimapPoint(mx,my,world,fit,transform,viewW,viewH){
     return zoomTransformToCenterWorld(pt.x,pt.y,t.k,viewW,viewH);
 }
 
+function zoomTransformNudgeWorld(transform,dxWorld,dyWorld){
+    var t=snapshotZoomTransform(transform);
+    var dx=Number(dxWorld);
+    var dy=Number(dyWorld);
+    if(!isFinite(dx))dx=0;
+    if(!isFinite(dy))dy=0;
+    return{k:t.k,x:t.x-dx*t.k,y:t.y-dy*t.k};
+}
+
+function panTransformByViewportFraction(transform,dxFrac,dyFrac,viewW,viewH){
+    var view=viewportWorldRect(transform,viewW,viewH);
+    var fx=Number(dxFrac);
+    var fy=Number(dyFrac);
+    if(!isFinite(fx))fx=0;
+    if(!isFinite(fy))fy=0;
+    return zoomTransformNudgeWorld(transform,view.width*fx,view.height*fy);
+}
+
+function panTransformToWorldMidpoint(transform,world,viewW,viewH){
+    var t=snapshotZoomTransform(transform);
+    if(!world)return t;
+    var midX=(Number(world.minX)+Number(world.maxX))/2;
+    var midY=(Number(world.minY)+Number(world.maxY))/2;
+    if(!isFinite(midX)||!isFinite(midY))return t;
+    return zoomTransformToCenterWorld(midX,midY,t.k,viewW,viewH);
+}
+
 function minimapPointerXY(clientX,clientY,rect){
     rect=rect||{};
     return{x:(Number(clientX)||0)-(Number(rect.left)||0),y:(Number(clientY)||0)-(Number(rect.top)||0)};
@@ -10261,6 +10289,23 @@ function App(){
         }
         minimapDragRef.current=null;
     }
+    function handleMinimapKeyDown(e){
+        if(!e||e.altKey||e.ctrlKey||e.metaKey)return;
+        var model=minimapModelRef.current;
+        if(!model||!zoomRef.current||!svgRef.current)return;
+        var transform=codeZoomTransformRef.current;
+        var next=null;
+        var frac=e.shiftKey?0.5:0.25;
+        if(e.key==='ArrowLeft')next=panTransformByViewportFraction(transform,-frac,0,model.viewW,model.viewH);
+        else if(e.key==='ArrowRight')next=panTransformByViewportFraction(transform,frac,0,model.viewW,model.viewH);
+        else if(e.key==='ArrowUp')next=panTransformByViewportFraction(transform,0,-frac,model.viewW,model.viewH);
+        else if(e.key==='ArrowDown')next=panTransformByViewportFraction(transform,0,frac,model.viewW,model.viewH);
+        else if(e.key==='Home')next=panTransformToWorldMidpoint(transform,model.world,model.viewW,model.viewH);
+        else return;
+        e.preventDefault();
+        e.stopPropagation();
+        d3.select(svgRef.current).call(zoomRef.current.transform,d3.zoomIdentity.translate(next.x,next.y).scale(next.k));
+    }
     function flyToOpenedCodeCard(place){
         if(!svgRef.current||!zoomRef.current||!place||!isFinite(place.x)||!isFinite(place.y))return;
         var w=svgRef.current.clientWidth||800;
@@ -12898,12 +12943,15 @@ function App(){
                     vizHasCanvasMinimap(graphConfig.vizType)&&React.createElement('div',{
                         className:'canvas-minimap',
                         ref:minimapHostRef,
-                        'aria-label':'Canvas mini-map. Click or drag to pan.',
-                        title:'Click or drag to pan',
+                        tabIndex:0,
+                        role:'application',
+                        'aria-label':'Canvas mini-map. Click or drag to pan. Arrow keys pan the view. Home recenters.',
+                        title:'Click or drag to pan. Arrow keys pan the view.',
                         onPointerDown:handleMinimapPointerDown,
                         onPointerMove:handleMinimapPointerMove,
                         onPointerUp:handleMinimapPointerUp,
                         onPointerCancel:handleMinimapPointerUp,
+                        onKeyDown:handleMinimapKeyDown,
                         onWheel:function(e){e.preventDefault();e.stopPropagation();}
                     },React.createElement('canvas',{ref:minimapCanvasRef})),
                     graphConfig.vizType!=='architecture'&&React.createElement('div',{className:'canvas-info'},
