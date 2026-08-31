@@ -1793,6 +1793,8 @@ test('canvas mini-map is wired for Graph and Code only', () => {
   assert.match(htmlSource, /function minimapCardInputs\(/);
   assert.match(htmlSource, /function clampMinimapPoint\(/);
   assert.match(htmlSource, /minimapCardInputs\(graphConfig\.vizType,codeCardSizesRef\.current,codeCardPathsRef\.current\)/);
+  assert.doesNotMatch(htmlSource, /minimapWorldFromBoxes\(Object\.keys\(folders\)\.reduce/);
+  assert.match(htmlSource, /world:minimapWorldFromBoxes\(boxes,pad\)/);
   assert.match(htmlSource, /if\(drawMinimapRef\.current\)drawMinimapRef\.current\(\)/);
   assert.doesNotMatch(htmlSource, /minimap-drag-handle|drag indicator/);
   assert.match(htmlSource, /'aria-label':'Line thickness'/);
@@ -1829,6 +1831,18 @@ test('mini-map world bounds include nodes and code cards', () => {
   const live = context.minimapCardInputs('code', sizes, cards);
   assert.equal(live.sizesByPath, sizes);
   assert.equal(live.cardPaths, cards);
+
+  const many = [];
+  for (let i = 0; i < 24; i += 1) {
+    many.push({ id: `f${i}/n.js`, folder: `f${i}`, x: i * 80, y: i * 10 });
+  }
+  const manyWorld = context.collectMinimapWorldBounds(many, null, null, 0);
+  const manyContent = context.collectMinimapContent(many, null, null, () => '#4d9fff', 0);
+  assert.equal(manyContent.hulls.length, 24);
+  assert.equal(manyContent.world.minX, manyWorld.minX);
+  assert.equal(manyContent.world.maxX, manyWorld.maxX);
+  assert.equal(manyContent.world.minY, manyWorld.minY);
+  assert.equal(manyContent.world.maxY, manyWorld.maxY);
 });
 
 test('mini-map click centers the current camera on that world point', () => {

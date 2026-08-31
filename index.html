@@ -7357,6 +7357,7 @@ function collectMinimapWorldBounds(nodes,sizesByPath,cardPaths,pad){
 
 function collectMinimapContent(nodes,sizesByPath,cardPaths,colorOf,pad){
     var marks=[];
+    var boxes=[];
     var folders=Object.create(null);
     (nodes||[]).forEach(function(node){
         var xy=liveGraphNodeXY(node);
@@ -7375,6 +7376,7 @@ function collectMinimapContent(nodes,sizesByPath,cardPaths,colorOf,pad){
         }
         if(!folders[folder])folders[folder]={boxes:[],color:color};
         folders[folder].boxes.push(box);
+        boxes.push(box);
         if(color)folders[folder].color=color;
     });
     var hulls=[];
@@ -7382,9 +7384,7 @@ function collectMinimapContent(nodes,sizesByPath,cardPaths,colorOf,pad){
         var union=unionPaddedBoxes(folders[folder].boxes,18,0);
         if(union)hulls.push({folder:folder,color:folders[folder].color,x:union.x,y:union.y,width:union.width,height:union.height});
     });
-    return{marks:marks,hulls:hulls,world:minimapWorldFromBoxes(Object.keys(folders).reduce(function(boxes,folder){
-        return boxes.concat(folders[folder].boxes);
-    },[]),pad)};
+    return{marks:marks,hulls:hulls,world:minimapWorldFromBoxes(boxes,pad)};
 }
 
 function viewportWorldRect(transform,viewW,viewH){
