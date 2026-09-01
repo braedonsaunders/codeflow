@@ -1612,6 +1612,35 @@ test('symbol pills follow the painted diff row, not the stale analysis line', ()
   assert.equal(context.codeCardDiffLineIndex(null, 3), 3);
 });
 
+test('color blocks follow the painted diff row, not the stale analysis line', () => {
+  const file = {
+    name: 'app.js',
+    path: 'src/app.js',
+    content: 'function top(){}\n\nfunction bottom(){}\n',
+    functions: [
+      { name: 'top', line: 1, isExported: false },
+      { name: 'bottom', line: 3, isExported: false }
+    ]
+  };
+  const rows = context.diffCodeLines(file.content, 'function extra(){}\nfunction top(){}\n\nfunction bottom(){}\n');
+  const base = context.codeColorBlockSections(file, [], {});
+  const painted = context.codeColorBlockSections(file, [], {}, rows);
+  const topBase = base.find((s) => s.name === 'top');
+  const topPainted = painted.find((s) => s.name === 'top');
+  assert.equal(topBase.startLine, 1);
+  assert.equal(topPainted.startLine, 2);
+  assert.ok(topPainted.top > topBase.top);
+});
+
+test('cleared CLI watch generations do not reuse an in-flight token', () => {
+  assert.equal(context.bumpCliWatchDiffEpoch(1), 2);
+  const gens = { 'src/app.js': 1 };
+  assert.equal(context.cliWatchDiffRequestIsCurrent(1, 1, gens, 'src/app.js', 1), true);
+  assert.equal(context.cliWatchDiffRequestIsCurrent(2, 1, gens, 'src/app.js', 1), false);
+  assert.equal(context.cliWatchDiffRequestIsCurrent(2, 2, { 'src/app.js': 1 }, 'src/app.js', 1), true);
+  assert.equal(context.cliWatchDiffRequestIsCurrent(2, 2, { 'src/app.js': 2 }, 'src/app.js', 1), false);
+});
+
 test('CLI analysis keeps watch paths received while files were being read', () => {
   assert.deepEqual(J(context.retainCliWatchPathsAfterAnalysis(['src/app.js', '/src/math.js', 'src/app.js', ''])), ['src/app.js', 'src/math.js']);
   assert.deepEqual(J(context.retainCliWatchPathsAfterAnalysis(null)), []);
@@ -1795,6 +1824,9 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /codeCardSizeForDiff\(file,cardPrefs,diffRows\)/);
   assert.match(htmlSource, /\[codeViewFiles,graphConfig\.vizType,graphConfig\.linkDist,codeViewExpand,codeViewWrap,cliLiveByPath\]/);
   assert.match(htmlSource, /codeCardSymbolPills\(file,data\?data\.connections:\[\],cardPrefs,diffRows\)/);
+  assert.match(htmlSource, /codeColorBlockSections\(file,data\?data\.connections:\[\],cardPrefs,diffRows\)/);
+  assert.match(htmlSource, /cliDiffEpochRef\.current=bumpCliWatchDiffEpoch\(cliDiffEpochRef\.current\)/);
+  assert.match(htmlSource, /cliWatchDiffRequestIsCurrent\(cliDiffEpochRef\.current,epoch,cliDiffGenRef\.current,path,gen\)/);
   assert.match(htmlSource, /var live=typeof content==='string'\?content:''/);
   assert.match(htmlSource, /EventSource\('\/__codeflow\/events'\)/);
   assert.match(htmlSource, /CLI_WATCH_DIFF_MS/);

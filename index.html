@@ -6092,6 +6092,15 @@ function startedCliWatchDiffPaths(pending,gen){
     return out;
 }
 
+function bumpCliWatchDiffEpoch(epoch){
+    return (Number(epoch)||0)+1;
+}
+
+function cliWatchDiffRequestIsCurrent(epoch,capturedEpoch,genByPath,path,capturedGen){
+    if((Number(epoch)||0)!==(Number(capturedEpoch)||0))return false;
+    return !!(genByPath&&genByPath[path]===capturedGen);
+}
+
 function retainCliWatchPathsAfterAnalysis(receivedDuring){
     var out=[];
     (receivedDuring||[]).forEach(function(path){
@@ -7975,17 +7984,21 @@ function codeColorBlockLineCount(file){
     return max;
 }
 
-function codeColorBlockSections(file,connections,prefs){
+function codeColorBlockSections(file,connections,prefs,diffRows){
     prefs=normalizeCodeCardPrefs(prefs);
-    var total=codeColorBlockLineCount(file);
+    var paintFile=fileForCodeCardDiff(file,diffRows);
+    var total=codeColorBlockLineCount(paintFile);
     var byLine=Object.create(null);
     (file&&file.functions||[]).forEach(function(fn){
         if(!fn||!fn.name||!fn.line)return;
         var kind=fn.type==='class'||fn.type==='dataclass'||fn.type==='abstract_class'?'class':(fn.isExported?'export':'fn');
-        byLine[fn.line]={name:fn.name,kind:kind,startLine:fn.line};
+        var line=codeCardDiffLineIndex(diffRows,fn.line);
+        if(!byLine[line])byLine[line]={name:fn.name,kind:kind,startLine:line};
     });
     extractFileSymbols(file,connections).forEach(function(sym){
-        var line=codeCardSymbolLine(file,sym.name);
+        var analyzed=codeCardSymbolLine(file,sym.name);
+        if(!analyzed)return;
+        var line=codeCardDiffLineIndex(diffRows,analyzed);
         if(!line||byLine[line])return;
         byLine[line]={name:sym.name,kind:sym.kind||'var',startLine:line};
     });
@@ -8005,8 +8018,8 @@ function codeColorBlockSections(file,connections,prefs){
         });
     }
     return sections.map(function(section){
-        var startVisual=file?codeCardVisualLineIndex(file,section.startLine,prefs):section.startLine;
-        var endVisual=file?codeCardVisualLineEndIndex(file,section.endLine,prefs):section.endLine;
+        var startVisual=paintFile?codeCardVisualLineIndex(paintFile,section.startLine,prefs):section.startLine;
+        var endVisual=paintFile?codeCardVisualLineEndIndex(paintFile,section.endLine,prefs):section.endLine;
         if(endVisual<startVisual)endVisual=startVisual;
         return Object.assign({},section,{
             color:codeColorBlockKindColor(section.kind),
@@ -8831,6 +8844,7 @@ function App(){
     var cliDiffTimerRef=useRef(null);
     var cliDiffPendingRef=useRef([]);
     var cliDiffGenRef=useRef(Object.create(null));
+    var cliDiffEpochRef=useRef(1);
     var cliAnalyzingRef=useRef(false);
     var cliWatchDuringRef=useRef([]);
     var _openedCards=useState([]),openedCodePaths=_openedCards[0],setOpenedCodePaths=_openedCards[1];
@@ -9207,6 +9221,7 @@ function App(){
     }
 
     function clearCliLiveDiffs(){
+        cliDiffEpochRef.current=bumpCliWatchDiffEpoch(cliDiffEpochRef.current);
         cliDiffPendingRef.current=[];
         cliDiffGenRef.current=Object.create(null);
         if(cliDiffTimerRef.current){
@@ -9221,10 +9236,11 @@ function App(){
         var wanted=cliWatchDiffPaths(dataRef.current&&dataRef.current.files,paths);
         if(!wanted.length)return;
         wanted.forEach(function(path){
+            var epoch=cliDiffEpochRef.current;
             var gen=(cliDiffGenRef.current[path]||0)+1;
             cliDiffGenRef.current[path]=gen;
             readLiveFileSource(path).then(function(content){
-                if(cliDiffGenRef.current[path]!==gen)return;
+                if(!cliWatchDiffRequestIsCurrent(cliDiffEpochRef.current,epoch,cliDiffGenRef.current,path,gen))return;
                 var live=typeof content==='string'?content:'';
                 setCliLiveByPath(function(prev){return mergeCliLiveContents(prev,[{path:path,content:live}]);});
             });
@@ -12834,7 +12850,7 @@ function App(){
         var cardPrefs=currentCodeCardPrefs();
         var cardSize=applyCodeCardUserSize(codeCardSizeForDiff(file,cardPrefs,diffRows),codeCardUserSizeRef.current[file.path]);
         var pills=isPrimary?codeCardSymbolPills(file,data?data.connections:[],cardPrefs,diffRows):[];
-        var colorBlocks=codeColorBlockSections(file,data?data.connections:[],cardPrefs);
+        var colorBlocks=codeColorBlockSections(file,data?data.connections:[],cardPrefs,diffRows);
         var blockLayer=colorBlocks.length?React.createElement('div',{className:'code-color-blocks'},
             colorBlocks.map(function(block){
                 return React.createElement('div',{
