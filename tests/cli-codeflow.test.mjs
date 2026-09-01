@@ -110,7 +110,9 @@ test('CLI server serves the same UI and folder files', async (t) => {
   assert.ok(files.files.some((f) => f.path === 'src/app.js'));
   const file = await fetch(base + '/__codeflow/file?path=src/app.js');
   assert.equal(file.status, 200);
-  assert.match(await file.text(), /function/);
+  const fileBody = await file.text();
+  assert.match(fileBody, /function/);
+  assert.equal(file.headers.get('content-length'), String(Buffer.byteLength(fileBody)));
   const denied = await fetch(base + '/__codeflow/file?path=../package.json');
   assert.equal(denied.status, 404);
   const asDir = await fetch(base + '/__codeflow/file?path=src');

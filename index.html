@@ -5904,6 +5904,13 @@ function noteCliWatchPath(prev,path){
     return list.concat([next]);
 }
 
+function noteCliWatchPathIfRead(prev,path,readByPath){
+    var next=normalizeCliWatchPath(path);
+    if(!next)return prev||[];
+    if(!(readByPath&&readByPath[next]))return prev||[];
+    return noteCliWatchPath(prev,next);
+}
+
 function mergeCliLiveContents(prev,updates){
     var next=Object.assign(Object.create(null),prev||{});
     (updates||[]).forEach(function(update){
@@ -6116,8 +6123,20 @@ function retainCliWatchPathsAfterAnalysis(receivedDuring,readByPath){
     return out;
 }
 
-function cliWatchLiveFromResponse(status,body,ok){
-    if(ok)return{kind:'ok',content:typeof body==='string'?body:''};
+var CLI_WATCH_MAX_BYTES=2*1024*1024;
+
+function cliWatchLiveRejectsOversized(size){
+    var n=Number(size);
+    return Number.isFinite(n)&&n>CLI_WATCH_MAX_BYTES;
+}
+
+function cliWatchLiveFromResponse(status,body,ok,contentLength){
+    if(cliWatchLiveRejectsOversized(contentLength))return{kind:'error'};
+    if(ok){
+        var content=typeof body==='string'?body:'';
+        if(cliWatchLiveRejectsOversized(content.length))return{kind:'error'};
+        return{kind:'ok',content:content};
+    }
     if(Number(status)===404)return{kind:'missing',content:''};
     return{kind:'error'};
 }
@@ -9268,7 +9287,7 @@ function App(){
     function enqueueCliWatchDiff(path){
         var next=normalizeCliWatchPath(path);
         if(!next)return;
-        if(cliAnalyzingRef.current)cliWatchDuringRef.current=noteCliWatchPath(cliWatchDuringRef.current,next);
+        if(cliAnalyzingRef.current)cliWatchDuringRef.current=noteCliWatchPathIfRead(cliWatchDuringRef.current,next,cliWatchReadRef.current);
         if(!cliWatchAppliesToAnalysis(localSourceKind,cliStatus,currentAnalysisSource()))return;
         setCliDirty(function(prev){return noteCliWatchPath(prev,next);});
         cliDiffPendingRef.current=noteCliWatchPath(cliDiffPendingRef.current,next);
@@ -9360,7 +9379,11 @@ function App(){
                     continue;
                 }
                 var fileRes=await fetch('/__codeflow/file?path='+encodeURIComponent(f.path));
-                var content=fileRes.ok?await fileRes.text():'';
+                if(!fileRes.ok){
+                    analyzed.push(makeFetchFailedAnalysisFile(f));
+                    continue;
+                }
+                var content=await fileRes.text();
                 if(Parser.isOversized(content.length)){
                     analyzed.push(makeOversizedAnalysisFile(f,content.length,isCodeFile));
                     continue;
@@ -10338,7 +10361,12 @@ function App(){
     function readCliWatchLiveSource(path){
         if(!path)return Promise.resolve({kind:'error'});
         return fetch('/__codeflow/file?path='+encodeURIComponent(path)).then(function(res){
-            if(res.ok)return res.text().then(function(text){return cliWatchLiveFromResponse(res.status,text,true);});
+            var length=Number(res.headers&&res.headers.get?res.headers.get('content-length'):NaN);
+            if(cliWatchLiveRejectsOversized(length)){
+                if(res.body&&typeof res.body.cancel==='function')res.body.cancel();
+                return{kind:'error'};
+            }
+            if(res.ok)return res.text().then(function(text){return cliWatchLiveFromResponse(res.status,text,true,length);});
             return cliWatchLiveFromResponse(res.status,'',false);
         }).catch(function(){return{kind:'error'};});
     }

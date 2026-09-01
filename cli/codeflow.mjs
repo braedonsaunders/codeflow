@@ -187,6 +187,7 @@ function pipeSafeFile(res, filePath, contentType) {
     }
     res.writeHead(200, {
       'Content-Type': contentType,
+      'Content-Length': String(st.size),
       'Cache-Control': 'no-store'
     });
     const stream = createReadStream(filePath);

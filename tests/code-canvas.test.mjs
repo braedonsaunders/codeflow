@@ -1538,6 +1538,7 @@ test('CLI watch paths stay unique and only flush analyzed files', () => {
   const skipped = [{ path: 'src/app.js', content: '', analysisSkipped: 'oversized' }, { path: 'src/math.js', content: 'export const n = 1;\n' }];
   assert.deepEqual(J(context.cliWatchDiffPaths(skipped, ['src/app.js', 'src/math.js'])), ['src/math.js']);
   assert.equal(context.fileHasAnalyzedSourceForDiff(skipped[0]), false);
+  assert.equal(context.fileHasAnalyzedSourceForDiff({ path: 'src/gone.js', content: '', analysisSkipped: 'fetch-failed' }), false);
   assert.equal(context.fileHasAnalyzedSourceForDiff(files[0]), true);
   const live = context.mergeCliLiveContents(null, [{ path: 'src/app.js', content: 'export const n = 1;\n' }]);
   assert.equal(live['src/app.js'], 'export const n = 1;\n');
@@ -1651,12 +1652,29 @@ test('CLI analysis keeps watch paths received while files were being read', () =
   assert.deepEqual(J(context.retainCliWatchPathsAfterAnalysis(['src/app.js', 'src/unread.js'], { 'src/app.js': true })), ['src/app.js']);
   assert.deepEqual(J(context.retainCliWatchPathsAfterAnalysis(['src/unread.js'], { 'src/app.js': true })), []);
   assert.deepEqual(J(context.retainCliWatchPathsAfterAnalysis(null)), []);
+  assert.deepEqual(J(context.noteCliWatchPathIfRead([], 'src/app.js', read)), ['src/app.js']);
+  assert.deepEqual(J(context.noteCliWatchPathIfRead([], 'src/later.js', read)), []);
+  assert.deepEqual(J(context.noteCliWatchPathIfRead(['src/app.js'], 'src/later.js', { 'src/app.js': true })), ['src/app.js']);
+  assert.deepEqual(J(context.noteCliWatchPathIfRead([], 'src/app.js', {})), []);
+  assert.deepEqual(J(context.noteCliWatchPathIfRead([], 'src/app.js', null)), []);
   assert.deepEqual(J(context.cliWatchLiveFromResponse(200, 'ok\n', true)), { kind: 'ok', content: 'ok\n' });
   assert.deepEqual(J(context.cliWatchLiveFromResponse(404, 'nope', false)), { kind: 'missing', content: '' });
   assert.deepEqual(J(context.cliWatchLiveFromResponse(500, 'err', false)), { kind: 'error' });
   assert.equal(context.shouldApplyCliWatchLive({ kind: 'ok', content: '' }), true);
   assert.equal(context.shouldApplyCliWatchLive({ kind: 'missing', content: '' }), true);
   assert.equal(context.shouldApplyCliWatchLive({ kind: 'error' }), false);
+});
+
+test('CLI live watch reads reject oversized files before painting', () => {
+  const limit = context.CLI_WATCH_MAX_BYTES;
+  assert.equal(limit, 2 * 1024 * 1024);
+  assert.equal(context.cliWatchLiveRejectsOversized(limit), false);
+  assert.equal(context.cliWatchLiveRejectsOversized(limit + 1), true);
+  assert.equal(context.cliWatchLiveRejectsOversized(String(limit + 1)), true);
+  assert.equal(context.cliWatchLiveRejectsOversized(NaN), false);
+  assert.deepEqual(J(context.cliWatchLiveFromResponse(200, 'ok', true, limit + 1)), { kind: 'error' });
+  assert.deepEqual(J(context.cliWatchLiveFromResponse(200, 'x'.repeat(limit + 1), true)), { kind: 'error' });
+  assert.equal(context.shouldApplyCliWatchLive(context.cliWatchLiveFromResponse(200, 'ok', true, limit + 1)), false);
 });
 
 test('CLI watch recovery skips already flushed and in-flight paths', () => {
@@ -1829,8 +1847,11 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /flushCliWatchDiffs\(missing\)/);
   assert.match(htmlSource, /cliWatchAppliesToAnalysis\(localSourceKind,cliStatus,currentAnalysisSource\(\)\)/);
   assert.match(htmlSource, /function applyCachedAnalysis\(record\)\{[\s\S]*?setCliDirty\(\[\]\);[\s\S]*?clearCliLiveDiffs\(\);/);
-  assert.match(htmlSource, /cliWatchDuringRef\.current=noteCliWatchPath\(cliWatchDuringRef\.current,next\)/);
+  assert.match(htmlSource, /cliWatchDuringRef\.current=noteCliWatchPathIfRead\(cliWatchDuringRef\.current,next,cliWatchReadRef\.current\)/);
   assert.match(htmlSource, /var keep=retainCliWatchPathsAfterAnalysis\(cliWatchDuringRef\.current,cliWatchReadRef\.current\)/);
+  assert.match(htmlSource, /if\(!fileRes\.ok\)\{[\s\S]*?analyzed\.push\(makeFetchFailedAnalysisFile\(f\)\);[\s\S]*?continue;/);
+  assert.match(htmlSource, /cliWatchLiveRejectsOversized\(length\)/);
+  assert.match(htmlSource, /cliWatchLiveFromResponse\(res\.status,text,true,length\)/);
   assert.match(htmlSource, /cliWatchReadRef\.current\[normalizeCliWatchPath\(f\.path\)\]=true/);
   assert.match(htmlSource, /readCliWatchLiveSource\(path\)/);
   assert.match(htmlSource, /if\(!shouldApplyCliWatchLive\(result\)\)return/);
