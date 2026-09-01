@@ -513,8 +513,8 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .code-card-retry{background:transparent;border:1px solid var(--border);color:var(--t2);padding:4px 8px;border-radius:4px;font-size:10px;cursor:pointer}
 .code-card-retry:hover{border-color:var(--acc);color:var(--acc)}
 .code-card.clipped .code-card-body{overflow:auto;touch-action:pan-x pan-y}
-.code-card.expand:not(.wrap) .code-card-body{overflow-x:auto;overflow-y:hidden;touch-action:pan-x}
-.code-card.expand.wrap .code-card-body{overflow:hidden}
+.code-card.expand:not(.wrap):not(.clipped) .code-card-body{overflow-x:auto;overflow-y:hidden;touch-action:pan-x}
+.code-card.expand.wrap:not(.clipped) .code-card-body{overflow:hidden}
 .code-card.wrap:not(.expand) .code-card-body{overflow-x:hidden;overflow-y:auto}
 .code-card.wrap .file-preview-line{align-items:flex-start;height:auto}
 .code-card.wrap .file-preview-text{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;min-width:0}
@@ -6092,6 +6092,15 @@ function startedCliWatchDiffPaths(pending,gen){
     return out;
 }
 
+function retainCliWatchPathsAfterAnalysis(receivedDuring){
+    var out=[];
+    (receivedDuring||[]).forEach(function(path){
+        var next=normalizeCliWatchPath(path);
+        if(next&&out.indexOf(next)<0)out.push(next);
+    });
+    return out;
+}
+
 function pendingCliWatchDiffPaths(dirty,live,inflight){
     var have=live||Object.create(null);
     var wait=inflight||[];
@@ -6554,7 +6563,7 @@ function applyCodeCardUserSize(base,override){
     base=base||codeCardSize(null);
     if(!override)return base;
     var next=clampCodeCardResize(override.width!=null?override.width:base.width,override.height!=null?override.height:base.height,base);
-    var heightClipped=!base.expand&&(base.naturalHeight||0)>next.height;
+    var heightClipped=(base.naturalHeight||0)>next.height;
     var widthClipped=!base.wrap&&(base.naturalWidth||0)>next.width;
     return Object.assign({},base,{width:next.width,height:next.height,clipped:heightClipped||widthClipped});
 }
@@ -8822,6 +8831,8 @@ function App(){
     var cliDiffTimerRef=useRef(null);
     var cliDiffPendingRef=useRef([]);
     var cliDiffGenRef=useRef(Object.create(null));
+    var cliAnalyzingRef=useRef(false);
+    var cliWatchDuringRef=useRef([]);
     var _openedCards=useState([]),openedCodePaths=_openedCards[0],setOpenedCodePaths=_openedCards[1];
     var _sourceFailed=useState(Object.create(null)),codeSourceFailed=_sourceFailed[0],setCodeSourceFailed=_sourceFailed[1];
     var _pillScroll=useState(0),codePillScroll=_pillScroll[0],setCodePillScroll=_pillScroll[1];
@@ -9221,9 +9232,10 @@ function App(){
     }
 
     function enqueueCliWatchDiff(path){
-        if(!cliWatchAppliesToAnalysis(localSourceKind,cliStatus,currentAnalysisSource()))return;
         var next=normalizeCliWatchPath(path);
         if(!next)return;
+        if(cliAnalyzingRef.current)cliWatchDuringRef.current=noteCliWatchPath(cliWatchDuringRef.current,next);
+        if(!cliWatchAppliesToAnalysis(localSourceKind,cliStatus,currentAnalysisSource()))return;
         setCliDirty(function(prev){return noteCliWatchPath(prev,next);});
         cliDiffPendingRef.current=noteCliWatchPath(cliDiffPendingRef.current,next);
         if(cliDiffTimerRef.current)clearTimeout(cliDiffTimerRef.current);
@@ -9282,6 +9294,8 @@ function App(){
         }
         if(status&&status.ok)setCliStatus(status);
         var cliMeta=cliWatchCacheMeta(status);
+        cliWatchDuringRef.current=[];
+        cliAnalyzingRef.current=true;
         resetAnalysisState();
         setLocalDirHandle(null);
         localFolderKeyRef.current=null;
@@ -9330,16 +9344,21 @@ function App(){
                 yieldFn:yieldToBrowser
             });
             var cliInfo={owner:'local',repo:'cli',name:cliMeta.title,cliRoot:cliMeta.sourceKey};
+            var keep=retainCliWatchPathsAfterAnalysis(cliWatchDuringRef.current);
+            cliAnalyzingRef.current=false;
+            cliWatchDuringRef.current=[];
             setData(dataObj);
             setExpandedPaths(new Set(['']));
             setRepoInfo(cliInfo);
             setCachedFromId(null);
-            setCliDirty([]);
+            setCliDirty(keep);
             clearCliLiveDiffs();
             persistCurrentAnalysis(dataObj,{sourceType:'cli',sourceKey:cliMeta.sourceKey,title:cliMeta.title,repoUrl:'',repoInfo:cliInfo,localSourceKind:'cli'});
             setLoading(false);
             return true;
         }catch(err){
+            cliAnalyzingRef.current=false;
+            cliWatchDuringRef.current=[];
             setError('CLI analysis failed: '+(err.message||err));
             setLoading(false);
         }

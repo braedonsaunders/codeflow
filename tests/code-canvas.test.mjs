@@ -1047,6 +1047,14 @@ test('Code cards can be resized from the right or bottom edge', () => {
   const grown = context.applyCodeCardUserSize(base, { width: 620, height: 280 });
   assert.equal(grown.width, 620);
   assert.equal(grown.height, 280);
+  const file = { path: 'src/app.js', content: 'a\nb\nc\n' };
+  const rows = context.codeCardDiffRows(file, 'a\nb\nc\n' + 'x\n'.repeat(20));
+  const expand = context.codeCardSizeForDiff(file, { expand: true, wrap: true }, rows);
+  const short = context.applyCodeCardUserSize(expand, { width: expand.width, height: 180 });
+  assert.ok(expand.height > 180);
+  assert.equal(short.height, 180);
+  assert.equal(short.clipped, true);
+  assert.equal(expand.clipped, false);
   const clamped = context.clampCodeCardResize(80, 40, {});
   assert.equal(clamped.width, context.CODE_CARD_MIN_WIDTH);
   assert.equal(clamped.height, context.CODE_CARD_MIN_HEIGHT);
@@ -1604,6 +1612,11 @@ test('symbol pills follow the painted diff row, not the stale analysis line', ()
   assert.equal(context.codeCardDiffLineIndex(null, 3), 3);
 });
 
+test('CLI analysis keeps watch paths received while files were being read', () => {
+  assert.deepEqual(J(context.retainCliWatchPathsAfterAnalysis(['src/app.js', '/src/math.js', 'src/app.js', ''])), ['src/app.js', 'src/math.js']);
+  assert.deepEqual(J(context.retainCliWatchPathsAfterAnalysis(null)), []);
+});
+
 test('CLI watch recovery skips already flushed and in-flight paths', () => {
   const dirty = ['src/app.js', 'src/math.js', 'src/new.js'];
   const live = { 'src/app.js': 'export const n = 1;\n' };
@@ -1774,6 +1787,10 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /flushCliWatchDiffs\(missing\)/);
   assert.match(htmlSource, /cliWatchAppliesToAnalysis\(localSourceKind,cliStatus,currentAnalysisSource\(\)\)/);
   assert.match(htmlSource, /function applyCachedAnalysis\(record\)\{[\s\S]*?setCliDirty\(\[\]\);[\s\S]*?clearCliLiveDiffs\(\);/);
+  assert.match(htmlSource, /cliWatchDuringRef\.current=noteCliWatchPath\(cliWatchDuringRef\.current,next\)/);
+  assert.match(htmlSource, /var keep=retainCliWatchPathsAfterAnalysis\(cliWatchDuringRef\.current\)/);
+  assert.match(htmlSource, /setCliDirty\(keep\)/);
+  assert.doesNotMatch(htmlSource, /setCachedFromId\(null\);\s*setCliDirty\(\[\]\);\s*clearCliLiveDiffs\(\);/);
   assert.match(htmlSource, /codeCardSizeForDiff\(file,prefs,rows\)/);
   assert.match(htmlSource, /codeCardSizeForDiff\(file,cardPrefs,diffRows\)/);
   assert.match(htmlSource, /\[codeViewFiles,graphConfig\.vizType,graphConfig\.linkDist,codeViewExpand,codeViewWrap,cliLiveByPath\]/);
@@ -1866,7 +1883,8 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /cardSize\.wrap\?' wrap'/);
   assert.match(htmlSource, /\.code-card\.wrap \.file-preview-text/);
   assert.match(htmlSource, /white-space:pre-wrap/);
-  assert.match(htmlSource, /\.code-card\.expand:not\(\.wrap\) \.code-card-body\{overflow-x:auto/);
+  assert.match(htmlSource, /\.code-card\.expand:not\(\.wrap\):not\(\.clipped\) \.code-card-body\{overflow-x:auto/);
+  assert.match(htmlSource, /\.code-card\.expand\.wrap:not\(\.clipped\) \.code-card-body\{overflow:hidden/);
   assert.doesNotMatch(htmlSource, /sidebar-title'\},'Color By'/);
   assert.doesNotMatch(htmlSource, /sidebar-title'\},'Explorer'/);
   assert.match(htmlSource, /function persistLineThickness\(/);
