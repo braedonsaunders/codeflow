@@ -133,8 +133,12 @@ test('CLI server serves the same UI and folder files', async (t) => {
   assert.match(fileBody, /function/);
   assert.equal(file.headers.get('content-length'), String(Buffer.byteLength(fileBody)));
   assert.equal(file.headers.get('x-codeflow-rev'), '0');
+  // An atomic save after open would bump the live rev; the header must
+  // still reflect the pre-open sample so retainCliWatchPathsAfterAnalysis
+  // treats that SSE rev as newer than the snapshot.
   const cliSource = await readFile(join(repoRoot, 'cli/codeflow.mjs'), 'utf8');
-  assert.match(cliSource, /function pipeSafeFile[\s\S]*?fs\.open\(filePath, 'r'\)[\s\S]*?readOpenedSnapshot\(fh, st\.size\)/);
+  assert.match(cliSource, /function pipeSafeFile[\s\S]*?resolveSnapshotRev\(options\)[\s\S]*?fs\.open\(filePath, 'r'\)[\s\S]*?readOpenedSnapshot\(fh, st\.size\)/);
+  assert.doesNotMatch(cliSource, /function pipeSafeFile[\s\S]*?fs\.open\(filePath, 'r'\)[\s\S]*?resolveSnapshotRev\(/);
   assert.match(cliSource, /isMissingFsError\(err\)[\s\S]*?sendFileError\(res, 404/);
   assert.match(cliSource, /sendFileError\(res, 500, 'Read failed'\)/);
   assert.match(cliSource, /X-Codeflow-Rev/);

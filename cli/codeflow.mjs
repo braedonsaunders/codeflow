@@ -221,8 +221,16 @@ function sendFileError(res, status, message) {
   res.end(message);
 }
 
+function resolveSnapshotRev(options) {
+  options = options || {};
+  return typeof options.snapshotRev === 'function' ? options.snapshotRev() : options.snapshotRev;
+}
+
 function pipeSafeFile(res, filePath, contentType, maxBytes, options) {
   options = options || {};
+  // Sample before open so an atomic save cannot bump the path rev onto
+  // bytes later read from the already-bound (stale) inode.
+  const snapshotRev = resolveSnapshotRev(options);
   return fs.open(filePath, 'r').then(async (fh) => {
     try {
       const st = await fh.stat();
@@ -230,7 +238,6 @@ function pipeSafeFile(res, filePath, contentType, maxBytes, options) {
         sendFileError(res, 404, 'Not found');
         return;
       }
-      const snapshotRev = typeof options.snapshotRev === 'function' ? options.snapshotRev() : options.snapshotRev;
       if (Number.isFinite(maxBytes) && st.size > maxBytes) {
         sendFileError(res, 413, 'File too large');
         return;
