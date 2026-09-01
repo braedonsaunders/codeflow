@@ -1575,6 +1575,25 @@ test('diff-aware Code cards clip or grow so the hunk stays reachable', () => {
   const painted = context.codeCardSize(context.fileForCodeCardDiff(file, rows), { expand: true, wrap: true });
   assert.equal(expand.height, painted.height);
   assert.ok(expand.height > base.height);
+  const card = {
+    path: file.path,
+    classes: new Set(),
+    getAttribute(name) { return name === 'data-code-card' ? file.path : null; },
+    style: { width: base.width + 'px', height: base.height + 'px' },
+    classList: {
+      add(name) { card.classes.add(name); },
+      remove(name) { card.classes.delete(name); }
+    },
+    querySelector() { return { style: {} }; }
+  };
+  context.applyCodeCardLayout(
+    { style: {}, querySelectorAll() { return [card]; } },
+    { [file.path]: { x: 40, y: 40 } },
+    { k: 1, x: 0, y: 0 },
+    { [file.path]: expand }
+  );
+  assert.equal(card.style.height, expand.height + 'px');
+  assert.ok(Number.parseFloat(card.style.height) > base.height);
 });
 
 test('symbol pills follow the painted diff row, not the stale analysis line', () => {
@@ -1757,6 +1776,7 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /function applyCachedAnalysis\(record\)\{[\s\S]*?setCliDirty\(\[\]\);[\s\S]*?clearCliLiveDiffs\(\);/);
   assert.match(htmlSource, /codeCardSizeForDiff\(file,prefs,rows\)/);
   assert.match(htmlSource, /codeCardSizeForDiff\(file,cardPrefs,diffRows\)/);
+  assert.match(htmlSource, /\[codeViewFiles,graphConfig\.vizType,graphConfig\.linkDist,codeViewExpand,codeViewWrap,cliLiveByPath\]/);
   assert.match(htmlSource, /codeCardSymbolPills\(file,data\?data\.connections:\[\],cardPrefs,diffRows\)/);
   assert.match(htmlSource, /var live=typeof content==='string'\?content:''/);
   assert.match(htmlSource, /EventSource\('\/__codeflow\/events'\)/);
@@ -1841,7 +1861,7 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /readCodeCardWorldBoxes\(codeCardsLayerRef\.current\)/);
   assert.match(htmlSource, /codeFolderHullBounds\(cardNodes,leftover/);
   assert.match(htmlSource, /if\(updateHullsRef\.current\)updateHullsRef\.current\(\)/);
-  assert.match(htmlSource, /codeViewExpand,codeViewWrap/);
+  assert.match(htmlSource, /codeViewExpand,codeViewWrap,cliLiveByPath/);
   assert.match(htmlSource, /cardSize\.expand\?' expand'/);
   assert.match(htmlSource, /cardSize\.wrap\?' wrap'/);
   assert.match(htmlSource, /\.code-card\.wrap \.file-preview-text/);

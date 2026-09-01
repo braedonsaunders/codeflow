@@ -11056,7 +11056,7 @@ function App(){
         syncCodeCards();
         if(updateHullsRef.current)updateHullsRef.current();
         if(drawMinimapRef.current)drawMinimapRef.current();
-    },[codeViewFiles,graphConfig.vizType,graphConfig.linkDist,codeViewExpand,codeViewWrap]);
+    },[codeViewFiles,graphConfig.vizType,graphConfig.linkDist,codeViewExpand,codeViewWrap,cliLiveByPath]);
 
     useEffect(function(){
         applyLinkThickness();
