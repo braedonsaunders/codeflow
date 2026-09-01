@@ -5911,6 +5911,26 @@ function noteCliWatchPathIfRead(prev,path,readByPath){
     return noteCliWatchPath(prev,next);
 }
 
+function forgetCliWatchPath(prev,path){
+    var next=normalizeCliWatchPath(path);
+    if(!next)return prev||[];
+    return (prev||[]).filter(function(item){return item!==next;});
+}
+
+function analyzedFileForCliWatchPath(files,path){
+    var next=normalizeCliWatchPath(path);
+    if(!next||!files)return null;
+    for(var i=0;i<files.length;i++){
+        var file=files[i];
+        if(file&&normalizeCliWatchPath(file.path)===next)return file;
+    }
+    return null;
+}
+
+function cliWatchLiveMatchesBaseline(file,liveContent){
+    return !!(fileHasAnalyzedSourceForDiff(file)&&typeof liveContent==='string'&&liveContent===file.content);
+}
+
 function mergeCliLiveContents(prev,updates){
     var next=Object.assign(Object.create(null),prev||{});
     (updates||[]).forEach(function(update){
@@ -9279,6 +9299,12 @@ function App(){
                 if(!cliWatchDiffRequestIsCurrent(cliDiffEpochRef.current,epoch,cliDiffGenRef.current,path,gen))return;
                 if(!shouldApplyCliWatchLive(result))return;
                 var live=result.kind==='missing'?'':result.content;
+                var file=analyzedFileForCliWatchPath(dataRef.current&&dataRef.current.files,path);
+                if(cliWatchLiveMatchesBaseline(file,live)){
+                    setCliLiveByPath(function(prev){return mergeCliLiveContents(prev,[{path:path,content:null}]);});
+                    setCliDirty(function(prev){return forgetCliWatchPath(prev,path);});
+                    return;
+                }
                 setCliLiveByPath(function(prev){return mergeCliLiveContents(prev,[{path:path,content:live}]);});
             });
         });

@@ -1657,6 +1657,15 @@ test('CLI analysis keeps watch paths received while files were being read', () =
   assert.deepEqual(J(context.noteCliWatchPathIfRead(['src/app.js'], 'src/later.js', { 'src/app.js': true })), ['src/app.js']);
   assert.deepEqual(J(context.noteCliWatchPathIfRead([], 'src/app.js', {})), []);
   assert.deepEqual(J(context.noteCliWatchPathIfRead([], 'src/app.js', null)), []);
+  assert.deepEqual(J(context.forgetCliWatchPath(['src/app.js', 'src/math.js'], 'src/app.js')), ['src/math.js']);
+  assert.deepEqual(J(context.forgetCliWatchPath(['src/app.js'], 'src/math.js')), ['src/app.js']);
+  assert.deepEqual(J(context.forgetCliWatchPath(['src/app.js'], '')), ['src/app.js']);
+  const analyzed = [{ path: 'src/app.js', content: 'export const n = 1;\n' }, { path: 'src/math.js', content: 'export const n = 2;\n' }];
+  assert.equal(context.analyzedFileForCliWatchPath(analyzed, '/src/app.js').content, 'export const n = 1;\n');
+  assert.equal(context.cliWatchLiveMatchesBaseline(analyzed[0], 'export const n = 1;\n'), true);
+  assert.equal(context.cliWatchLiveMatchesBaseline(analyzed[0], 'export const n = 2;\n'), false);
+  assert.equal(context.cliWatchLiveMatchesBaseline(analyzed[0], ''), false);
+  assert.equal(context.cliWatchLiveMatchesBaseline({ path: 'src/app.js', content: 'export const n = 1;\n', analysisSkipped: 'fetch-failed' }, 'export const n = 1;\n'), false);
   assert.deepEqual(J(context.cliWatchLiveFromResponse(200, 'ok\n', true)), { kind: 'ok', content: 'ok\n' });
   assert.deepEqual(J(context.cliWatchLiveFromResponse(404, 'nope', false)), { kind: 'missing', content: '' });
   assert.deepEqual(J(context.cliWatchLiveFromResponse(500, 'err', false)), { kind: 'error' });
@@ -1855,6 +1864,8 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /cliWatchReadRef\.current\[normalizeCliWatchPath\(f\.path\)\]=true/);
   assert.match(htmlSource, /readCliWatchLiveSource\(path\)/);
   assert.match(htmlSource, /if\(!shouldApplyCliWatchLive\(result\)\)return/);
+  assert.match(htmlSource, /if\(cliWatchLiveMatchesBaseline\(file,live\)\)/);
+  assert.match(htmlSource, /setCliDirty\(function\(prev\)\{return forgetCliWatchPath\(prev,path\);\}/);
   assert.match(htmlSource, /setCliDirty\(keep\)/);
   assert.doesNotMatch(htmlSource, /setCachedFromId\(null\);\s*setCliDirty\(\[\]\);\s*clearCliLiveDiffs\(\);/);
   assert.match(htmlSource, /codeCardSizeForDiff\(file,prefs,rows\)/);
