@@ -1585,6 +1585,15 @@ test('symbol pills follow the painted diff row, not the stale analysis line', ()
   assert.equal(context.codeCardDiffLineIndex(null, 3), 3);
 });
 
+test('CLI watch recovery skips already flushed and in-flight paths', () => {
+  const dirty = ['src/app.js', 'src/math.js', 'src/new.js'];
+  const live = { 'src/app.js': 'export const n = 1;\n' };
+  assert.deepEqual(J(context.pendingCliWatchDiffPaths(dirty, live, ['src/math.js'])), ['src/new.js']);
+  assert.deepEqual(J(context.pendingCliWatchDiffPaths(dirty, live, [])), ['src/math.js', 'src/new.js']);
+  assert.deepEqual(J(context.pendingCliWatchDiffPaths(dirty, live, dirty)), []);
+  assert.deepEqual(J(context.pendingCliWatchDiffPaths([], live, [])), []);
+});
+
 test('CLI watch diffs only apply to the matching CLI analysis', () => {
   const status = { ok: true, root: '/tmp/alpha', name: 'alpha' };
   assert.equal(context.cliWatchAppliesToAnalysis('cli', status, { sourceType: 'cli', sourceKey: '/tmp/alpha' }), true);
@@ -1738,8 +1747,10 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /diff-del/);
   assert.match(htmlSource, /enqueueCliWatchDiffRef/);
   assert.match(htmlSource, /flushCliWatchDiffs/);
-  assert.match(htmlSource, /flushCliWatchDiffs\(cliDirty\)/);
+  assert.match(htmlSource, /pendingCliWatchDiffPaths\(cliDirty,cliLiveByPath,cliDiffPendingRef\.current\)/);
+  assert.match(htmlSource, /flushCliWatchDiffs\(missing\)/);
   assert.match(htmlSource, /cliWatchAppliesToAnalysis\(localSourceKind,cliStatus,currentAnalysisSource\(\)\)/);
+  assert.match(htmlSource, /applyCachedAnalysis[\s\S]*clearCliLiveDiffs\(\)/);
   assert.match(htmlSource, /codeCardSizeForDiff\(file,prefs,rows\)/);
   assert.match(htmlSource, /codeCardSizeForDiff\(file,cardPrefs,diffRows\)/);
   assert.match(htmlSource, /codeCardSymbolPills\(file,data\?data\.connections:\[\],cardPrefs,diffRows\)/);

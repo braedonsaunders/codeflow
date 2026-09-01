@@ -6079,6 +6079,17 @@ function codeCardDiffLineIndex(diffRows,analyzedLine){
     return found>0?found:n;
 }
 
+function pendingCliWatchDiffPaths(dirty,live,inflight){
+    var have=live||Object.create(null);
+    var wait=inflight||[];
+    return (dirty||[]).filter(function(path){
+        if(!path)return false;
+        if(Object.prototype.hasOwnProperty.call(have,path))return false;
+        if(wait.indexOf(path)>=0)return false;
+        return true;
+    });
+}
+
 function cliWatchAppliesToAnalysis(localSourceKind,cliStatus,analysisSource){
     if(!cliStatus||!cliStatus.ok)return false;
     if(localSourceKind==='folder'||localSourceKind==='zip')return false;
@@ -9079,6 +9090,8 @@ function App(){
         setFolderFilter(null);
         setCachedFromId(record.id);
         setActiveSymbol(null);
+        setCliDirty([]);
+        clearCliLiveDiffs();
         if(record.repoInfo)setRepoInfo(record.repoInfo);
         if(record.repoUrl)setRepoUrl(record.repoUrl);
         var folderMatches=record.sourceType==='folder'&&retainedFolderMatchesRecord(record,{sourceKey:localFolderKeyRef.current});
@@ -9232,8 +9245,10 @@ function App(){
     useEffect(function(){
         if(!cliWatchAppliesToAnalysis(localSourceKind,cliStatus,currentAnalysisSource()))return;
         if(!data||!data.files||!cliDirty.length)return;
-        flushCliWatchDiffs(cliDirty);
-    },[currentHydrationId,cliDirty,localSourceKind,cliStatus]);
+        var missing=pendingCliWatchDiffPaths(cliDirty,cliLiveByPath,cliDiffPendingRef.current);
+        if(!missing.length)return;
+        flushCliWatchDiffs(missing);
+    },[currentHydrationId,cliDirty,localSourceKind,cliStatus,cliLiveByPath]);
 
     async function analyzeFromCli(force,statusHint,wantedRoot){
         var status=statusHint||cliStatus;
