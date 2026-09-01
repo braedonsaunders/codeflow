@@ -17,11 +17,23 @@ import {
   createCodeflowServer,
   openBrowser,
   safeRequestPath,
-  startFileWatchers
+  startFileWatchers,
+  CLI_FILE_MAX_BYTES,
+  isMissingFsError
 } from '../cli/codeflow.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
+
+test('CLI file errors distinguish missing files from read failures', () => {
+  assert.equal(CLI_FILE_MAX_BYTES, 2 * 1024 * 1024);
+  assert.equal(isMissingFsError({ code: 'ENOENT' }), true);
+  assert.equal(isMissingFsError({ code: 'ENOTDIR' }), true);
+  assert.equal(isMissingFsError({ code: 'EISDIR' }), true);
+  assert.equal(isMissingFsError({ code: 'EACCES' }), false);
+  assert.equal(isMissingFsError({ code: 'EIO' }), false);
+  assert.equal(isMissingFsError(null), false);
+});
 
 test('CLI argument parser accepts a folder and port', () => {
   assert.deepEqual(parseCliArgs(['node', 'codeflow', '.', '--port', '4199']), { port: 4199, target: '.' });
@@ -114,7 +126,9 @@ test('CLI server serves the same UI and folder files', async (t) => {
   assert.match(fileBody, /function/);
   assert.equal(file.headers.get('content-length'), String(Buffer.byteLength(fileBody)));
   const cliSource = await readFile(join(repoRoot, 'cli/codeflow.mjs'), 'utf8');
-  assert.match(cliSource, /function pipeSafeFile[\s\S]*?fs\.readFile\(filePath\)[\s\S]*?'Content-Length': String\(buf\.length\)/);
+  assert.match(cliSource, /function pipeSafeFile[\s\S]*?fs\.open\(filePath, 'r'\)[\s\S]*?'Content-Length': String\(body\.length\)/);
+  assert.match(cliSource, /isMissingFsError\(err\)[\s\S]*?sendFileError\(res, 404/);
+  assert.match(cliSource, /sendFileError\(res, 500, 'Read failed'\)/);
   assert.doesNotMatch(cliSource, /createReadStream/);
   const denied = await fetch(base + '/__codeflow/file?path=../package.json');
   assert.equal(denied.status, 404);
@@ -188,6 +202,26 @@ test('CLI file endpoint does not follow escaping symlinks', async (t) => {
   const ok = await fetch('http://127.0.0.1:' + port + '/__codeflow/file?path=src/app.js');
   assert.equal(ok.status, 200);
   assert.match(await ok.text(), /export const ok/);
+});
+
+test('CLI file endpoint rejects oversized snapshots before buffering', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'codeflow-oversize-'));
+  t.after(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+  await writeFile(join(root, 'huge.js'), Buffer.alloc(CLI_FILE_MAX_BYTES + 1, 97));
+  const { server, close } = createCodeflowServer({ uiRoot: repoRoot, watchRoot: root });
+  t.after(() => close());
+  await new Promise((resolveListen, reject) => {
+    server.listen(0, '127.0.0.1', resolveListen);
+    server.once('error', reject);
+  });
+  const { port } = server.address();
+  const huge = await fetch('http://127.0.0.1:' + port + '/__codeflow/file?path=huge.js');
+  assert.equal(huge.status, 413);
+  assert.notEqual(huge.headers.get('content-length'), String(CLI_FILE_MAX_BYTES + 1));
+  const ui = await fetch('http://127.0.0.1:' + port + '/');
+  assert.equal(ui.status, 200);
 });
 
 test('CLI watch events tell the UI which file changed', async (t) => {

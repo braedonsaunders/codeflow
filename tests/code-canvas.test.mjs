@@ -1666,6 +1666,11 @@ test('CLI analysis keeps watch paths received while files were being read', () =
   assert.equal(context.cliWatchLiveMatchesBaseline(analyzed[0], 'export const n = 2;\n'), false);
   assert.equal(context.cliWatchLiveMatchesBaseline(analyzed[0], ''), false);
   assert.equal(context.cliWatchLiveMatchesBaseline({ path: 'src/app.js', content: 'export const n = 1;\n', analysisSkipped: 'fetch-failed' }, 'export const n = 1;\n'), false);
+  const emptyFile = { path: 'src/empty.js', content: '' };
+  assert.equal(context.cliWatchLiveClearsDirty(emptyFile, '', 'ok'), true);
+  assert.equal(context.cliWatchLiveClearsDirty(emptyFile, '', 'missing'), false);
+  assert.equal(context.cliWatchLiveClearsDirty(analyzed[0], 'export const n = 1;\n', 'ok'), true);
+  assert.equal(context.cliWatchLiveClearsDirty(analyzed[0], 'export const n = 1;\n', 'missing'), false);
   assert.deepEqual(J(context.cliWatchLiveFromResponse(200, 'ok\n', true)), { kind: 'ok', content: 'ok\n' });
   assert.deepEqual(J(context.cliWatchLiveFromResponse(404, 'nope', false)), { kind: 'missing', content: '' });
   assert.deepEqual(J(context.cliWatchLiveFromResponse(500, 'err', false)), { kind: 'error' });
@@ -1861,10 +1866,10 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /if\(!fileRes\.ok\)\{[\s\S]*?analyzed\.push\(makeFetchFailedAnalysisFile\(f\)\);[\s\S]*?continue;/);
   assert.match(htmlSource, /cliWatchLiveRejectsOversized\(length\)/);
   assert.match(htmlSource, /cliWatchLiveFromResponse\(res\.status,text,true,length\)/);
-  assert.match(htmlSource, /cliWatchReadRef\.current\[normalizeCliWatchPath\(f\.path\)\]=true/);
+  assert.match(htmlSource, /cliWatchReadRef\.current\[normalizeCliWatchPath\(f\.path\)\]=true;\s*var content=await fileRes\.text\(\);/);
   assert.match(htmlSource, /readCliWatchLiveSource\(path\)/);
   assert.match(htmlSource, /if\(!shouldApplyCliWatchLive\(result\)\)return/);
-  assert.match(htmlSource, /if\(cliWatchLiveMatchesBaseline\(file,live\)\)/);
+  assert.match(htmlSource, /if\(cliWatchLiveClearsDirty\(file,live,result\.kind\)\)/);
   assert.match(htmlSource, /setCliDirty\(function\(prev\)\{return forgetCliWatchPath\(prev,path\);\}/);
   assert.match(htmlSource, /setCliDirty\(keep\)/);
   assert.doesNotMatch(htmlSource, /setCachedFromId\(null\);\s*setCliDirty\(\[\]\);\s*clearCliLiveDiffs\(\);/);

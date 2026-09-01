@@ -174,22 +174,53 @@ function sendJson(res, status, body) {
   res.end(payload);
 }
 
+export const CLI_FILE_MAX_BYTES = 2 * 1024 * 1024;
+
+export function isMissingFsError(err) {
+  const code = err && err.code;
+  return code === 'ENOENT' || code === 'ENOTDIR' || code === 'EISDIR';
+}
+
 function sendPublicError(res, status, message) {
   sendJson(res, status, { error: message });
 }
 
-function pipeSafeFile(res, filePath, contentType) {
-  return fs.readFile(filePath).then((buf) => {
-    res.writeHead(200, {
-      'Content-Type': contentType,
-      'Content-Length': String(buf.length),
-      'Cache-Control': 'no-store'
-    });
-    res.end(buf);
-  }).catch(() => {
-    if (res.headersSent) return;
-    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('Not found');
+function sendFileError(res, status, message) {
+  if (res.headersSent) return;
+  res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' });
+  res.end(message);
+}
+
+function pipeSafeFile(res, filePath, contentType, maxBytes) {
+  return fs.open(filePath, 'r').then(async (fh) => {
+    try {
+      const st = await fh.stat();
+      if (!st.isFile()) {
+        sendFileError(res, 404, 'Not found');
+        return;
+      }
+      if (Number.isFinite(maxBytes) && st.size > maxBytes) {
+        sendFileError(res, 413, 'File too large');
+        return;
+      }
+      const buf = Buffer.alloc(st.size);
+      const { bytesRead } = await fh.read(buf, 0, st.size, 0);
+      const body = bytesRead === st.size ? buf : buf.subarray(0, bytesRead);
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Content-Length': String(body.length),
+        'Cache-Control': 'no-store'
+      });
+      res.end(body);
+    } finally {
+      await fh.close().catch(() => {});
+    }
+  }).catch((err) => {
+    if (isMissingFsError(err)) {
+      sendFileError(res, 404, 'Not found');
+      return;
+    }
+    sendFileError(res, 500, 'Read failed');
   });
 }
 
@@ -363,7 +394,7 @@ export function createCodeflowServer(options) {
           res.end('Not found');
           return;
         }
-        await pipeSafeFile(res, safe, 'text/plain; charset=utf-8');
+        await pipeSafeFile(res, safe, 'text/plain; charset=utf-8', CLI_FILE_MAX_BYTES);
         return;
       }
       if (url.pathname === '/__codeflow/events') {
