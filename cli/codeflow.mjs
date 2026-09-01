@@ -2,7 +2,7 @@
 // Thin local entry point. Serves the same index.html UI and watches a folder.
 // The public app stays one HTML file in the browser.
 
-import { createReadStream, existsSync, promises as fs, watch } from 'node:fs';
+import { existsSync, promises as fs, watch } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -179,26 +179,13 @@ function sendPublicError(res, status, message) {
 }
 
 function pipeSafeFile(res, filePath, contentType) {
-  return fs.stat(filePath).then((st) => {
-    if (!st.isFile()) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('Not found');
-      return;
-    }
+  return fs.readFile(filePath).then((buf) => {
     res.writeHead(200, {
       'Content-Type': contentType,
-      'Content-Length': String(st.size),
+      'Content-Length': String(buf.length),
       'Cache-Control': 'no-store'
     });
-    const stream = createReadStream(filePath);
-    stream.on('error', () => {
-      if (res.writableEnded) return;
-      if (!res.headersSent) {
-        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-      }
-      res.end('Read failed');
-    });
-    stream.pipe(res);
+    res.end(buf);
   }).catch(() => {
     if (res.headersSent) return;
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });

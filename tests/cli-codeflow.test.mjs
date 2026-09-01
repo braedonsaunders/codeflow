@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, mkdir, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, writeFile, mkdir, rm, symlink, readFile } from 'node:fs/promises';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -113,6 +113,9 @@ test('CLI server serves the same UI and folder files', async (t) => {
   const fileBody = await file.text();
   assert.match(fileBody, /function/);
   assert.equal(file.headers.get('content-length'), String(Buffer.byteLength(fileBody)));
+  const cliSource = await readFile(join(repoRoot, 'cli/codeflow.mjs'), 'utf8');
+  assert.match(cliSource, /function pipeSafeFile[\s\S]*?fs\.readFile\(filePath\)[\s\S]*?'Content-Length': String\(buf\.length\)/);
+  assert.doesNotMatch(cliSource, /createReadStream/);
   const denied = await fetch(base + '/__codeflow/file?path=../package.json');
   assert.equal(denied.status, 404);
   const asDir = await fetch(base + '/__codeflow/file?path=src');
