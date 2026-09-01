@@ -449,6 +449,12 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .file-preview-line:hover{background:var(--bg2)}
 .file-preview-line.highlighted{background:rgba(0,255,157,0.15);border-left:3px solid var(--acc)}
 .file-preview-line.highlighted .file-preview-linenum{color:var(--acc);font-weight:600}
+.file-preview-line.diff-add{background:rgba(34,197,94,0.16);box-shadow:inset 3px 0 0 var(--green)}
+.file-preview-line.diff-del{background:rgba(255,95,95,0.16);box-shadow:inset 3px 0 0 var(--red)}
+.file-preview-line.diff-add .file-preview-linenum{color:var(--green);font-weight:600}
+.file-preview-line.diff-del .file-preview-linenum{color:var(--red);font-weight:600}
+.light .file-preview-line.diff-add{background:rgba(34,197,94,0.12)}
+.light .file-preview-line.diff-del{background:rgba(255,95,95,0.12)}
 .file-preview-linenum{display:inline-block;min-width:50px;padding:0 16px 0 16px;text-align:right;color:var(--t3);user-select:none;border-right:1px solid var(--border2);flex-shrink:0}
 .file-preview-text{flex:1;padding:0 16px;white-space:pre;overflow-x:visible;color:var(--t1)}
 .file-preview-loading{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:16px}
@@ -5883,6 +5889,160 @@ function asCodeLines(lines){
     return[String(lines||'')];
 }
 
+var CLI_WATCH_DIFF_MS=200;
+var CODE_DIFF_LCS_LIMIT=160000;
+
+function normalizeCliWatchPath(path){
+    return String(path||'').replace(/\\/g,'/').replace(/^\/+/,'');
+}
+
+function noteCliWatchPath(prev,path){
+    var next=normalizeCliWatchPath(path);
+    if(!next)return prev||[];
+    var list=prev||[];
+    if(list.indexOf(next)>=0)return list;
+    return list.concat([next]);
+}
+
+function mergeCliLiveContents(prev,updates){
+    var next=Object.assign(Object.create(null),prev||{});
+    (updates||[]).forEach(function(update){
+        if(!update||!update.path)return;
+        var path=normalizeCliWatchPath(update.path);
+        if(!path)return;
+        if(typeof update.content!=='string'){
+            delete next[path];
+            return;
+        }
+        next[path]=update.content;
+    });
+    return next;
+}
+
+function cliWatchDiffPaths(files,paths){
+    var known=Object.create(null);
+    (files||[]).forEach(function(file){
+        if(file&&file.path)known[file.path]=true;
+    });
+    var out=[];
+    (paths||[]).forEach(function(path){
+        var next=normalizeCliWatchPath(path);
+        if(next&&known[next]&&out.indexOf(next)<0)out.push(next);
+    });
+    return out;
+}
+
+function splitCodeLines(text){
+    return String(text==null?'':text).split('\n');
+}
+
+function codeCardDiffClass(row){
+    if(!row||row.type==='same')return '';
+    if(row.type==='add')return ' diff-add';
+    if(row.type==='del')return ' diff-del';
+    return '';
+}
+
+function codeCardDiffLineNo(row){
+    if(!row)return '';
+    if(row.type==='del')return row.oldLine||'';
+    return row.newLine||row.oldLine||'';
+}
+
+function codeCardHasDiff(rows){
+    if(!rows||!rows.length)return false;
+    for(var i=0;i<rows.length;i++){
+        if(rows[i]&&rows[i].type&&rows[i].type!=='same')return true;
+    }
+    return false;
+}
+
+function lcsDiffRows(oldLines,newLines,oldOff,newOff){
+    var a=oldLines||[];
+    var b=newLines||[];
+    var n=a.length,m=b.length;
+    var dp=new Array(n+1);
+    var i,j;
+    for(i=0;i<=n;i++){
+        dp[i]=new Array(m+1);
+        dp[i][0]=0;
+    }
+    for(j=1;j<=m;j++)dp[0][j]=0;
+    for(i=1;i<=n;i++){
+        for(j=1;j<=m;j++){
+            dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]+1:Math.max(dp[i-1][j],dp[i][j-1]);
+        }
+    }
+    var out=[];
+    i=n;j=m;
+    while(i>0&&j>0){
+        if(a[i-1]===b[j-1]){
+            out.push({type:'same',text:a[i-1],oldLine:oldOff+i,newLine:newOff+j});
+            i--;j--;
+        }else if(dp[i-1][j]>=dp[i][j-1]){
+            out.push({type:'del',text:a[i-1],oldLine:oldOff+i,newLine:null});
+            i--;
+        }else{
+            out.push({type:'add',text:b[j-1],oldLine:null,newLine:newOff+j});
+            j--;
+        }
+    }
+    while(i>0){
+        out.push({type:'del',text:a[i-1],oldLine:oldOff+i,newLine:null});
+        i--;
+    }
+    while(j>0){
+        out.push({type:'add',text:b[j-1],oldLine:null,newLine:newOff+j});
+        j--;
+    }
+    out.reverse();
+    return out;
+}
+
+function replaceDiffRows(oldLines,newLines,oldOff,newOff){
+    var out=[];
+    var i;
+    for(i=0;i<(oldLines||[]).length;i++){
+        out.push({type:'del',text:oldLines[i],oldLine:oldOff+i+1,newLine:null});
+    }
+    for(i=0;i<(newLines||[]).length;i++){
+        out.push({type:'add',text:newLines[i],oldLine:null,newLine:newOff+i+1});
+    }
+    return out;
+}
+
+function diffCodeLines(before,after){
+    var a=splitCodeLines(before);
+    var b=splitCodeLines(after);
+    var rows=[];
+    var i=0,j=0;
+    while(i<a.length&&j<b.length&&a[i]===b[j]){
+        rows.push({type:'same',text:a[i],oldLine:i+1,newLine:j+1});
+        i++;j++;
+    }
+    var aEnd=a.length,bEnd=b.length;
+    while(aEnd>i&&bEnd>j&&a[aEnd-1]===b[bEnd-1]){
+        aEnd--;bEnd--;
+    }
+    var midA=a.slice(i,aEnd);
+    var midB=b.slice(j,bEnd);
+    var mid=midA.length*midB.length<=CODE_DIFF_LCS_LIMIT
+        ?lcsDiffRows(midA,midB,i,j)
+        :replaceDiffRows(midA,midB,i,j);
+    for(var k=0;k<mid.length;k++)rows.push(mid[k]);
+    for(k=0;k<a.length-aEnd;k++){
+        rows.push({type:'same',text:a[aEnd+k],oldLine:aEnd+k+1,newLine:bEnd+k+1});
+    }
+    return rows;
+}
+
+function codeCardDiffRows(file,liveContent){
+    if(!file||typeof file.content!=='string'||typeof liveContent!=='string')return null;
+    if(file.content===liveContent)return null;
+    var rows=diffCodeLines(file.content,liveContent);
+    return codeCardHasDiff(rows)?rows:null;
+}
+
 function readableLabelScale(k){
     var zoom=Number(k);
     if(!isFinite(zoom)||zoom<=0)return 1;
@@ -8535,6 +8695,7 @@ function App(){
     var _pendingDel=useState(null),pendingRecentDelete=_pendingDel[0],setPendingRecentDelete=_pendingDel[1];
     var _cli=useState(null),cliStatus=_cli[0],setCliStatus=_cli[1];
     var _cliDirty=useState([]),cliDirty=_cliDirty[0],setCliDirty=_cliDirty[1];
+    var _cliLive=useState(Object.create(null)),cliLiveByPath=_cliLive[0],setCliLiveByPath=_cliLive[1];
     var isMobile=viewportWidth<=980;
     var svgRef=useRef(null);
     var graph3dRef=useRef(null);
@@ -8584,6 +8745,12 @@ function App(){
     var codeCardUserSizeRef=useRef(Object.create(null));
     var codeCardStackRef=useRef([]);
     var analysisHydrationIdRef=useRef('');
+    var dataRef=useRef(null);
+    dataRef.current=data;
+    var enqueueCliWatchDiffRef=useRef(null);
+    var cliDiffTimerRef=useRef(null);
+    var cliDiffPendingRef=useRef([]);
+    var cliDiffGenRef=useRef(Object.create(null));
     var _openedCards=useState([]),openedCodePaths=_openedCards[0],setOpenedCodePaths=_openedCards[1];
     var _sourceFailed=useState(Object.create(null)),codeSourceFailed=_sourceFailed[0],setCodeSourceFailed=_sourceFailed[1];
     var _pillScroll=useState(0),codePillScroll=_pillScroll[0],setCodePillScroll=_pillScroll[1];
@@ -8955,6 +9122,45 @@ function App(){
         startGithubZipDownload(parsed.owner,parsed.repo);
     }
 
+    function clearCliLiveDiffs(){
+        cliDiffPendingRef.current=[];
+        cliDiffGenRef.current=Object.create(null);
+        if(cliDiffTimerRef.current){
+            clearTimeout(cliDiffTimerRef.current);
+            cliDiffTimerRef.current=null;
+        }
+        setCliLiveByPath(Object.create(null));
+    }
+
+    function flushCliWatchDiffs(paths){
+        var wanted=cliWatchDiffPaths(dataRef.current&&dataRef.current.files,paths);
+        if(!wanted.length)return;
+        wanted.forEach(function(path){
+            var gen=(cliDiffGenRef.current[path]||0)+1;
+            cliDiffGenRef.current[path]=gen;
+            readLiveFileSource(path).then(function(content){
+                if(cliDiffGenRef.current[path]!==gen)return;
+                if(typeof content!=='string')return;
+                setCliLiveByPath(function(prev){return mergeCliLiveContents(prev,[{path:path,content:content}]);});
+            });
+        });
+    }
+
+    function enqueueCliWatchDiff(path){
+        var next=normalizeCliWatchPath(path);
+        if(!next)return;
+        setCliDirty(function(prev){return noteCliWatchPath(prev,next);});
+        cliDiffPendingRef.current=noteCliWatchPath(cliDiffPendingRef.current,next);
+        if(cliDiffTimerRef.current)clearTimeout(cliDiffTimerRef.current);
+        cliDiffTimerRef.current=setTimeout(function(){
+            var pending=cliDiffPendingRef.current;
+            cliDiffPendingRef.current=[];
+            cliDiffTimerRef.current=null;
+            flushCliWatchDiffs(pending);
+        },CLI_WATCH_DIFF_MS);
+    }
+    enqueueCliWatchDiffRef.current=enqueueCliWatchDiff;
+
     function probeCodeflowCli(){
         fetch('/__codeflow/status').then(function(res){return res.ok?res.json():null;}).then(function(status){
             if(!status||!status.ok)return;
@@ -8967,10 +9173,7 @@ function App(){
                 src.onmessage=function(ev){
                     try{
                         var payload=JSON.parse(ev.data||'{}');
-                        if(payload.path)setCliDirty(function(prev){
-                            if(prev.indexOf(payload.path)>=0)return prev;
-                            return prev.concat([payload.path]);
-                        });
+                        if(payload.path&&enqueueCliWatchDiffRef.current)enqueueCliWatchDiffRef.current(payload.path);
                     }catch(e){}
                 };
             }
@@ -9048,6 +9251,7 @@ function App(){
             setRepoInfo(cliInfo);
             setCachedFromId(null);
             setCliDirty([]);
+            clearCliLiveDiffs();
             persistCurrentAnalysis(dataObj,{sourceType:'cli',sourceKey:cliMeta.sourceKey,title:cliMeta.title,repoUrl:'',repoInfo:cliInfo,localSourceKind:'cli'});
             setLoading(false);
             return true;
@@ -9070,6 +9274,8 @@ function App(){
         setShowGraphConfig(false);
         setCachedFromId(null);
         setActiveSymbol(null);
+        setCliDirty([]);
+        clearCliLiveDiffs();
     }
 
     function openExcludeModal(){
@@ -12222,7 +12428,7 @@ function App(){
         navigator.clipboard.writeText(shareUrl).then(function(){showNotification('Link copied to clipboard!');}).catch(function(){showNotification('Failed to copy link','error');});
     }
     function analyzePR(){if(!prUrl||!repoInfo)return;var m=prUrl.match(/\/pull\/(\d+)/);if(!m){showNotification('Invalid PR URL','error');return;}GitHub.getPR(repoInfo.owner,repoInfo.repo,m[1]).then(function(pr){if(pr)setPrData(pr);else showNotification('Could not load PR','error');});}
-    function resetAnalysis(){setData(null);setSelected(null);setBlastRadius(null);setOwnership(null);setRepoInfo(null);setRepoUrl('');setPrData(null);setFolderFilter(null);setLocalDirHandle(null);setLocalSourceKind(null);setArchitectureIncludeTests(false);setArchitectureIncludeBuildOutput(false);setCachedFromId(null);setActiveSymbol(null);setCliDirty([]);localFolderKeyRef.current=null;localFolderSelectionRef.current=null;localFilesRef.current=null;zipKeyRef.current=null;zipArchiveRef.current=null;zipFileRef.current=null;window.history.replaceState({},'',window.location.pathname);}
+    function resetAnalysis(){setData(null);setSelected(null);setBlastRadius(null);setOwnership(null);setRepoInfo(null);setRepoUrl('');setPrData(null);setFolderFilter(null);setLocalDirHandle(null);setLocalSourceKind(null);setArchitectureIncludeTests(false);setArchitectureIncludeBuildOutput(false);setCachedFromId(null);setActiveSymbol(null);setCliDirty([]);clearCliLiveDiffs();localFolderKeyRef.current=null;localFolderSelectionRef.current=null;localFilesRef.current=null;zipKeyRef.current=null;zipArchiveRef.current=null;zipFileRef.current=null;window.history.replaceState({},'',window.location.pathname);}
     function filterByFolder(path){setFolderFilter(function(prev){return prev===path?null:path;});}
     function renderRecentsList(){
         return React.createElement('div',{className:'sidebar-scroll'},
@@ -12483,15 +12689,28 @@ function App(){
         var sourceState=fileSourceDisplayState(file,canReadLiveFileSource(),codeSourceFailed);
         var body;
         if(sourceState==='ready'){
-            var lines=asCodeLines(highlightSyntax(file.content||'',file.name));
-            body=React.createElement('pre',{className:'file-preview-code'},
-                lines.map(function(lineHtml,i){
-                    return React.createElement('div',{key:i,className:'file-preview-line'},
-                        React.createElement('span',{className:'file-preview-linenum'},i+1),
-                        React.createElement('span',{className:'file-preview-text',dangerouslySetInnerHTML:{__html:annotateHtmlWithSymbols(lineHtml||' ',codeViewSymbols,activeSymbol)}})
-                    );
-                })
-            );
+            var diffRows=codeCardDiffRows(file,cliLiveByPath[file.path]);
+            if(diffRows){
+                body=React.createElement('pre',{className:'file-preview-code'},
+                    diffRows.map(function(row,i){
+                        var lineHtml=(highlightSyntax(row.text,file.name)[0])||' ';
+                        return React.createElement('div',{key:i,className:'file-preview-line'+codeCardDiffClass(row)},
+                            React.createElement('span',{className:'file-preview-linenum'},codeCardDiffLineNo(row)),
+                            React.createElement('span',{className:'file-preview-text',dangerouslySetInnerHTML:{__html:annotateHtmlWithSymbols(lineHtml||' ',codeViewSymbols,activeSymbol)}})
+                        );
+                    })
+                );
+            }else{
+                var lines=asCodeLines(highlightSyntax(file.content||'',file.name));
+                body=React.createElement('pre',{className:'file-preview-code'},
+                    lines.map(function(lineHtml,i){
+                        return React.createElement('div',{key:i,className:'file-preview-line'},
+                            React.createElement('span',{className:'file-preview-linenum'},i+1),
+                            React.createElement('span',{className:'file-preview-text',dangerouslySetInnerHTML:{__html:annotateHtmlWithSymbols(lineHtml||' ',codeViewSymbols,activeSymbol)}})
+                        );
+                    })
+                );
+            }
         }else if(sourceState==='failed'){
             body=React.createElement('div',{className:'code-card-source-status'},
                 React.createElement('div',{className:'empty-desc'},'Source unavailable'),

@@ -1520,6 +1520,46 @@ test('empty code cards always render from an array of lines', () => {
   assert.deepEqual(J(context.asCodeLines(['const x = 1;'])), ['const x = 1;']);
 });
 
+test('CLI watch paths stay unique and only flush analyzed files', () => {
+  assert.equal(context.normalizeCliWatchPath('\\src\\app.js'), 'src/app.js');
+  assert.deepEqual(J(context.noteCliWatchPath([], 'src/app.js')), ['src/app.js']);
+  assert.deepEqual(J(context.noteCliWatchPath(['src/app.js'], 'src/app.js')), ['src/app.js']);
+  assert.deepEqual(J(context.noteCliWatchPath(['src/app.js'], 'src/math.js')), ['src/app.js', 'src/math.js']);
+  const files = [{ path: 'src/app.js' }, { path: 'src/math.js' }];
+  assert.deepEqual(J(context.cliWatchDiffPaths(files, ['src/app.js', 'README.md', 'src/app.js'])), ['src/app.js']);
+  const live = context.mergeCliLiveContents(null, [{ path: 'src/app.js', content: 'export const n = 1;\n' }]);
+  assert.equal(live['src/app.js'], 'export const n = 1;\n');
+  const cleared = context.mergeCliLiveContents(live, [{ path: 'src/app.js', content: null }]);
+  assert.equal(Object.prototype.hasOwnProperty.call(cleared, 'src/app.js'), false);
+});
+
+test('line diffs mark added and removed rows for Code cards', () => {
+  const before = 'import { add } from "./math.js";\n\nexport function boot() {\n  return add(1, 2);\n}\n';
+  const after = 'import { add, double } from "./math.js";\n\nexport function boot() {\n  return double(add(1, 2));\n}\n';
+  const rows = J(context.diffCodeLines(before, after));
+  const added = rows.filter((row) => row.type === 'add').map((row) => row.text);
+  const removed = rows.filter((row) => row.type === 'del').map((row) => row.text);
+  assert.ok(removed.some((line) => line.includes('from "./math.js"')));
+  assert.ok(added.some((line) => line.includes('double')));
+  assert.ok(removed.some((line) => line.includes('return add(1, 2);')));
+  assert.ok(added.some((line) => line.includes('return double(add(1, 2));')));
+  assert.ok(rows.some((row) => row.type === 'same' && row.text.includes('export function boot()')));
+  const file = { path: 'src/app.js', content: before };
+  const painted = J(context.codeCardDiffRows(file, after));
+  assert.ok(context.codeCardHasDiff(painted));
+  assert.equal(context.codeCardDiffClass({ type: 'add' }), ' diff-add');
+  assert.equal(context.codeCardDiffClass({ type: 'del' }), ' diff-del');
+  assert.equal(context.codeCardDiffClass({ type: 'same' }), '');
+  assert.equal(context.codeCardDiffLineNo({ type: 'add', newLine: 4 }), 4);
+  assert.equal(context.codeCardDiffLineNo({ type: 'del', oldLine: 2 }), 2);
+  assert.equal(context.codeCardDiffRows(file, before), null);
+  assert.equal(context.codeCardDiffRows({ path: 'src/app.js' }, after), null);
+  assert.equal(context.codeCardDiffRows(file, null), null);
+  const identical = J(context.diffCodeLines(before, before));
+  assert.ok(identical.every((row) => row.type === 'same'));
+  assert.equal(context.codeCardHasDiff(identical), false);
+});
+
 test('HTML attribute sanitizer encodes quotes before they reach data-sym', () => {
   assert.equal(context.escapeHtmlAttr('say "hi"'), 'say &quot;hi&quot;');
   assert.match(context.escapeHtmlAttr('a"onclick="alert(1)'), /&quot;/);
@@ -1656,6 +1696,14 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /allowReplace=!!\(replace\|\|reveal\)/);
   assert.match(htmlSource, /filterAnalyzableLocalFiles\(/);
   assert.match(htmlSource, /asCodeLines\(highlightSyntax/);
+  assert.match(htmlSource, /codeCardDiffRows\(file,cliLiveByPath/);
+  assert.match(htmlSource, /className:'file-preview-line'\+codeCardDiffClass\(row\)/);
+  assert.match(htmlSource, /diff-add/);
+  assert.match(htmlSource, /diff-del/);
+  assert.match(htmlSource, /enqueueCliWatchDiffRef/);
+  assert.match(htmlSource, /flushCliWatchDiffs/);
+  assert.match(htmlSource, /EventSource\('\/__codeflow\/events'\)/);
+  assert.match(htmlSource, /CLI_WATCH_DIFF_MS/);
   assert.match(htmlSource, /zipArchiveCacheMeta/);
   assert.match(htmlSource, /compactAnalysisForCache/);
   assert.match(htmlSource, /fileHasLoadedSource/);

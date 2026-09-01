@@ -185,6 +185,49 @@ test('CLI file endpoint does not follow escaping symlinks', async (t) => {
   assert.match(await ok.text(), /export const ok/);
 });
 
+test('CLI watch events tell the UI which file changed', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'codeflow-events-'));
+  t.after(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+  await mkdir(join(root, 'src'));
+  await writeFile(join(root, 'src', 'app.js'), 'export const ok = 1;\n');
+  const { server, close } = createCodeflowServer({ uiRoot: repoRoot, watchRoot: root });
+  t.after(() => close());
+  await new Promise((resolveListen, reject) => {
+    server.listen(0, '127.0.0.1', resolveListen);
+    server.once('error', reject);
+  });
+  const { port } = server.address();
+  const events = await new Promise((resolve, reject) => {
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port,
+      path: '/__codeflow/events',
+      headers: { Accept: 'text/event-stream' }
+    }, (res) => {
+      let buf = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        buf += chunk;
+        if (buf.includes('data: ')) {
+          res.destroy();
+          resolve(buf);
+        }
+      });
+      res.on('error', reject);
+    });
+    req.on('error', reject);
+    req.end();
+    setTimeout(async () => {
+      await writeFile(join(root, 'src', 'app.js'), 'export const ok = 2;\n');
+    }, 40);
+    setTimeout(() => reject(new Error('watch event timed out')), 3000);
+  });
+  assert.match(events, /"type":"change"/);
+  assert.match(events, /"path":"src\/app.js"/);
+});
+
 test('safeRequestPath rejects malformed escapes', () => {
   assert.equal(safeRequestPath('/%').ok, false);
   assert.equal(safeRequestPath('/%').status, 400);
