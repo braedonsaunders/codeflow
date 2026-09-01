@@ -19,7 +19,10 @@ import {
   safeRequestPath,
   startFileWatchers,
   CLI_FILE_MAX_BYTES,
-  isMissingFsError
+  isMissingFsError,
+  bumpWatchRev,
+  currentWatchRev,
+  readOpenedSnapshot
 } from '../cli/codeflow.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -27,6 +30,10 @@ const repoRoot = join(__dirname, '..');
 
 test('CLI file errors distinguish missing files from read failures', () => {
   assert.equal(CLI_FILE_MAX_BYTES, 2 * 1024 * 1024);
+  const revs = new Map();
+  assert.equal(bumpWatchRev(revs, 'src/app.js'), 1);
+  assert.equal(bumpWatchRev(revs, 'src/app.js'), 2);
+  assert.equal(currentWatchRev(revs, '/src/app.js'), 2);
   assert.equal(isMissingFsError({ code: 'ENOENT' }), true);
   assert.equal(isMissingFsError({ code: 'ENOTDIR' }), true);
   assert.equal(isMissingFsError({ code: 'EISDIR' }), true);
@@ -125,10 +132,12 @@ test('CLI server serves the same UI and folder files', async (t) => {
   const fileBody = await file.text();
   assert.match(fileBody, /function/);
   assert.equal(file.headers.get('content-length'), String(Buffer.byteLength(fileBody)));
+  assert.equal(file.headers.get('x-codeflow-rev'), '0');
   const cliSource = await readFile(join(repoRoot, 'cli/codeflow.mjs'), 'utf8');
-  assert.match(cliSource, /function pipeSafeFile[\s\S]*?fs\.open\(filePath, 'r'\)[\s\S]*?'Content-Length': String\(body\.length\)/);
+  assert.match(cliSource, /function pipeSafeFile[\s\S]*?fs\.open\(filePath, 'r'\)[\s\S]*?readOpenedSnapshot\(fh, st\.size\)/);
   assert.match(cliSource, /isMissingFsError\(err\)[\s\S]*?sendFileError\(res, 404/);
   assert.match(cliSource, /sendFileError\(res, 500, 'Read failed'\)/);
+  assert.match(cliSource, /X-Codeflow-Rev/);
   assert.doesNotMatch(cliSource, /createReadStream/);
   const denied = await fetch(base + '/__codeflow/file?path=../package.json');
   assert.equal(denied.status, 404);
@@ -265,6 +274,21 @@ test('CLI watch events tell the UI which file changed', async (t) => {
   });
   assert.match(events, /"type":"change"/);
   assert.match(events, /"path":"src\/app.js"/);
+  assert.match(events, /"rev":/);
+});
+
+test('CLI snapshot reads loop until the opened range is filled', async () => {
+  const chunks = [4, 4, 2];
+  const fh = {
+    async read(buf, offset, length) {
+      const n = Math.min(chunks.shift() || 0, length);
+      buf.fill(65, offset, offset + n);
+      return { bytesRead: n };
+    }
+  };
+  const body = await readOpenedSnapshot(fh, 10);
+  assert.equal(body.length, 10);
+  assert.equal(body.toString(), 'A'.repeat(10));
 });
 
 test('safeRequestPath rejects malformed escapes', () => {

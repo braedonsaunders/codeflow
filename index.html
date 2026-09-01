@@ -5911,6 +5911,42 @@ function noteCliWatchPathIfRead(prev,path,readByPath){
     return noteCliWatchPath(prev,next);
 }
 
+function cliWatchEventRev(value){
+    var n=Number(value);
+    return Number.isFinite(n)?n:null;
+}
+
+function normalizeCliWatchDuringEvent(item){
+    if(typeof item==='string')return{path:normalizeCliWatchPath(item),rev:null};
+    var path=normalizeCliWatchPath(item&&item.path);
+    if(!path)return null;
+    return{path:path,rev:cliWatchEventRev(item.rev)};
+}
+
+function noteCliWatchDuringEvent(prev,path,rev){
+    var ev=normalizeCliWatchDuringEvent({path:path,rev:rev});
+    if(!ev)return prev||[];
+    var list=(prev||[]).slice();
+    var idx=-1;
+    for(var i=0;i<list.length;i++){
+        var cur=normalizeCliWatchDuringEvent(list[i]);
+        if(cur&&cur.path===ev.path){idx=i;break;}
+    }
+    if(idx>=0)list[idx]=ev;
+    else list.push(ev);
+    return list;
+}
+
+function cliWatchEventIsAfterSnapshot(eventRev,snapRev){
+    if(eventRev==null||snapRev==null)return true;
+    return Number(eventRev)>Number(snapRev);
+}
+
+function cliWatchSnapRevFromResponse(res){
+    if(!res||!res.headers||typeof res.headers.get!=='function')return null;
+    return cliWatchEventRev(res.headers.get('x-codeflow-rev'));
+}
+
 function forgetCliWatchPath(prev,path){
     var next=normalizeCliWatchPath(path);
     if(!next)return prev||[];
@@ -6136,13 +6172,15 @@ function cliWatchDiffRequestIsCurrent(epoch,capturedEpoch,genByPath,path,capture
     return !!(genByPath&&genByPath[path]===capturedGen);
 }
 
-function retainCliWatchPathsAfterAnalysis(receivedDuring,readByPath){
+function retainCliWatchPathsAfterAnalysis(receivedDuring,readByPath,snapRevByPath){
     var read=readByPath||Object.create(null);
+    var snaps=snapRevByPath||Object.create(null);
     var out=[];
-    (receivedDuring||[]).forEach(function(path){
-        var next=normalizeCliWatchPath(path);
-        if(!next||!read[next]||out.indexOf(next)>=0)return;
-        out.push(next);
+    (receivedDuring||[]).forEach(function(item){
+        var ev=normalizeCliWatchDuringEvent(item);
+        if(!ev||!read[ev.path]||out.indexOf(ev.path)>=0)return;
+        if(!cliWatchEventIsAfterSnapshot(ev.rev,Object.prototype.hasOwnProperty.call(snaps,ev.path)?snaps[ev.path]:null))return;
+        out.push(ev.path);
     });
     return out;
 }
@@ -7035,6 +7073,17 @@ function applyCodeCardDragFrame(layer,path,node,size){
     card.style.left=style.left;
     card.style.top=style.top;
     return style.visibility==='visible';
+}
+
+function applyCodeCardResizeFrame(card,size){
+    if(!card||!size)return false;
+    card.style.width=size.width+'px';
+    card.style.height=size.height+'px';
+    if(card.classList){
+        if(size.clipped&&card.classList.add)card.classList.add('clipped');
+        else if(card.classList.remove)card.classList.remove('clipped');
+    }
+    return true;
 }
 
 function boxesOverlap(a,b,gap){
@@ -8907,6 +8956,7 @@ function App(){
     var cliAnalyzingRef=useRef(false);
     var cliWatchDuringRef=useRef([]);
     var cliWatchReadRef=useRef(Object.create(null));
+    var cliWatchSnapRevRef=useRef(Object.create(null));
     var _openedCards=useState([]),openedCodePaths=_openedCards[0],setOpenedCodePaths=_openedCards[1];
     var _sourceFailed=useState(Object.create(null)),codeSourceFailed=_sourceFailed[0],setCodeSourceFailed=_sourceFailed[1];
     var _pillScroll=useState(0),codePillScroll=_pillScroll[0],setCodePillScroll=_pillScroll[1];
@@ -9314,10 +9364,10 @@ function App(){
         });
     }
 
-    function enqueueCliWatchDiff(path){
+    function enqueueCliWatchDiff(path,rev){
         var next=normalizeCliWatchPath(path);
         if(!next)return;
-        if(cliAnalyzingRef.current)cliWatchDuringRef.current=noteCliWatchPathIfRead(cliWatchDuringRef.current,next,cliWatchReadRef.current);
+        if(cliAnalyzingRef.current)cliWatchDuringRef.current=noteCliWatchDuringEvent(cliWatchDuringRef.current,next,rev);
         if(!cliWatchAppliesToAnalysis(localSourceKind,cliStatus,currentAnalysisSource()))return;
         setCliDirty(function(prev){return noteCliWatchPath(prev,next);});
         cliDiffPendingRef.current=noteCliWatchPath(cliDiffPendingRef.current,next);
@@ -9343,7 +9393,7 @@ function App(){
                 src.onmessage=function(ev){
                     try{
                         var payload=JSON.parse(ev.data||'{}');
-                        if(payload.path&&enqueueCliWatchDiffRef.current)enqueueCliWatchDiffRef.current(payload.path);
+                        if(payload.path&&enqueueCliWatchDiffRef.current)enqueueCliWatchDiffRef.current(payload.path,payload.rev);
                     }catch(e){}
                 };
             }
@@ -9379,6 +9429,7 @@ function App(){
         var cliMeta=cliWatchCacheMeta(status);
         cliWatchDuringRef.current=[];
         cliWatchReadRef.current=Object.create(null);
+        cliWatchSnapRevRef.current=Object.create(null);
         cliAnalyzingRef.current=true;
         resetAnalysisState();
         setLocalDirHandle(null);
@@ -9413,7 +9464,10 @@ function App(){
                     analyzed.push(makeFetchFailedAnalysisFile(f));
                     continue;
                 }
-                cliWatchReadRef.current[normalizeCliWatchPath(f.path)]=true;
+                var pathKey=normalizeCliWatchPath(f.path);
+                cliWatchReadRef.current[pathKey]=true;
+                var snapRev=cliWatchSnapRevFromResponse(fileRes);
+                if(snapRev!=null)cliWatchSnapRevRef.current[pathKey]=snapRev;
                 var content=await fileRes.text();
                 if(Parser.isOversized(content.length)){
                     analyzed.push(makeOversizedAnalysisFile(f,content.length,isCodeFile));
@@ -9433,10 +9487,11 @@ function App(){
                 yieldFn:yieldToBrowser
             });
             var cliInfo={owner:'local',repo:'cli',name:cliMeta.title,cliRoot:cliMeta.sourceKey};
-            var keep=retainCliWatchPathsAfterAnalysis(cliWatchDuringRef.current,cliWatchReadRef.current);
+            var keep=retainCliWatchPathsAfterAnalysis(cliWatchDuringRef.current,cliWatchReadRef.current,cliWatchSnapRevRef.current);
             cliAnalyzingRef.current=false;
             cliWatchDuringRef.current=[];
             cliWatchReadRef.current=Object.create(null);
+            cliWatchSnapRevRef.current=Object.create(null);
             setData(dataObj);
             setExpandedPaths(new Set(['']));
             setRepoInfo(cliInfo);
@@ -9450,6 +9505,7 @@ function App(){
             cliAnalyzingRef.current=false;
             cliWatchDuringRef.current=[];
             cliWatchReadRef.current=Object.create(null);
+            cliWatchSnapRevRef.current=Object.create(null);
             setError('CLI analysis failed: '+(err.message||err));
             setLoading(false);
         }
@@ -12823,7 +12879,7 @@ function App(){
         e.stopPropagation();
         e.preventDefault();
         var node=graphNodesByIdRef.current[file.path];
-        var size=codeCardSizesRef.current[file.path]||applyCodeCardUserSize(codeCardSize(file,currentCodeCardPrefs()),codeCardUserSizeRef.current[file.path]);
+        var size=codeCardSizesRef.current[file.path]||applyCodeCardUserSize(codeCardSizeForDiff(file,currentCodeCardPrefs(),codeCardDiffRows(file,cliLiveByPath[file.path])),codeCardUserSizeRef.current[file.path]);
         if(!node)return;
         var transform=codeZoomTransformRef.current||{k:1,x:0,y:0};
         var k=Number(transform.k);
@@ -12832,7 +12888,7 @@ function App(){
         var left=node.x-size.width/2,top=node.y-size.height/2,moved=false;
         function writeSize(nextSize){
             codeCardUserSizeRef.current[file.path]={width:nextSize.width,height:nextSize.height};
-            codeCardSizesRef.current[file.path]=applyCodeCardUserSize(codeCardSize(file,currentCodeCardPrefs()),nextSize);
+            codeCardSizesRef.current[file.path]=applyCodeCardUserSize(codeCardSizeForDiff(file,currentCodeCardPrefs(),codeCardDiffRows(file,cliLiveByPath[file.path])),nextSize);
             var live=codeCardSizesRef.current[file.path];
             node.x=node.fx=left+live.width/2;
             node.y=node.fy=top+live.height/2;
@@ -12860,14 +12916,7 @@ function App(){
                 if(updateHullsRef.current)updateHullsRef.current();
             }else{
                 applyCodeCardDragFrame(codeCardsLayerRef.current,file.path,node,codeCardSizesRef.current[file.path]);
-                var live=codeCardSizesRef.current[file.path];
-                if(live){
-                    var card=findCodeCardElement(codeCardsLayerRef.current,file.path);
-                    if(card){
-                        card.style.width=live.width+'px';
-                        card.style.height=live.height+'px';
-                    }
-                }
+                applyCodeCardResizeFrame(findCodeCardElement(codeCardsLayerRef.current,file.path),codeCardSizesRef.current[file.path]);
             }
             if(drawMinimapRef.current)drawMinimapRef.current();
         }

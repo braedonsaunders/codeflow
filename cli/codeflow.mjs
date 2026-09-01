@@ -181,6 +181,36 @@ export function isMissingFsError(err) {
   return code === 'ENOENT' || code === 'ENOTDIR' || code === 'EISDIR';
 }
 
+export function normalizeWatchRel(rel) {
+  return String(rel || '').replace(/\\/g, '/').replace(/^\/+/, '');
+}
+
+export function bumpWatchRev(revs, rel) {
+  const key = normalizeWatchRel(rel);
+  if (!key) return 0;
+  const next = (Number(revs.get(key)) || 0) + 1;
+  revs.set(key, next);
+  return next;
+}
+
+export function currentWatchRev(revs, rel) {
+  const key = normalizeWatchRel(rel);
+  if (!key) return 0;
+  return Number(revs.get(key)) || 0;
+}
+
+export async function readOpenedSnapshot(fh, size) {
+  const n = Number(size) || 0;
+  const buf = Buffer.alloc(n);
+  let offset = 0;
+  while (offset < n) {
+    const { bytesRead } = await fh.read(buf, offset, n - offset, offset);
+    if (!bytesRead) break;
+    offset += bytesRead;
+  }
+  return offset === n ? buf : buf.subarray(0, offset);
+}
+
 function sendPublicError(res, status, message) {
   sendJson(res, status, { error: message });
 }
@@ -191,7 +221,8 @@ function sendFileError(res, status, message) {
   res.end(message);
 }
 
-function pipeSafeFile(res, filePath, contentType, maxBytes) {
+function pipeSafeFile(res, filePath, contentType, maxBytes, options) {
+  options = options || {};
   return fs.open(filePath, 'r').then(async (fh) => {
     try {
       const st = await fh.stat();
@@ -199,18 +230,19 @@ function pipeSafeFile(res, filePath, contentType, maxBytes) {
         sendFileError(res, 404, 'Not found');
         return;
       }
+      const snapshotRev = typeof options.snapshotRev === 'function' ? options.snapshotRev() : options.snapshotRev;
       if (Number.isFinite(maxBytes) && st.size > maxBytes) {
         sendFileError(res, 413, 'File too large');
         return;
       }
-      const buf = Buffer.alloc(st.size);
-      const { bytesRead } = await fh.read(buf, 0, st.size, 0);
-      const body = bytesRead === st.size ? buf : buf.subarray(0, bytesRead);
-      res.writeHead(200, {
+      const body = await readOpenedSnapshot(fh, st.size);
+      const headers = {
         'Content-Type': contentType,
         'Content-Length': String(body.length),
         'Cache-Control': 'no-store'
-      });
+      };
+      if (Number.isFinite(Number(snapshotRev))) headers['X-Codeflow-Rev'] = String(Number(snapshotRev));
+      res.writeHead(200, headers);
       res.end(body);
     } finally {
       await fh.close().catch(() => {});
@@ -354,9 +386,12 @@ export function createCodeflowServer(options) {
   const watchRoot = options.watchRoot;
   const name = path.basename(watchRoot);
   const clients = new Set();
+  const watchRevs = new Map();
 
   const watchSession = startFileWatchers(watchRoot, (rel) => {
-    const payload = `data: ${JSON.stringify({ type: 'change', path: rel })}\n\n`;
+    const pathKey = normalizeWatchRel(rel);
+    const rev = bumpWatchRev(watchRevs, pathKey);
+    const payload = `data: ${JSON.stringify({ type: 'change', path: pathKey, rev })}\n\n`;
     for (const client of clients) client.write(payload);
   });
 
@@ -394,7 +429,9 @@ export function createCodeflowServer(options) {
           res.end('Not found');
           return;
         }
-        await pipeSafeFile(res, safe, 'text/plain; charset=utf-8', CLI_FILE_MAX_BYTES);
+        await pipeSafeFile(res, safe, 'text/plain; charset=utf-8', CLI_FILE_MAX_BYTES, {
+          snapshotRev: () => currentWatchRev(watchRevs, url.searchParams.get('path') || '')
+        });
         return;
       }
       if (url.pathname === '/__codeflow/events') {
