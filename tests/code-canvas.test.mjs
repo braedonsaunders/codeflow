@@ -1533,8 +1533,12 @@ test('CLI watch paths stay unique and only flush analyzed files', () => {
   assert.deepEqual(J(context.noteCliWatchPath([], 'src/app.js')), ['src/app.js']);
   assert.deepEqual(J(context.noteCliWatchPath(['src/app.js'], 'src/app.js')), ['src/app.js']);
   assert.deepEqual(J(context.noteCliWatchPath(['src/app.js'], 'src/math.js')), ['src/app.js', 'src/math.js']);
-  const files = [{ path: 'src/app.js' }, { path: 'src/math.js' }];
+  const files = [{ path: 'src/app.js', content: 'export const n = 1;\n' }, { path: 'src/math.js', content: '' }];
   assert.deepEqual(J(context.cliWatchDiffPaths(files, ['src/app.js', 'README.md', 'src/app.js'])), ['src/app.js']);
+  const skipped = [{ path: 'src/app.js', content: '', analysisSkipped: 'oversized' }, { path: 'src/math.js', content: 'export const n = 1;\n' }];
+  assert.deepEqual(J(context.cliWatchDiffPaths(skipped, ['src/app.js', 'src/math.js'])), ['src/math.js']);
+  assert.equal(context.fileHasAnalyzedSourceForDiff(skipped[0]), false);
+  assert.equal(context.fileHasAnalyzedSourceForDiff(files[0]), true);
   const live = context.mergeCliLiveContents(null, [{ path: 'src/app.js', content: 'export const n = 1;\n' }]);
   assert.equal(live['src/app.js'], 'export const n = 1;\n');
   const cleared = context.mergeCliLiveContents(live, [{ path: 'src/app.js', content: null }]);
@@ -1642,8 +1646,17 @@ test('cleared CLI watch generations do not reuse an in-flight token', () => {
 });
 
 test('CLI analysis keeps watch paths received while files were being read', () => {
-  assert.deepEqual(J(context.retainCliWatchPathsAfterAnalysis(['src/app.js', '/src/math.js', 'src/app.js', ''])), ['src/app.js', 'src/math.js']);
+  const read = { 'src/app.js': true, 'src/math.js': true };
+  assert.deepEqual(J(context.retainCliWatchPathsAfterAnalysis(['src/app.js', '/src/math.js', 'src/app.js', ''], read)), ['src/app.js', 'src/math.js']);
+  assert.deepEqual(J(context.retainCliWatchPathsAfterAnalysis(['src/app.js', 'src/unread.js'], { 'src/app.js': true })), ['src/app.js']);
+  assert.deepEqual(J(context.retainCliWatchPathsAfterAnalysis(['src/unread.js'], { 'src/app.js': true })), []);
   assert.deepEqual(J(context.retainCliWatchPathsAfterAnalysis(null)), []);
+  assert.deepEqual(J(context.cliWatchLiveFromResponse(200, 'ok\n', true)), { kind: 'ok', content: 'ok\n' });
+  assert.deepEqual(J(context.cliWatchLiveFromResponse(404, 'nope', false)), { kind: 'missing', content: '' });
+  assert.deepEqual(J(context.cliWatchLiveFromResponse(500, 'err', false)), { kind: 'error' });
+  assert.equal(context.shouldApplyCliWatchLive({ kind: 'ok', content: '' }), true);
+  assert.equal(context.shouldApplyCliWatchLive({ kind: 'missing', content: '' }), true);
+  assert.equal(context.shouldApplyCliWatchLive({ kind: 'error' }), false);
 });
 
 test('CLI watch recovery skips already flushed and in-flight paths', () => {
@@ -1817,7 +1830,10 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /cliWatchAppliesToAnalysis\(localSourceKind,cliStatus,currentAnalysisSource\(\)\)/);
   assert.match(htmlSource, /function applyCachedAnalysis\(record\)\{[\s\S]*?setCliDirty\(\[\]\);[\s\S]*?clearCliLiveDiffs\(\);/);
   assert.match(htmlSource, /cliWatchDuringRef\.current=noteCliWatchPath\(cliWatchDuringRef\.current,next\)/);
-  assert.match(htmlSource, /var keep=retainCliWatchPathsAfterAnalysis\(cliWatchDuringRef\.current\)/);
+  assert.match(htmlSource, /var keep=retainCliWatchPathsAfterAnalysis\(cliWatchDuringRef\.current,cliWatchReadRef\.current\)/);
+  assert.match(htmlSource, /cliWatchReadRef\.current\[normalizeCliWatchPath\(f\.path\)\]=true/);
+  assert.match(htmlSource, /readCliWatchLiveSource\(path\)/);
+  assert.match(htmlSource, /if\(!shouldApplyCliWatchLive\(result\)\)return/);
   assert.match(htmlSource, /setCliDirty\(keep\)/);
   assert.doesNotMatch(htmlSource, /setCachedFromId\(null\);\s*setCliDirty\(\[\]\);\s*clearCliLiveDiffs\(\);/);
   assert.match(htmlSource, /codeCardSizeForDiff\(file,prefs,rows\)/);
@@ -1827,7 +1843,7 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /codeColorBlockSections\(file,data\?data\.connections:\[\],cardPrefs,diffRows\)/);
   assert.match(htmlSource, /cliDiffEpochRef\.current=bumpCliWatchDiffEpoch\(cliDiffEpochRef\.current\)/);
   assert.match(htmlSource, /cliWatchDiffRequestIsCurrent\(cliDiffEpochRef\.current,epoch,cliDiffGenRef\.current,path,gen\)/);
-  assert.match(htmlSource, /var live=typeof content==='string'\?content:''/);
+  assert.match(htmlSource, /var live=result\.kind==='missing'\?'':result\.content/);
   assert.match(htmlSource, /EventSource\('\/__codeflow\/events'\)/);
   assert.match(htmlSource, /CLI_WATCH_DIFF_MS/);
   assert.match(htmlSource, /zipArchiveCacheMeta/);

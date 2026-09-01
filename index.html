@@ -5919,10 +5919,14 @@ function mergeCliLiveContents(prev,updates){
     return next;
 }
 
+function fileHasAnalyzedSourceForDiff(file){
+    return !!(file&&!file.analysisSkipped&&typeof file.content==='string');
+}
+
 function cliWatchDiffPaths(files,paths){
     var known=Object.create(null);
     (files||[]).forEach(function(file){
-        if(file&&file.path)known[file.path]=true;
+        if(file&&file.path&&fileHasAnalyzedSourceForDiff(file))known[file.path]=true;
     });
     var out=[];
     (paths||[]).forEach(function(path){
@@ -6101,13 +6105,25 @@ function cliWatchDiffRequestIsCurrent(epoch,capturedEpoch,genByPath,path,capture
     return !!(genByPath&&genByPath[path]===capturedGen);
 }
 
-function retainCliWatchPathsAfterAnalysis(receivedDuring){
+function retainCliWatchPathsAfterAnalysis(receivedDuring,readByPath){
+    var read=readByPath||Object.create(null);
     var out=[];
     (receivedDuring||[]).forEach(function(path){
         var next=normalizeCliWatchPath(path);
-        if(next&&out.indexOf(next)<0)out.push(next);
+        if(!next||!read[next]||out.indexOf(next)>=0)return;
+        out.push(next);
     });
     return out;
+}
+
+function cliWatchLiveFromResponse(status,body,ok){
+    if(ok)return{kind:'ok',content:typeof body==='string'?body:''};
+    if(Number(status)===404)return{kind:'missing',content:''};
+    return{kind:'error'};
+}
+
+function shouldApplyCliWatchLive(result){
+    return !!(result&&(result.kind==='ok'||result.kind==='missing'));
 }
 
 function pendingCliWatchDiffPaths(dirty,live,inflight){
@@ -8847,6 +8863,7 @@ function App(){
     var cliDiffEpochRef=useRef(1);
     var cliAnalyzingRef=useRef(false);
     var cliWatchDuringRef=useRef([]);
+    var cliWatchReadRef=useRef(Object.create(null));
     var _openedCards=useState([]),openedCodePaths=_openedCards[0],setOpenedCodePaths=_openedCards[1];
     var _sourceFailed=useState(Object.create(null)),codeSourceFailed=_sourceFailed[0],setCodeSourceFailed=_sourceFailed[1];
     var _pillScroll=useState(0),codePillScroll=_pillScroll[0],setCodePillScroll=_pillScroll[1];
@@ -9239,9 +9256,10 @@ function App(){
             var epoch=cliDiffEpochRef.current;
             var gen=(cliDiffGenRef.current[path]||0)+1;
             cliDiffGenRef.current[path]=gen;
-            readLiveFileSource(path).then(function(content){
+            readCliWatchLiveSource(path).then(function(result){
                 if(!cliWatchDiffRequestIsCurrent(cliDiffEpochRef.current,epoch,cliDiffGenRef.current,path,gen))return;
-                var live=typeof content==='string'?content:'';
+                if(!shouldApplyCliWatchLive(result))return;
+                var live=result.kind==='missing'?'':result.content;
                 setCliLiveByPath(function(prev){return mergeCliLiveContents(prev,[{path:path,content:live}]);});
             });
         });
@@ -9311,6 +9329,7 @@ function App(){
         if(status&&status.ok)setCliStatus(status);
         var cliMeta=cliWatchCacheMeta(status);
         cliWatchDuringRef.current=[];
+        cliWatchReadRef.current=Object.create(null);
         cliAnalyzingRef.current=true;
         resetAnalysisState();
         setLocalDirHandle(null);
@@ -9351,6 +9370,7 @@ function App(){
                 var fns=actualIsCode?Parser.extract(content,f.path):[];
                 analyzed.push({path:f.path,name:f.name,folder:f.folder||'root',content:content||'',functions:fns,lines:(content||'').split('\n').length,layer:layer,churn:0,isCode:actualIsCode});
                 if(actualIsCode)fns.forEach(function(fn){allFns.push(Object.assign({},fn,{folder:f.folder||'root',layer:layer}));});
+                cliWatchReadRef.current[normalizeCliWatchPath(f.path)]=true;
             }
             var dataObj=await runAnalysisData({
                 analyzed:analyzed,
@@ -9360,9 +9380,10 @@ function App(){
                 yieldFn:yieldToBrowser
             });
             var cliInfo={owner:'local',repo:'cli',name:cliMeta.title,cliRoot:cliMeta.sourceKey};
-            var keep=retainCliWatchPathsAfterAnalysis(cliWatchDuringRef.current);
+            var keep=retainCliWatchPathsAfterAnalysis(cliWatchDuringRef.current,cliWatchReadRef.current);
             cliAnalyzingRef.current=false;
             cliWatchDuringRef.current=[];
+            cliWatchReadRef.current=Object.create(null);
             setData(dataObj);
             setExpandedPaths(new Set(['']));
             setRepoInfo(cliInfo);
@@ -9375,6 +9396,7 @@ function App(){
         }catch(err){
             cliAnalyzingRef.current=false;
             cliWatchDuringRef.current=[];
+            cliWatchReadRef.current=Object.create(null);
             setError('CLI analysis failed: '+(err.message||err));
             setLoading(false);
         }
@@ -10311,6 +10333,14 @@ function App(){
         return dirPromise.then(function(dir){return dir.getFileHandle(fileName);})
             .then(function(handle){return handle.getFile();})
             .then(function(fileObj){return fileObj.text();});
+    }
+
+    function readCliWatchLiveSource(path){
+        if(!path)return Promise.resolve({kind:'error'});
+        return fetch('/__codeflow/file?path='+encodeURIComponent(path)).then(function(res){
+            if(res.ok)return res.text().then(function(text){return cliWatchLiveFromResponse(res.status,text,true);});
+            return cliWatchLiveFromResponse(res.status,'',false);
+        }).catch(function(){return{kind:'error'};});
     }
 
     function readLiveFileSource(path){
