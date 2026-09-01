@@ -9180,6 +9180,11 @@ function App(){
         }).catch(function(){});
     }
 
+    useEffect(function(){
+        if(!data||!data.files||!cliDirty.length)return;
+        flushCliWatchDiffs(cliDirty);
+    },[currentHydrationId,cliDirty]);
+
     async function analyzeFromCli(force,statusHint,wantedRoot){
         var status=statusHint||cliStatus;
         if(!status||!status.ok){
@@ -12691,9 +12696,11 @@ function App(){
         if(sourceState==='ready'){
             var diffRows=codeCardDiffRows(file,cliLiveByPath[file.path]);
             if(diffRows){
+                var diffSource=diffRows.map(function(row){return row.text;}).join('\n');
+                var diffLines=asCodeLines(highlightSyntax(diffSource,file.name));
                 body=React.createElement('pre',{className:'file-preview-code'},
-                    diffRows.map(function(row,i){
-                        var lineHtml=(highlightSyntax(row.text,file.name)[0])||' ';
+                    diffLines.map(function(lineHtml,i){
+                        var row=diffRows[i]||{type:'same'};
                         return React.createElement('div',{key:i,className:'file-preview-line'+codeCardDiffClass(row)},
                             React.createElement('span',{className:'file-preview-linenum'},codeCardDiffLineNo(row)),
                             React.createElement('span',{className:'file-preview-text',dangerouslySetInnerHTML:{__html:annotateHtmlWithSymbols(lineHtml||' ',codeViewSymbols,activeSymbol)}})

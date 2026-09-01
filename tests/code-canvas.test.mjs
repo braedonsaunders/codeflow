@@ -1697,11 +1697,13 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /filterAnalyzableLocalFiles\(/);
   assert.match(htmlSource, /asCodeLines\(highlightSyntax/);
   assert.match(htmlSource, /codeCardDiffRows\(file,cliLiveByPath/);
+  assert.match(htmlSource, /asCodeLines\(highlightSyntax\(diffSource,file\.name\)\)/);
   assert.match(htmlSource, /className:'file-preview-line'\+codeCardDiffClass\(row\)/);
   assert.match(htmlSource, /diff-add/);
   assert.match(htmlSource, /diff-del/);
   assert.match(htmlSource, /enqueueCliWatchDiffRef/);
   assert.match(htmlSource, /flushCliWatchDiffs/);
+  assert.match(htmlSource, /flushCliWatchDiffs\(cliDirty\)/);
   assert.match(htmlSource, /EventSource\('\/__codeflow\/events'\)/);
   assert.match(htmlSource, /CLI_WATCH_DIFF_MS/);
   assert.match(htmlSource, /zipArchiveCacheMeta/);
