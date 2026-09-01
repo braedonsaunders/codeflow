@@ -6079,6 +6079,19 @@ function codeCardDiffLineIndex(diffRows,analyzedLine){
     return found>0?found:n;
 }
 
+function startedCliWatchDiffPaths(pending,gen){
+    var out=[];
+    (pending||[]).forEach(function(path){
+        var next=normalizeCliWatchPath(path);
+        if(next&&out.indexOf(next)<0)out.push(next);
+    });
+    Object.keys(gen||{}).forEach(function(path){
+        var next=normalizeCliWatchPath(path);
+        if(next&&out.indexOf(next)<0)out.push(next);
+    });
+    return out;
+}
+
 function pendingCliWatchDiffPaths(dirty,live,inflight){
     var have=live||Object.create(null);
     var wait=inflight||[];
@@ -9245,7 +9258,8 @@ function App(){
     useEffect(function(){
         if(!cliWatchAppliesToAnalysis(localSourceKind,cliStatus,currentAnalysisSource()))return;
         if(!data||!data.files||!cliDirty.length)return;
-        var missing=pendingCliWatchDiffPaths(cliDirty,cliLiveByPath,cliDiffPendingRef.current);
+        var started=startedCliWatchDiffPaths(cliDiffPendingRef.current,cliDiffGenRef.current);
+        var missing=pendingCliWatchDiffPaths(cliDirty,cliLiveByPath,started);
         if(!missing.length)return;
         flushCliWatchDiffs(missing);
     },[currentHydrationId,cliDirty,localSourceKind,cliStatus,cliLiveByPath]);
