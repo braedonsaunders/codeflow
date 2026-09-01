@@ -6039,8 +6039,53 @@ function diffCodeLines(before,after){
 function codeCardDiffRows(file,liveContent){
     if(!file||typeof file.content!=='string'||typeof liveContent!=='string')return null;
     if(file.content===liveContent)return null;
+    if(liveContent===''){
+        return splitCodeLines(file.content).map(function(text,i){
+            return{type:'del',text:text,oldLine:i+1,newLine:null};
+        });
+    }
     var rows=diffCodeLines(file.content,liveContent);
     return codeCardHasDiff(rows)?rows:null;
+}
+
+function fileForCodeCardDiff(file,diffRows){
+    if(!file||!diffRows||!diffRows.length)return file;
+    return Object.assign({},file,{content:diffRows.map(function(row){return row.text;}).join('\n')});
+}
+
+function codeCardSizeForDiff(file,prefs,diffRows){
+    prefs=normalizeCodeCardPrefs(prefs);
+    var base=codeCardSize(file,prefs);
+    if(!diffRows||!diffRows.length)return base;
+    var painted=codeCardSize(fileForCodeCardDiff(file,diffRows),prefs);
+    if(prefs.expand)return painted;
+    return Object.assign({},base,{
+        naturalHeight:Math.max(base.naturalHeight||0,painted.naturalHeight||0),
+        naturalWidth:Math.max(base.naturalWidth||0,painted.naturalWidth||0),
+        clipped:!!(base.clipped||painted.naturalHeight>base.height||painted.naturalWidth>base.width)
+    });
+}
+
+function codeCardDiffLineIndex(diffRows,analyzedLine){
+    var n=Math.max(1,Number(analyzedLine)||1);
+    if(!diffRows||!diffRows.length)return n;
+    var found=-1;
+    for(var i=0;i<diffRows.length;i++){
+        if(diffRows[i]&&diffRows[i].oldLine===n){
+            found=i+1;
+            if(diffRows[i].type==='same')return found;
+        }
+    }
+    return found>0?found:n;
+}
+
+function cliWatchAppliesToAnalysis(localSourceKind,cliStatus,analysisSource){
+    if(!cliStatus||!cliStatus.ok)return false;
+    if(localSourceKind==='folder'||localSourceKind==='zip')return false;
+    if(analysisSource&&analysisSource.sourceType&&analysisSource.sourceType!=='cli')return false;
+    if(localSourceKind&&localSourceKind!=='cli')return false;
+    if(analysisSource&&analysisSource.sourceType==='cli')return cliRecordMatchesStatus(analysisSource,cliStatus);
+    return localSourceKind==='cli';
 }
 
 function readableLabelScale(k){
@@ -7938,12 +7983,14 @@ function codeColorBlockSections(file,connections,prefs){
     });
 }
 
-function codeCardSymbolPills(file,connections,prefs){
-    var size=codeCardSize(file,prefs);
+function codeCardSymbolPills(file,connections,prefs,diffRows){
+    var paintFile=fileForCodeCardDiff(file,diffRows);
+    var size=codeCardSizeForDiff(file,prefs,diffRows);
     return extractFileSymbols(file,connections).map(function(sym){
         var line=codeCardSymbolLine(file,sym.name);
         if(!line)return null;
-        return{name:sym.name,kind:sym.kind,line:line,top:codeCardLineY(size,line,file,prefs)};
+        var visual=codeCardDiffLineIndex(diffRows,line);
+        return{name:sym.name,kind:sym.kind,line:visual,top:codeCardLineY(size,visual,paintFile,prefs)};
     }).filter(Boolean);
 }
 
@@ -9133,6 +9180,7 @@ function App(){
     }
 
     function flushCliWatchDiffs(paths){
+        if(!cliWatchAppliesToAnalysis(localSourceKind,cliStatus,currentAnalysisSource()))return;
         var wanted=cliWatchDiffPaths(dataRef.current&&dataRef.current.files,paths);
         if(!wanted.length)return;
         wanted.forEach(function(path){
@@ -9140,13 +9188,14 @@ function App(){
             cliDiffGenRef.current[path]=gen;
             readLiveFileSource(path).then(function(content){
                 if(cliDiffGenRef.current[path]!==gen)return;
-                if(typeof content!=='string')return;
-                setCliLiveByPath(function(prev){return mergeCliLiveContents(prev,[{path:path,content:content}]);});
+                var live=typeof content==='string'?content:'';
+                setCliLiveByPath(function(prev){return mergeCliLiveContents(prev,[{path:path,content:live}]);});
             });
         });
     }
 
     function enqueueCliWatchDiff(path){
+        if(!cliWatchAppliesToAnalysis(localSourceKind,cliStatus,currentAnalysisSource()))return;
         var next=normalizeCliWatchPath(path);
         if(!next)return;
         setCliDirty(function(prev){return noteCliWatchPath(prev,next);});
@@ -9181,9 +9230,10 @@ function App(){
     }
 
     useEffect(function(){
+        if(!cliWatchAppliesToAnalysis(localSourceKind,cliStatus,currentAnalysisSource()))return;
         if(!data||!data.files||!cliDirty.length)return;
         flushCliWatchDiffs(cliDirty);
-    },[currentHydrationId,cliDirty]);
+    },[currentHydrationId,cliDirty,localSourceKind,cliStatus]);
 
     async function analyzeFromCli(force,statusHint,wantedRoot){
         var status=statusHint||cliStatus;
@@ -10370,7 +10420,8 @@ function App(){
         var overrides=codeCardUserSizeRef.current;
         var sizes=Object.create(null);
         codeViewFiles.forEach(function(file){
-            sizes[file.path]=applyCodeCardUserSize(codeCardSize(file,prefs),overrides[file.path]);
+            var rows=codeCardDiffRows(file,cliLiveByPath[file.path]);
+            sizes[file.path]=applyCodeCardUserSize(codeCardSizeForDiff(file,prefs,rows),overrides[file.path]);
         });
         codeCardSizesRef.current=sizes;
         return sizes;
@@ -12733,8 +12784,8 @@ function App(){
             body=React.createElement('div',{className:'empty-desc',style:{padding:'12px'}},message);
         }
         var cardPrefs=currentCodeCardPrefs();
-        var cardSize=applyCodeCardUserSize(codeCardSize(file,cardPrefs),codeCardUserSizeRef.current[file.path]);
-        var pills=isPrimary?codeCardSymbolPills(file,data?data.connections:[],cardPrefs):[];
+        var cardSize=applyCodeCardUserSize(codeCardSizeForDiff(file,cardPrefs,diffRows),codeCardUserSizeRef.current[file.path]);
+        var pills=isPrimary?codeCardSymbolPills(file,data?data.connections:[],cardPrefs,diffRows):[];
         var colorBlocks=codeColorBlockSections(file,data?data.connections:[],cardPrefs);
         var blockLayer=colorBlocks.length?React.createElement('div',{className:'code-color-blocks'},
             colorBlocks.map(function(block){

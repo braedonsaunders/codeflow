@@ -1558,6 +1558,41 @@ test('line diffs mark added and removed rows for Code cards', () => {
   const identical = J(context.diffCodeLines(before, before));
   assert.ok(identical.every((row) => row.type === 'same'));
   assert.equal(context.codeCardHasDiff(identical), false);
+  const deleted = J(context.codeCardDiffRows({ path: 'src/app.js', content: 'keep\nme' }, ''));
+  assert.ok(deleted.every((row) => row.type === 'del'));
+  assert.deepEqual(deleted.map((row) => row.text), ['keep', 'me']);
+});
+
+test('diff-aware Code cards clip or grow so the hunk stays reachable', () => {
+  const file = { path: 'src/app.js', content: 'a\nb\nc\n' };
+  const rows = context.codeCardDiffRows(file, 'a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl\n');
+  assert.ok(context.codeCardHasDiff(rows));
+  const scroll = context.codeCardSizeForDiff(file, { expand: false, wrap: true }, rows);
+  const base = context.codeCardSize(file, { expand: false, wrap: true });
+  assert.equal(scroll.height, base.height);
+  assert.equal(scroll.clipped, true);
+  const expand = context.codeCardSizeForDiff(file, { expand: true, wrap: true }, rows);
+  const painted = context.codeCardSize(context.fileForCodeCardDiff(file, rows), { expand: true, wrap: true });
+  assert.equal(expand.height, painted.height);
+  assert.ok(expand.height > base.height);
+});
+
+test('symbol pills follow the painted diff row, not the stale analysis line', () => {
+  const before = 'function top(){}\n\nfunction bottom(){}\n';
+  const after = 'function extra(){}\nfunction top(){}\n\nfunction bottom(){}\n';
+  const rows = context.diffCodeLines(before, after);
+  assert.equal(context.codeCardDiffLineIndex(rows, 1), 2);
+  assert.equal(context.codeCardDiffLineIndex(null, 3), 3);
+});
+
+test('CLI watch diffs only apply to the matching CLI analysis', () => {
+  const status = { ok: true, root: '/tmp/alpha', name: 'alpha' };
+  assert.equal(context.cliWatchAppliesToAnalysis('cli', status, { sourceType: 'cli', sourceKey: '/tmp/alpha' }), true);
+  assert.equal(context.cliWatchAppliesToAnalysis('cli', status, { sourceType: 'cli', sourceKey: '/tmp/beta' }), false);
+  assert.equal(context.cliWatchAppliesToAnalysis('folder', status, { sourceType: 'folder' }), false);
+  assert.equal(context.cliWatchAppliesToAnalysis('zip', status, { sourceType: 'zip' }), false);
+  assert.equal(context.cliWatchAppliesToAnalysis(null, status, { sourceType: 'github' }), false);
+  assert.equal(context.cliWatchAppliesToAnalysis('cli', { ok: false }, { sourceType: 'cli', sourceKey: '/tmp/alpha' }), false);
 });
 
 test('HTML attribute sanitizer encodes quotes before they reach data-sym', () => {
@@ -1704,6 +1739,11 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /enqueueCliWatchDiffRef/);
   assert.match(htmlSource, /flushCliWatchDiffs/);
   assert.match(htmlSource, /flushCliWatchDiffs\(cliDirty\)/);
+  assert.match(htmlSource, /cliWatchAppliesToAnalysis\(localSourceKind,cliStatus,currentAnalysisSource\(\)\)/);
+  assert.match(htmlSource, /codeCardSizeForDiff\(file,prefs,rows\)/);
+  assert.match(htmlSource, /codeCardSizeForDiff\(file,cardPrefs,diffRows\)/);
+  assert.match(htmlSource, /codeCardSymbolPills\(file,data\?data\.connections:\[\],cardPrefs,diffRows\)/);
+  assert.match(htmlSource, /var live=typeof content==='string'\?content:''/);
   assert.match(htmlSource, /EventSource\('\/__codeflow\/events'\)/);
   assert.match(htmlSource, /CLI_WATCH_DIFF_MS/);
   assert.match(htmlSource, /zipArchiveCacheMeta/);
