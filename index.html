@@ -525,8 +525,17 @@ path.force-link-particle.is-on{animation:none;stroke-dasharray:none;display:none
 .code-card.wrap .file-preview-line{align-items:flex-start;height:auto}
 .code-card.wrap .file-preview-text{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;min-width:0}
 .code-card-body .file-preview-code{padding:8px 0;font-size:11px}
-.color-by.code-view-prefs{flex-direction:column;align-items:stretch;gap:2px;padding:3px 4px;max-width:min(280px,calc(100% - 24px))}
-.code-view-prefs-row{display:flex;flex-direction:row;align-items:center;gap:2px}
+.color-by.code-view-prefs{flex-direction:column;align-items:stretch;gap:2px;padding:3px 4px;max-width:min(320px,calc(100% - 24px))}
+.code-view-prefs-row{display:flex;flex-direction:row;align-items:center;gap:2px;flex-wrap:wrap}
+.code-named-group-list{display:flex;flex-wrap:wrap;gap:2px;max-width:100%}
+.code-named-group-chip{display:inline-flex;align-items:center;gap:2px;max-width:100%}
+.code-named-group-chip .color-by-btn{max-width:140px;overflow:hidden;text-overflow:ellipsis}
+.code-card-head-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.code-card-group{flex-shrink:0;display:flex;align-items:center}
+.code-card-group-select{max-width:110px;font-size:8px;padding:2px 4px;border-radius:5px;border:1px solid var(--border);background:var(--bg0);color:var(--t2);font-family:inherit;cursor:pointer}
+.code-card-group-select:focus{outline:none;border-color:var(--acc);color:var(--acc)}
+.named-group-hull{cursor:grab}
+.named-group-hull:active{cursor:grabbing}
 .code-card-resize{position:absolute;z-index:3;background:transparent}
 .code-card-resize-e{top:14px;right:-4px;width:10px;bottom:14px;cursor:ew-resize}
 .code-card-resize-s{left:14px;right:14px;bottom:-4px;height:10px;cursor:ns-resize}
@@ -5746,6 +5755,175 @@ function persistUiPrefs(prefs){
     return writeUiPrefs(undefined,prefs);
 }
 
+var NAMED_GROUPS_STORAGE_KEY='codeflow-code-named-groups';
+var NAMED_GROUP_NAME_MAX=32;
+var NAMED_GROUP_COLORS=['#a78bfa','#22d3ee','#ff9f43','#ec4899','#c084fc','#f59e0b'];
+
+function namedGroupsSessionKey(sourceType,sourceKey){
+    return analysisCacheKey(sourceType,sourceKey);
+}
+
+function normalizeNamedGroupName(name){
+    var label=String(name==null?'':name).replace(/\s+/g,' ').trim();
+    if(!label)return '';
+    if(label.length>NAMED_GROUP_NAME_MAX)label=label.slice(0,NAMED_GROUP_NAME_MAX);
+    return label;
+}
+
+function newNamedGroupId(now,rand){
+    now=now==null?Date.now():Number(now)||0;
+    var suffix=rand!=null?String(rand):Math.random().toString(36).slice(2,8);
+    return 'ng-'+now.toString(36)+'-'+suffix;
+}
+
+function normalizeNamedGroup(group){
+    if(!group||typeof group!=='object')return null;
+    var name=normalizeNamedGroupName(group.name);
+    if(!name)return null;
+    var id=String(group.id||'').trim();
+    if(!id)return null;
+    var paths=[];
+    var seen=Object.create(null);
+    (group.paths||[]).forEach(function(path){
+        path=String(path||'').trim();
+        if(!path||seen[path])return;
+        seen[path]=true;
+        paths.push(path);
+    });
+    return{id:id,name:name,paths:paths};
+}
+
+function normalizeNamedGroups(groups){
+    var out=[];
+    var seen=Object.create(null);
+    (groups||[]).forEach(function(group){
+        var next=normalizeNamedGroup(group);
+        if(!next||seen[next.id])return;
+        seen[next.id]=true;
+        out.push(next);
+    });
+    return out;
+}
+
+function namedGroupById(groups,id){
+    id=String(id||'');
+    var found=null;
+    normalizeNamedGroups(groups).some(function(group){
+        if(group.id===id){found=group;return true;}
+        return false;
+    });
+    return found;
+}
+
+function namedGroupIdForPath(groups,path){
+    path=String(path||'');
+    if(!path)return null;
+    var id=null;
+    normalizeNamedGroups(groups).some(function(group){
+        if(group.paths.indexOf(path)>=0){id=group.id;return true;}
+        return false;
+    });
+    return id;
+}
+
+function namedGroupColor(id,palette){
+    palette=palette&&palette.length?palette:NAMED_GROUP_COLORS;
+    var hash=0;
+    String(id||'').split('').forEach(function(ch){hash=(hash*31+ch.charCodeAt(0))>>>0;});
+    return palette[hash%palette.length];
+}
+
+function createNamedGroup(groups,name,id){
+    var next=normalizeNamedGroups(groups);
+    var label=normalizeNamedGroupName(name);
+    if(!label)return{groups:next,group:null};
+    var group={id:id||newNamedGroupId(),name:label,paths:[]};
+    next.push(group);
+    return{groups:next,group:group};
+}
+
+function renameNamedGroup(groups,id,name){
+    var label=normalizeNamedGroupName(name);
+    return normalizeNamedGroups(groups).map(function(group){
+        if(group.id!==id)return group;
+        return{id:group.id,name:label||group.name,paths:group.paths.slice()};
+    });
+}
+
+function deleteNamedGroup(groups,id){
+    return normalizeNamedGroups(groups).filter(function(group){return group.id!==id;});
+}
+
+function addCardToNamedGroup(groups,groupId,path){
+    path=String(path||'').trim();
+    if(!path)return normalizeNamedGroups(groups);
+    return normalizeNamedGroups(groups).map(function(group){
+        var paths=group.paths.filter(function(item){return item!==path;});
+        if(group.id===groupId)paths.push(path);
+        return{id:group.id,name:group.name,paths:paths};
+    });
+}
+
+function removeCardFromNamedGroup(groups,groupId,path){
+    path=String(path||'');
+    return normalizeNamedGroups(groups).map(function(group){
+        if(group.id!==groupId)return group;
+        return{id:group.id,name:group.name,paths:group.paths.filter(function(item){return item!==path;})};
+    });
+}
+
+function setCardNamedGroup(groups,path,groupId){
+    if(!groupId){
+        var current=namedGroupIdForPath(groups,path);
+        return current?removeCardFromNamedGroup(groups,current,path):normalizeNamedGroups(groups);
+    }
+    return addCardToNamedGroup(groups,groupId,path);
+}
+
+function promptNamedGroupName(host,current){
+    try{
+        if(!host||typeof host.prompt!=='function')return null;
+        var raw=host.prompt('Name this group',current||'');
+        if(raw==null)return null;
+        return normalizeNamedGroupName(raw);
+    }catch(e){
+        return null;
+    }
+}
+
+function readNamedGroupsStore(storage){
+    try{
+        var store=resolveUiPrefsStorage(storage);
+        if(!store)return{};
+        var raw=store.getItem(NAMED_GROUPS_STORAGE_KEY);
+        if(!raw)return{};
+        var parsed=JSON.parse(raw);
+        return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed:{};
+    }catch(e){
+        return{};
+    }
+}
+
+function readNamedGroupsForSession(storage,sessionKey){
+    if(!sessionKey)return[];
+    var bucket=readNamedGroupsStore(storage)[sessionKey];
+    if(Array.isArray(bucket))return normalizeNamedGroups(bucket);
+    if(bucket&&Array.isArray(bucket.groups))return normalizeNamedGroups(bucket.groups);
+    return[];
+}
+
+function writeNamedGroupsForSession(storage,sessionKey,groups){
+    var next=normalizeNamedGroups(groups);
+    if(!sessionKey)return next;
+    var store=readNamedGroupsStore(storage);
+    store[sessionKey]=next;
+    try{
+        var target=resolveUiPrefsStorage(storage);
+        if(target)target.setItem(NAMED_GROUPS_STORAGE_KEY,JSON.stringify(store));
+    }catch(e){}
+    return next;
+}
+
 function graphLinkBaseWidth(count){
     return Math.max(1,Math.min(2,Math.sqrt(count||1)*0.3));
 }
@@ -7688,6 +7866,90 @@ function codeFolderHullBounds(cardNodes,leftoverNodes,sizesByPath,pad,boxesByPat
     return unionPaddedBoxes(boxes,pad==null?40:pad,22);
 }
 
+function partitionCodeViewHullMembers(nodes,cardPaths,groups){
+    var named=Object.create(null);
+    normalizeNamedGroups(groups).forEach(function(group){
+        named[group.id]={group:group,cards:[]};
+    });
+    var folders=Object.create(null);
+    var membership=Object.create(null);
+    (nodes||[]).forEach(function(node){
+        if(!node)return;
+        var isCard=!!(cardPaths&&cardPaths.has&&cardPaths.has(node.id));
+        var groupId=isCard?namedGroupIdForPath(groups,node.id):null;
+        if(groupId&&named[groupId]){
+            named[groupId].cards.push(node);
+            membership[node.id]=groupId;
+            return;
+        }
+        var folder=node.folder||'root';
+        if(!folders[folder])folders[folder]={cards:[],leftover:[]};
+        if(isCard)folders[folder].cards.push(node);
+        else folders[folder].leftover.push(node);
+    });
+    return{named:named,folders:folders,membership:membership};
+}
+
+function namedGroupHullBounds(cardNodes,sizesByPath,pad,boxesByPath){
+    return codeFolderCardBounds(cardNodes,sizesByPath,pad==null?28:pad,boxesByPath);
+}
+
+function namedGroupHullsFromMembers(named,sizesByPath,pad,boxesByPath){
+    var out=[];
+    Object.keys(named||{}).forEach(function(id){
+        var entry=named[id];
+        if(!entry||!entry.cards||!entry.cards.length)return;
+        var bounds=namedGroupHullBounds(entry.cards,sizesByPath,pad,boxesByPath);
+        if(!bounds)return;
+        out.push({
+            id:id,
+            name:entry.group&&entry.group.name||id,
+            color:namedGroupColor(id),
+            x:bounds.x,
+            y:bounds.y,
+            width:bounds.width,
+            height:bounds.height
+        });
+    });
+    return out;
+}
+
+function namedGroupDropRemovesCard(cardBox,remainingBoxes,pad){
+    if(!cardBox)return false;
+    if(!remainingBoxes||!remainingBoxes.length)return false;
+    var hull=unionPaddedBoxes(remainingBoxes,pad==null?28:pad,22);
+    if(!hull)return false;
+    var cx=cardBox.x+cardBox.width/2;
+    var cy=cardBox.y+cardBox.height/2;
+    return cx<hull.x||cy<hull.y||cx>hull.x+hull.width||cy>hull.y+hull.height;
+}
+
+function translateNamedGroupCards(nodes,paths,dx,dy){
+    dx=Number(dx)||0;
+    dy=Number(dy)||0;
+    if(!dx&&!dy)return[];
+    var want=Object.create(null);
+    (paths||[]).forEach(function(path){if(path)want[path]=true;});
+    var moved=[];
+    (nodes||[]).forEach(function(node){
+        if(!node||!want[node.id])return;
+        if(isFinite(node.x))node.x+=dx;
+        if(isFinite(node.y))node.y+=dy;
+        node.fx=node.x;
+        node.fy=node.y;
+        moved.push(node);
+    });
+    return moved;
+}
+
+function applyNamedGroupHullFrame(root,groupId,dx,dy){
+    if(!root||!groupId)return false;
+    var el=root.querySelector?root.querySelector('[data-named-group="'+String(groupId).replace(/"/g,'')+'"]'):null;
+    if(!el||!el.setAttribute)return false;
+    el.setAttribute('transform','translate('+(Number(dx)||0)+','+(Number(dy)||0)+')');
+    return true;
+}
+
 function codeCanvasTransformStyle(transform){
     var t=transform||{};
     var k=Number(t.k);
@@ -7830,10 +8092,12 @@ function collectMinimapWorldBounds(nodes,sizesByPath,cardPaths,pad){
     return minimapWorldFromBoxes(boxes,pad);
 }
 
-function collectMinimapContent(nodes,sizesByPath,cardPaths,colorOf,pad){
+function collectMinimapContent(nodes,sizesByPath,cardPaths,colorOf,pad,namedGroups){
     var marks=[];
     var boxes=[];
     var folders=Object.create(null);
+    var named=Object.create(null);
+    var grouped=namedGroups&&namedGroups.length?partitionCodeViewHullMembers(nodes,cardPaths,namedGroups):null;
     (nodes||[]).forEach(function(node){
         var xy=liveGraphNodeXY(node);
         if(!xy)return;
@@ -7849,15 +8113,26 @@ function collectMinimapContent(nodes,sizesByPath,cardPaths,colorOf,pad){
             box={x:xy.x-16,y:xy.y-16,width:32,height:32};
             marks.push({kind:'node',x:xy.x,y:xy.y,color:color,folder:folder});
         }
-        if(!folders[folder])folders[folder]={boxes:[],color:color};
-        folders[folder].boxes.push(box);
+        var namedId=grouped&&grouped.membership[node.id];
+        if(namedId){
+            if(!named[namedId])named[namedId]={boxes:[],color:namedGroupColor(namedId)};
+            named[namedId].boxes.push(box);
+            if(color)named[namedId].color=namedGroupColor(namedId);
+        }else{
+            if(!folders[folder])folders[folder]={boxes:[],color:color};
+            folders[folder].boxes.push(box);
+            if(color)folders[folder].color=color;
+        }
         boxes.push(box);
-        if(color)folders[folder].color=color;
     });
     var hulls=[];
     Object.keys(folders).forEach(function(folder){
         var union=unionPaddedBoxes(folders[folder].boxes,18,0);
         if(union)hulls.push({folder:folder,color:folders[folder].color,x:union.x,y:union.y,width:union.width,height:union.height});
+    });
+    Object.keys(named).forEach(function(id){
+        var union=unionPaddedBoxes(named[id].boxes,18,0);
+        if(union)hulls.push({id:id,kind:'named',color:named[id].color,x:union.x,y:union.y,width:union.width,height:union.height});
     });
     return{marks:marks,hulls:hulls,world:minimapWorldFromBoxes(boxes,pad)};
 }
@@ -9057,6 +9332,10 @@ function App(){
     var codeCanvasRef=useRef(null);
     var codeSourceInFlightRef=useRef(Object.create(null));
     var updateHullsRef=useRef(null);
+    var beginNamedGroupDragRef=useRef(null);
+    var namedCodeGroupsRef=useRef([]);
+    var namedGroupsSessionRef=useRef('');
+    var armedNamedGroupIdRef=useRef(null);
     var drawMinimapRef=useRef(null);
     var minimapHostRef=useRef(null);
     var minimapCanvasRef=useRef(null);
@@ -9084,6 +9363,10 @@ function App(){
     var _codeExpand=useState(false),codeViewExpand=_codeExpand[0],setCodeViewExpand=_codeExpand[1];
     var _codeWrap=useState(true),codeViewWrap=_codeWrap[0],setCodeViewWrap=_codeWrap[1];
     var _codeGate=useState(readUiPrefs().codeViewRootGate),codeViewRootGate=_codeGate[0],setCodeViewRootGate=_codeGate[1];
+    var _namedGroups=useState([]),namedCodeGroups=_namedGroups[0],setNamedCodeGroups=_namedGroups[1];
+    var _armedNamedGroup=useState(null),armedNamedGroupId=_armedNamedGroup[0],setArmedNamedGroupId=_armedNamedGroup[1];
+    namedCodeGroupsRef.current=namedCodeGroups;
+    armedNamedGroupIdRef.current=armedNamedGroupId;
     var _lineThick=useState(readUiPrefs().lineThickness),lineThickness=_lineThick[0],setLineThickness=_lineThick[1];
     var lineThicknessRef=useRef(lineThickness);
     lineThicknessRef.current=lineThickness;
@@ -9313,6 +9596,18 @@ function App(){
         return analysisHydrationIdFromParts(loadedSourceIdentity,analysisGraphIdentity);
     },[loadedSourceIdentity,analysisGraphIdentity]);
     analysisHydrationIdRef.current=currentHydrationId;
+    var namedGroupsSession=useMemo(function(){
+        if(!loadedSourceIdentity)return '';
+        return namedGroupsSessionKey(loadedSourceIdentity.sourceType,loadedSourceIdentity.sourceKey);
+    },[loadedSourceIdentity&&loadedSourceIdentity.sourceType,loadedSourceIdentity&&loadedSourceIdentity.sourceKey]);
+    useEffect(function(){
+        if(namedGroupsSession===namedGroupsSessionRef.current)return;
+        namedGroupsSessionRef.current=namedGroupsSession;
+        var restored=namedGroupsSession?readNamedGroupsForSession(undefined,namedGroupsSession):[];
+        namedCodeGroupsRef.current=restored;
+        setNamedCodeGroups(restored);
+        setArmedNamedGroupId(null);
+    },[namedGroupsSession]);
 
     function refreshRecentList(){
         listRecentAnalyses().then(function(rows){
@@ -10827,6 +11122,56 @@ function App(){
         var next=persistUiPrefs({codeViewRootGate:value}).codeViewRootGate;
         setCodeViewRootGate(next);
     }
+    function commitNamedGroups(next){
+        var groups=normalizeNamedGroups(next);
+        namedCodeGroupsRef.current=groups;
+        setNamedCodeGroups(groups);
+        if(namedGroupsSessionRef.current)writeNamedGroupsForSession(undefined,namedGroupsSessionRef.current,groups);
+        if(updateHullsRef.current)updateHullsRef.current();
+        if(drawMinimapRef.current)drawMinimapRef.current();
+        return groups;
+    }
+    function requestNamedGroupName(current){
+        return promptNamedGroupName(typeof window!=='undefined'?window:null,current||'');
+    }
+    function createCodeNamedGroup(){
+        var name=requestNamedGroupName('');
+        if(name==null)return;
+        if(!name){
+            showNotification('Group name cannot be empty','warning');
+            return;
+        }
+        var made=createNamedGroup(namedCodeGroupsRef.current,name);
+        if(!made.group)return;
+        var next=made.groups;
+        if(selected&&selected.path&&codeCardPathsRef.current.has(selected.path)){
+            next=addCardToNamedGroup(next,made.group.id,selected.path);
+        }
+        commitNamedGroups(next);
+        setArmedNamedGroupId(null);
+    }
+    function renameCodeNamedGroup(id){
+        var group=namedGroupById(namedCodeGroupsRef.current,id);
+        if(!group)return;
+        var name=requestNamedGroupName(group.name);
+        if(name==null)return;
+        if(!name){
+            showNotification('Group name cannot be empty','warning');
+            return;
+        }
+        commitNamedGroups(renameNamedGroup(namedCodeGroupsRef.current,id,name));
+        setArmedNamedGroupId(null);
+    }
+    function deleteCodeNamedGroup(id){
+        var armed=armRecentDelete(armedNamedGroupId,id);
+        setArmedNamedGroupId(armed.armedId);
+        if(!armed.confirm)return;
+        commitNamedGroups(deleteNamedGroup(namedCodeGroupsRef.current,id));
+    }
+    function assignCardNamedGroup(path,groupId){
+        if(!path)return;
+        commitNamedGroups(setCardNamedGroup(namedCodeGroupsRef.current,path,groupId||null));
+    }
     function applyLinkThickness(){
         if(vizUsesForceLinkParticles(graphConfig.vizType))applyForceLinkVisuals();
         else if(linksRef.current)linksRef.current.attr('stroke-width',function(d){return graphLinkStrokeWidth(d.count,lineThicknessRef.current);});
@@ -10851,7 +11196,7 @@ function App(){
         var viewH=svg.clientHeight||600;
         var nodes=simRef.current?simRef.current.nodes():[];
         var overlay=minimapCardInputs(graphConfig.vizType,codeCardSizesRef.current,codeCardPathsRef.current);
-        var content=collectMinimapContent(nodes,overlay.sizesByPath,overlay.cardPaths,getNodeColor);
+        var content=collectMinimapContent(nodes,overlay.sizesByPath,overlay.cardPaths,getNodeColor,undefined,graphConfig.vizType==='code'?namedCodeGroupsRef.current:null);
         if(!content.world||!content.world.width){
             minimapModelRef.current=null;
             clearCanvasMinimap(canvas);
@@ -11324,13 +11669,22 @@ function App(){
         }
         function updateHulls(){
             hullLayer.selectAll('*').remove();
-            var grouped=liveNodesByFolder();
+            var live=(simRef.current&&simRef.current.nodes())||nodes;
             var boxesByPath=keepReadable?readCodeCardWorldBoxes(codeCardsLayerRef.current):null;
+            var part=keepReadable?partitionCodeViewHullMembers(live,codeCardPathsRef.current,namedCodeGroupsRef.current):null;
+            var grouped=part?part.folders:null;
+            if(!grouped){
+                var fallback=liveNodesByFolder();
+                grouped=Object.create(null);
+                Object.keys(fallback).forEach(function(folder){
+                    grouped[folder]={cards:[],leftover:fallback[folder]};
+                });
+            }
             Object.keys(grouped).forEach(function(f){
-                var fn=grouped[f];
-                if(!fn||fn.length<1)return;
-                var cardNodes=keepReadable?fn.filter(function(n){return codeCardPathsRef.current.has(n.id);}):[];
-                var leftover=keepReadable?fn.filter(function(n){return !codeCardPathsRef.current.has(n.id);}):fn;
+                var bucket=grouped[f]||{};
+                var cardNodes=keepReadable?bucket.cards||[]:[];
+                var leftover=keepReadable?bucket.leftover||[]:bucket.leftover||[];
+                if(!cardNodes.length&&!leftover.length)return;
                 var color=colorMap[f]||COLORS[folders.indexOf(f)%COLORS.length];
                 if(cardNodes.length){
                     var bounds=codeFolderHullBounds(cardNodes,leftover,codeCardSizesRef.current,28,boxesByPath);
@@ -11354,6 +11708,20 @@ function App(){
                     hullLayer.append('text').attr('class','hull-label').attr('x',cx).attr('y',cy).attr('text-anchor','middle').attr('fill',color).attr('font-size',keepReadable?'11px':'10px').attr('font-family','JetBrains Mono').attr('font-weight','600').attr('opacity',0.85).text(f||'root');
                 }
             });
+            if(part){
+                namedGroupHullsFromMembers(part.named,codeCardSizesRef.current,28,boxesByPath).forEach(function(namedHull){
+                    var color=namedHull.color;
+                    var g=hullLayer.append('g').attr('class','named-group-hull').attr('data-named-group',namedHull.id).style('pointer-events','all').style('cursor','grab');
+                    g.append('rect').attr('x',namedHull.x).attr('y',namedHull.y).attr('width',namedHull.width).attr('height',namedHull.height).attr('rx',14).attr('fill',color).attr('fill-opacity',0.08).attr('stroke',color).attr('stroke-width',2).attr('stroke-opacity',0.55).attr('stroke-dasharray','6 4');
+                    g.append('text').attr('class','hull-label').attr('x',namedHull.x+12).attr('y',namedHull.y+16).attr('text-anchor','start').attr('fill',color).attr('font-size','12px').attr('font-family','JetBrains Mono').attr('font-weight','600').attr('opacity',0.95).text(namedHull.name);
+                    g.on('pointerdown',function(event){
+                        if(event.button!=null&&event.button!==0)return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if(beginNamedGroupDragRef.current)beginNamedGroupDragRef.current(event,namedHull.id);
+                    });
+                });
+            }
         }
         // Throttle hull updates for large graphs (every N ticks instead of every tick)
         var hullInterval=isLargeGraph?5:1;
@@ -11406,7 +11774,7 @@ function App(){
         syncCodeCards();
         if(updateHullsRef.current)updateHullsRef.current();
         if(drawMinimapRef.current)drawMinimapRef.current();
-    },[codeViewFiles,graphConfig.vizType,graphConfig.linkDist,codeViewExpand,codeViewWrap,cliLiveByPath]);
+    },[codeViewFiles,graphConfig.vizType,graphConfig.linkDist,codeViewExpand,codeViewWrap,cliLiveByPath,namedCodeGroups]);
 
     useEffect(function(){
         return subscribePrefersReducedMotion(function(){
@@ -12910,6 +13278,18 @@ function App(){
                 CODE_VIEW_ROOT_GATE_STEPS.map(function(n){
                     return React.createElement('button',{key:n,type:'button',className:'color-by-btn'+(codeViewRootGate===n?' active':''),'aria-pressed':codeViewRootGate===n?'true':'false',title:'Skip Code cards when this many files sit at the project root',onClick:function(){persistCodeViewRootGate(n);}},String(n));
                 })
+            ),
+            React.createElement('div',{className:'code-view-prefs-row',role:'group','aria-label':'Named groups'},
+                React.createElement('span',{className:'color-by-label',title:'Create a parent hull and drop open cards into it'},'Groups'),
+                React.createElement('button',{type:'button',className:'color-by-btn',onClick:createCodeNamedGroup},'New Group'),
+                React.createElement('div',{className:'code-named-group-list'},
+                    namedCodeGroups.map(function(group){
+                        return React.createElement('div',{key:group.id,className:'code-named-group-chip'},
+                            React.createElement('button',{type:'button',className:'color-by-btn',title:'Rename '+group.name,onClick:function(){renameCodeNamedGroup(group.id);}},group.name),
+                            React.createElement('button',{type:'button',className:'color-by-btn'+(armedNamedGroupId===group.id?' active':''),title:armedNamedGroupId===group.id?'Click again to delete':'Delete '+group.name,onClick:function(){deleteCodeNamedGroup(group.id);}},armedNamedGroupId===group.id?'Confirm?':'×')
+                        );
+                    })
+                )
             )
         );
     }
@@ -12970,6 +13350,75 @@ function App(){
             React.createElement('div',{className:'sidebar-scroll'},React.createElement(TreeNode,{node:data.tree,selected:selected,onSelect:goToFile,expanded:expandedPaths,toggle:togglePath,filterFolder:filterByFolder,activeFilter:folderFilter}))
         );
     }
+    function writeCodeCardPlacement(file,node){
+        if(!file||!node)return;
+        var size=codeCardSizesRef.current[file.path]||codeCardSize(file,currentCodeCardPrefs());
+        var prev=codeCardPlacementRef.current[file.path]||{};
+        codeCardPlacementRef.current[file.path]={
+            left:node.fx-size.width/2,
+            top:node.fy-size.height/2,
+            x:node.fx,
+            y:node.fy,
+            width:size.width,
+            height:size.height,
+            folder:file.folder||prev.folder||'root'
+        };
+    }
+    function beginNamedGroupDrag(e,groupId){
+        if(e.pointerType==='mouse'&&e.button!==0)return;
+        var group=namedGroupById(namedCodeGroupsRef.current,groupId);
+        if(!group||!group.paths.length)return;
+        var transform=codeZoomTransformRef.current||{k:1,x:0,y:0};
+        var k=Number(transform.k);
+        if(!isFinite(k)||k<=0)k=1;
+        var startX=e.clientX,startY=e.clientY,lastX=0,lastY=0,moved=false;
+        var nodes=(simRef.current&&simRef.current.nodes())||[];
+        var paths=group.paths.slice();
+        function onMove(ev){
+            var delta=codeCardDragDelta(ev.clientX,ev.clientY,startX,startY,k,3);
+            var dx=delta.x-lastX,dy=delta.y-lastY;
+            lastX=delta.x;lastY=delta.y;
+            if(delta.moved)moved=true;
+            var movedNodes=translateNamedGroupCards(nodes,paths,dx,dy);
+            movedNodes.forEach(function(node){
+                codeCardUserPinnedRef.current.add(node.id);
+                writeCodeCardPlacement({path:node.id,folder:node.folder},node);
+                applyCodeCardDragFrame(codeCardsLayerRef.current,node.id,node,codeCardSizesRef.current[node.id]);
+            });
+            applyNamedGroupHullFrame(svgRef.current,groupId,lastX,lastY);
+            if(codeViewDragRefresh('move')){
+                syncCodeCards();
+                redrawGraphLinksAndNodes();
+                if(updateHullsRef.current)updateHullsRef.current();
+            }else{
+                redrawMovedGraphNodes(movedNodes);
+            }
+            if(drawMinimapRef.current)drawMinimapRef.current();
+        }
+        function onUp(){
+            window.removeEventListener('pointermove',onMove);
+            window.removeEventListener('pointerup',onUp);
+            window.removeEventListener('pointercancel',onUp);
+            if(!moved){
+                renameCodeNamedGroup(groupId);
+                return;
+            }
+            paths.forEach(function(path){codeCardUserPinnedRef.current.add(path);});
+            if(codeViewDragRefresh('release')){
+                settleCodeViewAfterDrag(nodes,codeCardPathsRef.current,codeCardSizesRef.current,null,{
+                    boxesByPath:readCodeCardWorldBoxes(codeCardsLayerRef.current)
+                });
+            }
+            syncCodeCards();
+            redrawGraphLinksAndNodes();
+            if(updateHullsRef.current)updateHullsRef.current();
+            if(drawMinimapRef.current)drawMinimapRef.current();
+        }
+        window.addEventListener('pointermove',onMove);
+        window.addEventListener('pointerup',onUp);
+        window.addEventListener('pointercancel',onUp);
+    }
+    beginNamedGroupDragRef.current=beginNamedGroupDrag;
     function beginCodeCardDrag(e,file){
         if(e.pointerType==='mouse'&&e.button!==0)return;
         e.stopPropagation();
@@ -12986,17 +13435,7 @@ function App(){
         codeCardStackRef.current=raiseCodeCardStack(codeCardStackRef.current,file.path);
         applyCodeCardStackOrder(codeCardsLayerRef.current,codeCardStackRef.current);
         function writePlacement(){
-            var size=codeCardSizesRef.current[file.path]||codeCardSize(file,currentCodeCardPrefs());
-            var prev=codeCardPlacementRef.current[file.path]||{};
-            codeCardPlacementRef.current[file.path]={
-                left:node.fx-size.width/2,
-                top:node.fy-size.height/2,
-                x:node.fx,
-                y:node.fy,
-                width:size.width,
-                height:size.height,
-                folder:file.folder||prev.folder||'root'
-            };
+            writeCodeCardPlacement(file,node);
         }
         function onMove(ev){
             var delta=codeCardDragDelta(ev.clientX,ev.clientY,startX,startY,k,3);
@@ -13032,6 +13471,20 @@ function App(){
             }
             if(moved){
                 codeCardUserPinnedRef.current.add(file.path);
+                var groups=namedCodeGroupsRef.current;
+                var gid=namedGroupIdForPath(groups,file.path);
+                if(gid){
+                    var live=(simRef.current&&simRef.current.nodes())||[];
+                    var otherBoxes=[];
+                    live.forEach(function(other){
+                        if(!other||other.id===file.path||namedGroupIdForPath(groups,other.id)!==gid)return;
+                        var box=cardWorldBox(other,codeCardSizesRef.current,null);
+                        if(box)otherBoxes.push(box);
+                    });
+                    if(namedGroupDropRemovesCard(cardWorldBox(node,codeCardSizesRef.current,null),otherBoxes)){
+                        commitNamedGroups(removeCardFromNamedGroup(groups,gid,file.path));
+                    }
+                }
                 if(codeViewDragRefresh('release')){
                     settleCodeViewAfterDrag((simRef.current&&simRef.current.nodes())||[],codeCardPathsRef.current,codeCardSizesRef.current,file.path,{
                         boxesByPath:readCodeCardWorldBoxes(codeCardsLayerRef.current)
@@ -13193,7 +13646,22 @@ function App(){
                     React.createElement('div',{className:'code-card-name'},file.name),
                     React.createElement('div',{className:'code-card-path'},file.path)
                 ),
-                React.createElement('span',{className:'badge badge-default'},isPrimary?'selected':'open')
+                React.createElement('div',{className:'code-card-head-actions'},
+                    namedCodeGroups.length?React.createElement('label',{className:'code-card-group',onPointerDown:function(e){e.stopPropagation();},onClick:function(e){e.stopPropagation();}},
+                        React.createElement('select',{
+                            className:'code-card-group-select',
+                            'aria-label':'Named group',
+                            value:namedGroupIdForPath(namedCodeGroups,file.path)||'',
+                            onChange:function(e){assignCardNamedGroup(file.path,e.target.value);}
+                        },
+                            React.createElement('option',{value:''},'No group'),
+                            namedCodeGroups.map(function(group){
+                                return React.createElement('option',{key:group.id,value:group.id},group.name);
+                            })
+                        )
+                    ):null,
+                    React.createElement('span',{className:'badge badge-default'},isPrimary?'selected':'open')
+                )
             ),
             React.createElement('div',{className:'code-card-body',onClick:function(e){
                 var mark=e.target.closest?e.target.closest('[data-sym]'):null;
@@ -13235,7 +13703,7 @@ function App(){
                 React.createElement('div',{className:'empty-desc'},codeViewRootGateMessage(rootCount,codeViewRootGate))
             ),
             React.createElement('div',{className:'code-canvas-hud'},
-                React.createElement('div',{className:'code-canvas-hint'},codeRootGateActive?codeViewRootGateMessage(rootCount,codeViewRootGate):(codeViewFiles.length?'Open files from leftover nodes or the Files tree. Open cards stay put. Wheel pans · Ctrl+wheel zooms.':'No files to open as cards.')),
+                React.createElement('div',{className:'code-canvas-hint'},codeRootGateActive?codeViewRootGateMessage(rootCount,codeViewRootGate):(codeViewFiles.length?'Open files from leftover nodes or the Files tree. Open cards stay put. New Group wraps selected cards. Wheel pans · Ctrl+wheel zooms.':'No files to open as cards.')),
                 codeViewSymbols.length>0&&React.createElement('div',{className:'code-sym-list'},
                     codeViewSymbols.map(function(sym){
                         return React.createElement('button',{key:sym.name,className:'code-sym-chip '+sym.kind+(activeSymbol===sym.name?' active':''),title:sym.name,onClick:function(){setActiveSymbol(function(prev){return prev===sym.name?null:sym.name;});}},sym.name);
