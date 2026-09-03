@@ -27,3 +27,14 @@ test('index.html React app implements useEffect for 3D force graph rendering', (
   assert.ok(html.includes('graph3dInstanceRef.current.pauseAnimation()'), '3D Graph cleanup pauseAnimation is missing');
   assert.ok(html.includes('graph3dInstanceRef.current.graphData({nodes:[],links:[]})'), '3D Graph cleanup graphData is missing');
 });
+
+test('3D graph uses library directional particles driven by graph3dLinkParticles', () => {
+  assert.ok(html.includes('function graph3dLinkParticles('), 'graph3dLinkParticles helper is missing');
+  assert.ok(html.includes('.linkDirectionalParticles(function(link){'), 'linkDirectionalParticles accessor is missing');
+  assert.ok(html.includes('.linkDirectionalParticleSpeed(function(link){'), 'linkDirectionalParticleSpeed accessor is missing');
+  assert.ok(html.includes('.linkDirectionalParticleWidth(function(link){'), 'linkDirectionalParticleWidth accessor is missing');
+  assert.ok(html.includes('.linkDirectionalParticleColor(function(link){'), 'linkDirectionalParticleColor accessor is missing');
+  assert.ok(html.includes('graph3dLinkParticles(link,selected&&selected.path,particleOpts)'), '3D particle accessors do not reuse graph3dLinkParticles');
+  assert.ok(html.includes('g3.linkDirectionalParticles(function(link){return graph3dLinkParticles'), 'applyLinkThickness does not refresh 3D particles');
+  assert.ok(!html.includes('return 1;\n            })\n            .linkDirectionalParticleWidth'), 'idle 3D links must not keep a default travelling particle');
+});

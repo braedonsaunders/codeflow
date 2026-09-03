@@ -2257,6 +2257,52 @@ test('line thickness defaults match current graph edges and stay in range', () =
   assert.ok(selected > idle);
 });
 
+test('3D selected-file links animate; idle and reduced-motion stay static', () => {
+  const outLink = { count: 1, source: 'src/app.js', target: 'src/math.js' };
+  const inLink = { count: 2, source: { id: 'src/boot.js' }, target: { id: 'src/app.js' } };
+  const other = { count: 1, source: 'src/a.js', target: 'src/b.js' };
+  const opts = { theme: 'dark', thickness: 2, reducedMotion: false };
+
+  const outgoing = context.graph3dLinkParticles(outLink, 'src/app.js', opts);
+  const incoming = context.graph3dLinkParticles(inLink, 'src/app.js', opts);
+  const quiet = context.graph3dLinkParticles(other, 'src/app.js', opts);
+  const idle = context.graph3dLinkParticles(outLink, null, opts);
+  const reduced = context.graph3dLinkParticles(outLink, 'src/app.js', Object.assign({}, opts, { reducedMotion: true }));
+  const twoD = context.forceLinkVisual(outLink, 'src/app.js', opts);
+
+  assert.equal(outgoing.count, context.GRAPH3D_LINK_PARTICLE_COUNT);
+  assert.equal(outgoing.speed, context.GRAPH3D_LINK_PARTICLE_SPEED);
+  assert.equal(outgoing.count, 2);
+  assert.ok(outgoing.speed > 0 && outgoing.speed <= 0.01);
+  assert.ok(outgoing.width > 0);
+  assert.equal(outgoing.role, 'out');
+  assert.equal(outgoing.color, context.graph3dResolveLinkColor(twoD.stroke));
+  assert.equal(outgoing.color, '#ff9f43');
+  assert.equal(incoming.count, outgoing.count);
+  assert.equal(incoming.role, 'in');
+  assert.equal(incoming.color, '#a78bfa');
+  assert.notEqual(outgoing.color, incoming.color);
+  assert.equal(quiet.count, 0);
+  assert.equal(quiet.speed, 0);
+  assert.equal(quiet.width, 0);
+  assert.equal(quiet.role, 'quiet');
+  assert.equal(idle.count, 0);
+  assert.equal(idle.speed, 0);
+  assert.equal(idle.width, 0);
+  assert.equal(idle.role, 'idle');
+  assert.equal(reduced.count, 0);
+  assert.equal(reduced.speed, 0);
+  assert.equal(reduced.width, 0);
+  assert.equal(reduced.role, 'out');
+  assert.equal(reduced.color, outgoing.color);
+
+  const thin = context.graph3dLinkParticles(outLink, 'src/app.js', { thickness: 1, reducedMotion: false });
+  const thick = context.graph3dLinkParticles(outLink, 'src/app.js', { thickness: 6, reducedMotion: false });
+  assert.ok(thick.width > thin.width);
+  assert.equal(context.graph3dResolveLinkColor('var(--orange)'), '#ff9f43');
+  assert.equal(context.graph3dResolveLinkColor('var(--purple)'), '#a78bfa');
+});
+
 test('selected Code-view links animate; inactive stay quiet; reduced-motion is static', () => {
   const outLink = { count: 1, source: 'src/app.js', target: 'src/math.js' };
   const inLink = { count: 2, source: { id: 'src/boot.js' }, target: { id: 'src/app.js' } };
@@ -2313,7 +2359,7 @@ test('selected Code-view links animate; inactive stay quiet; reduced-motion is s
 test('reduced-motion changes reapply Code particles; Graph keeps static accent', () => {
   assert.equal(context.vizUsesForceLinkParticles('code'), true);
   assert.equal(context.vizUsesForceLinkParticles('graph'), false);
-  assert.equal(context.vizUsesForceLinkParticles('graph3d'), false);
+  assert.equal(context.vizUsesForceLinkParticles('graph3d'), false, '3D uses graph3dLinkParticles, not the SVG particle layer');
 
   const outLink = { count: 1, source: 'src/app.js', target: 'src/math.js' };
   const codeOpts = { theme: 'dark', thickness: 2, reducedMotion: false, vizType: 'code' };
@@ -2372,6 +2418,10 @@ test('reduced-motion changes reapply Code particles; Graph keeps static accent',
   assert.match(htmlSource, /applyForceLinkVisualsRef\.current=applyForceLinkVisuals/);
   assert.match(htmlSource, /subscribePrefersReducedMotion\(function\(\)\{/);
   assert.match(htmlSource, /if\(applyForceLinkVisualsRef\.current\)applyForceLinkVisualsRef\.current\(\)/);
+  assert.match(htmlSource, /if\(applyLinkThicknessRef\.current\)applyLinkThicknessRef\.current\(\)/);
+  assert.match(htmlSource, /applyLinkThicknessRef\.current=applyLinkThickness/);
+  assert.match(htmlSource, /graph3dLinkParticles\(link,selected&&selected\.path,particleOpts\)\.count/);
+  assert.match(htmlSource, /g3\.linkDirectionalParticles\(function\(link\)\{return graph3dLinkParticles/);
   assert.match(htmlSource, /vizType:graphConfig\.vizType/);
   assert.match(htmlSource, /if\(vizUsesForceLinkParticles\(graphConfig\.vizType\)\)applyForceLinkVisuals\(\)/);
   assert.match(htmlSource, /var particleLayer=keepReadable\?container\.append\('g'\)\.attr\('class','force-link-particles'/);
