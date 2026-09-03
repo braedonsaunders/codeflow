@@ -5777,7 +5777,11 @@ var GRAPH3D_LINK_PARTICLE_SPEED=0.008;
 function graph3dResolveLinkColor(colorStr){
     if(colorStr==='var(--orange)')return'#ff9f43';
     if(colorStr==='var(--purple)')return'#a78bfa';
-    if(colorStr&&colorStr.charAt(0)==='#')return colorStr;
+    if(colorStr&&colorStr.charAt(0)==='#'){
+        var hex=colorStr.slice(1);
+        if(hex.length===3)hex=hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+        return'#'+hex;
+    }
     return'#ffffff';
 }
 
@@ -5789,14 +5793,15 @@ function graph3dLinkParticles(link,selectedPath,options){
         reducedMotion:!!options.reducedMotion
     });
     if(!visual.particle){
-        return{count:0,speed:0,width:0,color:graph3dResolveLinkColor(visual.stroke),role:visual.role};
+        return{count:0,speed:0,width:0,color:'#ffffff',stroke:graph3dResolveLinkColor(visual.stroke),role:visual.role};
     }
     var lineW=graph3dLinkWidth(link,selectedPath,options.thickness);
     return{
         count:GRAPH3D_LINK_PARTICLE_COUNT,
         speed:GRAPH3D_LINK_PARTICLE_SPEED,
-        width:Math.max(1.4,Math.min(3.6,lineW*0.45+0.9)),
-        color:graph3dResolveLinkColor(visual.stroke),
+        width:Math.max(1.8,Math.min(4,lineW*0.55+1.1)),
+        color:graph3dResolveLinkColor(visual.particleStroke||'#fff'),
+        stroke:graph3dResolveLinkColor(visual.stroke),
         role:visual.role
     };
 }

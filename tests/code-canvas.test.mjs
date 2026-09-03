@@ -2276,12 +2276,14 @@ test('3D selected-file links animate; idle and reduced-motion stay static', () =
   assert.ok(outgoing.speed > 0 && outgoing.speed <= 0.01);
   assert.ok(outgoing.width > 0);
   assert.equal(outgoing.role, 'out');
-  assert.equal(outgoing.color, context.graph3dResolveLinkColor(twoD.stroke));
-  assert.equal(outgoing.color, '#ff9f43');
+  assert.equal(outgoing.color, context.graph3dResolveLinkColor(twoD.particleStroke));
+  assert.equal(outgoing.color, '#ffffff');
+  assert.equal(outgoing.stroke, '#ff9f43');
   assert.equal(incoming.count, outgoing.count);
   assert.equal(incoming.role, 'in');
-  assert.equal(incoming.color, '#a78bfa');
-  assert.notEqual(outgoing.color, incoming.color);
+  assert.equal(incoming.color, '#ffffff');
+  assert.equal(incoming.stroke, '#a78bfa');
+  assert.notEqual(outgoing.stroke, incoming.stroke);
   assert.equal(quiet.count, 0);
   assert.equal(quiet.speed, 0);
   assert.equal(quiet.width, 0);
@@ -2294,7 +2296,7 @@ test('3D selected-file links animate; idle and reduced-motion stay static', () =
   assert.equal(reduced.speed, 0);
   assert.equal(reduced.width, 0);
   assert.equal(reduced.role, 'out');
-  assert.equal(reduced.color, outgoing.color);
+  assert.equal(reduced.stroke, outgoing.stroke);
 
   const thin = context.graph3dLinkParticles(outLink, 'src/app.js', { thickness: 1, reducedMotion: false });
   const thick = context.graph3dLinkParticles(outLink, 'src/app.js', { thickness: 6, reducedMotion: false });
