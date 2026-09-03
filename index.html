@@ -5799,8 +5799,8 @@ function graph3dLinkParticles(link,selectedPath,options){
     return{
         count:GRAPH3D_LINK_PARTICLE_COUNT,
         speed:GRAPH3D_LINK_PARTICLE_SPEED,
-        width:Math.max(1.8,Math.min(4,lineW*0.55+1.1)),
-        color:graph3dResolveLinkColor(visual.particleStroke||'#fff'),
+        width:Math.max(2.2,Math.min(4.5,lineW*0.7+1.4)),
+        color:graph3dResolveLinkColor(visual.stroke),
         stroke:graph3dResolveLinkColor(visual.stroke),
         role:visual.role
     };
