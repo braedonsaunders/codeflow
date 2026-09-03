@@ -5764,12 +5764,46 @@ function graph3dLinkWidth(link,selectedPath,thickness){
     link=link||{};
     var baseWidth=Math.max(0.8,Math.min(3,Math.sqrt(link.count||1)*0.4));
     if(selectedPath){
-        var s=link.source&&(link.source.id||link.source);
-        var t=link.target&&(link.target.id||link.target);
-        if(s===selectedPath||t===selectedPath)return scaleStrokeWidth(baseWidth*2,thickness);
+        var role=forceLinkRole(link,selectedPath);
+        if(role==='out'||role==='in')return scaleStrokeWidth(baseWidth*2,thickness);
         return scaleStrokeWidth(baseWidth*0.3,thickness);
     }
     return scaleStrokeWidth(baseWidth,thickness);
+}
+
+var GRAPH3D_LINK_PARTICLE_COUNT=2;
+var GRAPH3D_LINK_PARTICLE_SPEED=0.008;
+
+function graph3dResolveLinkColor(colorStr){
+    if(colorStr==='var(--orange)')return'#ff9f43';
+    if(colorStr==='var(--purple)')return'#a78bfa';
+    if(colorStr&&colorStr.charAt(0)==='#'){
+        var hex=colorStr.slice(1);
+        if(hex.length===3)hex=hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+        return'#'+hex;
+    }
+    return'#ffffff';
+}
+
+function graph3dLinkParticles(link,selectedPath,options){
+    options=options||{};
+    var visual=forceLinkVisual(link,selectedPath,{
+        theme:options.theme,
+        thickness:options.thickness,
+        reducedMotion:!!options.reducedMotion
+    });
+    if(!visual.particle){
+        return{count:0,speed:0,width:0,color:'#ffffff',stroke:graph3dResolveLinkColor(visual.stroke),role:visual.role};
+    }
+    var lineW=graph3dLinkWidth(link,selectedPath,options.thickness);
+    return{
+        count:GRAPH3D_LINK_PARTICLE_COUNT,
+        speed:GRAPH3D_LINK_PARTICLE_SPEED,
+        width:Math.max(2.2,Math.min(4.5,lineW*0.7+1.4)),
+        color:graph3dResolveLinkColor(visual.stroke),
+        stroke:graph3dResolveLinkColor(visual.stroke),
+        role:visual.role
+    };
 }
 
 function forceLinkEndId(end){
@@ -9036,6 +9070,7 @@ function App(){
     var linksRef=useRef(null);
     var linkParticlesRef=useRef(null);
     var applyForceLinkVisualsRef=useRef(null);
+    var applyLinkThicknessRef=useRef(null);
     var selectFileRef=useRef(null);
     var codeCardsLayerRef=useRef(null);
     var codeCardPathsRef=useRef(new Set());
@@ -10832,10 +10867,20 @@ function App(){
         else if(linksRef.current)linksRef.current.attr('stroke-width',function(d){return graphLinkStrokeWidth(d.count,lineThicknessRef.current);});
         var thickness=lineThicknessRef.current;
         var g3=graph3dInstanceRef.current;
-        if(g3&&typeof g3.linkWidth==='function'){
-            g3.linkWidth(function(link){return graph3dLinkWidth(link,selectedPathRef.current,thickness);});
+        if(!g3)return;
+        var selectedPath=selectedPathRef.current;
+        var particleOpts={theme:theme,thickness:thickness,reducedMotion:prefersReducedMotion()};
+        if(typeof g3.linkWidth==='function'){
+            g3.linkWidth(function(link){return graph3dLinkWidth(link,selectedPath,thickness);});
+        }
+        if(typeof g3.linkDirectionalParticles==='function'){
+            g3.linkDirectionalParticles(function(link){return graph3dLinkParticles(link,selectedPath,particleOpts).count;});
+            g3.linkDirectionalParticleSpeed(function(link){return graph3dLinkParticles(link,selectedPath,particleOpts).speed;});
+            g3.linkDirectionalParticleWidth(function(link){return graph3dLinkParticles(link,selectedPath,particleOpts).width;});
+            g3.linkDirectionalParticleColor(function(link){return graph3dLinkParticles(link,selectedPath,particleOpts).color;});
         }
     }
+    applyLinkThicknessRef.current=applyLinkThickness;
     function refreshMinimap(){
         var canvas=minimapCanvasRef.current;
         if(!canvas||!vizHasCanvasMinimap(graphConfig.vizType))return;
@@ -11411,6 +11456,7 @@ function App(){
     useEffect(function(){
         return subscribePrefersReducedMotion(function(){
             if(applyForceLinkVisualsRef.current)applyForceLinkVisualsRef.current();
+            if(applyLinkThicknessRef.current)applyLinkThicknessRef.current();
         });
     },[]);
     useEffect(function(){
@@ -11540,6 +11586,8 @@ function App(){
             return resolveHex(baseColor);
         }
 
+        var particleOpts={theme:theme,thickness:lineThicknessRef.current,reducedMotion:prefersReducedMotion()};
+
         var graph;
         if(!graph3dInstanceRef.current){
             graph=ForceGraph3D({controlType:'orbit'})(graph3dRef.current);
@@ -11565,57 +11613,33 @@ function App(){
                     '</div>';
             })
             .linkColor(function(link){
-                var s=link.source.id||link.source;
-                var t=link.target.id||link.target;
-                if(selected){
-                    if(s===selected.path)return hexToRgba('var(--orange)',0.85);
-                    if(t===selected.path)return hexToRgba('var(--purple)',0.85);
-                    return theme==='light'?'rgba(220,220,220,0.08)':'rgba(40,40,48,0.08)';
-                }
+                var role=forceLinkRole(link,selected&&selected.path);
+                if(role==='out')return hexToRgba('var(--orange)',0.85);
+                if(role==='in')return hexToRgba('var(--purple)',0.85);
+                if(selected)return theme==='light'?'rgba(220,220,220,0.08)':'rgba(40,40,48,0.08)';
                 return theme==='light'?'rgba(200,200,200,0.4)':'rgba(60,60,70,0.4)';
             })
             .linkWidth(function(link){
                 return graph3dLinkWidth(link,selected&&selected.path,lineThicknessRef.current);
             })
             .linkDirectionalArrowLength(function(link){
-                if(selected){
-                    var s=link.source.id||link.source;
-                    var t=link.target.id||link.target;
-                    if(s===selected.path||t===selected.path)return 5.0;
-                    return 0;
-                }
+                var role=forceLinkRole(link,selected&&selected.path);
+                if(role==='out'||role==='in')return 5.0;
+                if(selected)return 0;
                 return 3.5;
             })
             .linkDirectionalArrowRelPos(1)
             .linkDirectionalParticles(function(link){
-                if(selected){
-                    var s=link.source.id||link.source;
-                    var t=link.target.id||link.target;
-                    if(s===selected.path||t===selected.path)return 4;
-                    return 0;
-                }
-                return 1;
+                return graph3dLinkParticles(link,selected&&selected.path,particleOpts).count;
             })
             .linkDirectionalParticleWidth(function(link){
-                if(selected){
-                    return 2.5;
-                }
-                return 1.2;
+                return graph3dLinkParticles(link,selected&&selected.path,particleOpts).width;
             })
             .linkDirectionalParticleSpeed(function(link){
-                if(selected){
-                    return 0.015;
-                }
-                return 0.004;
+                return graph3dLinkParticles(link,selected&&selected.path,particleOpts).speed;
             })
             .linkDirectionalParticleColor(function(link){
-                var s=link.source.id||link.source;
-                var t=link.target.id||link.target;
-                if(selected){
-                    if(s===selected.path)return resolveHex('var(--orange)');
-                    if(t===selected.path)return resolveHex('var(--purple)');
-                }
-                return resolveHex('var(--acc)');
+                return graph3dLinkParticles(link,selected&&selected.path,particleOpts).color;
             })
             .linkCurvature(graphConfig.curvedLinks?0.25:0)
             .onNodeClick(function(node){
