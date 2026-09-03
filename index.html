@@ -989,11 +989,11 @@ const Parser={
         ruby:{grammar:'ruby',exts:['.rb'],coverage:'available'},
         php:{grammar:'php',exts:['.php'],coverage:'available'},
         c:{grammar:'c',exts:['.c','.h'],coverage:'available'},
-        cpp:{grammar:'cpp',exts:['.cpp','.cc','.hpp'],coverage:'available'},
+        cpp:{grammar:'cpp',exts:['.cpp','.cc','.cxx','.hpp','.hh','.hxx'],coverage:'available'},
         csharp:{grammar:'c_sharp',exts:['.cs'],coverage:'available'},
         swift:{grammar:'swift',exts:['.swift'],coverage:'available'},
         kotlin:{grammar:'kotlin',exts:['.kt','.kts'],coverage:'available'},
-        scala:{grammar:'scala',exts:['.scala'],coverage:'available'},
+        scala:{grammar:'scala',exts:['.scala','.sc'],coverage:'available'},
         elixir:{grammar:'elixir',exts:['.ex','.exs'],coverage:'available'},
         lua:{grammar:'lua',exts:['.lua'],coverage:'available'},
         bash:{grammar:'bash',exts:['.sh','.bash','.zsh','.fish'],coverage:'available'}
@@ -1073,7 +1073,7 @@ const Parser={
         if(Parser.isCode(filename))return 'heuristic-regex';
         return 'text';
     },
-    codeExts:['.js','.jsx','.ts','.tsx','.mjs','.cjs','.py','.pyw','.pyi','.java','.go','.rb','.php','.rs','.c','.cpp','.cc','.h','.hpp','.cs','.swift','.kt','.kts','.scala','.clj','.ex','.exs','.erl','.hs','.lua','.r','.R','.jl','.dart','.elm','.fs','.fsx','.ml','.pl','.pm','.sh','.bash','.zsh','.fish','.ps1','.psm1','.groovy','.gradle','.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw','.pas','.pp','.dpr','.dpk','.lpr','.inc'],
+    codeExts:['.js','.jsx','.ts','.tsx','.mjs','.cjs','.py','.pyw','.pyi','.java','.go','.rb','.php','.rs','.c','.cpp','.cc','.cxx','.h','.hpp','.hh','.hxx','.cs','.swift','.kt','.kts','.scala','.sc','.clj','.cljs','.cljc','.ex','.exs','.erl','.hrl','.hs','.lhs','.lua','.r','.R','.jl','.dart','.elm','.fs','.fsi','.fsx','.ml','.mli','.pl','.pm','.sh','.bash','.zsh','.fish','.ps1','.psm1','.psd1','.groovy','.gvy','.gradle','.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw','.pas','.pp','.dpr','.dpk','.lpr','.inc'],
     scriptContainerExts:['.html','.htm','.xhtml','.vue','.svelte'],
     textExts:['.md','.markdown','.txt','.json','.jsonl','.yaml','.yml','.toml','.xml','.html','.htm','.css','.scss','.sass','.less','.svg','.graphql','.gql','.sql','.prisma','.proto','.tf','.tfvars','.env','.env.example','.gitignore','.gitattributes','.gitmodules','.eslintrc','.prettierrc','.babelrc','.editorconfig','.ini','.cfg','.conf','.properties','.lock','.csv','.tsv','.rst','.tex','.cmake','.rake','.vba','.bas','.cls','.xlsm','.xlam','.xlsb','.xla','.xlw','.mod','.sum'],
     textNames:['dockerfile','containerfile','makefile','rakefile','gemfile','podfile','pipfile','procfile','brewfile','justfile','taskfile','cmakelists.txt','license','copying','notice','readme','changelog','authors','contributors','owners','codeowners','go.mod','go.sum'],
