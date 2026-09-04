@@ -1946,9 +1946,20 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /function beginNamedGroupDrag\(/);
   assert.match(htmlSource, /function partitionCodeViewHullMembers\(/);
   assert.match(htmlSource, /function namedGroupDropRemovesCard\(/);
+  assert.match(htmlSource, /function submitNamedGroupNameDialog\(/);
+  assert.match(htmlSource, /function closeNamedGroupNameDialog\(/);
+  assert.match(htmlSource, /function namedGroupViewportCenter\(/);
+  assert.match(htmlSource, /function namedGroupPlaceholderBounds\(/);
+  assert.match(htmlSource, /namedGroupNameDialog/);
+  assert.match(htmlSource, /named-group-name-modal/);
+  assert.match(htmlSource, /Name this group/);
   assert.match(htmlSource, /code-card-group-select/);
   assert.match(htmlSource, /data-named-group/);
   assert.match(htmlSource, /stroke-dasharray','6 4'/);
+  assert.doesNotMatch(htmlSource, /function promptNamedGroupName\(/);
+  assert.doesNotMatch(htmlSource, /function requestNamedGroupName\(/);
+  assert.doesNotMatch(htmlSource, /host\.prompt/);
+  assert.doesNotMatch(htmlSource, /window\.prompt/);
   assert.doesNotMatch(htmlSource, /className:'code-view-gate-select'/);
   assert.doesNotMatch(htmlSource, /code-view-prefs[\s\S]{0,400}createElement\('select'/);
   assert.match(htmlSource, /Pick a folder or file/);
@@ -2455,9 +2466,11 @@ test('named groups create, rename, delete, and keep exclusive card membership', 
   assert.equal(context.normalizeNamedGroupName('   '), '');
   const empty = context.createNamedGroup([], '   ');
   assert.equal(empty.group, null);
-  const made = context.createNamedGroup([], 'Auth', 'g-auth');
+  const made = context.createNamedGroup([], 'Auth', 'g-auth', { x: 50, y: 80 });
   assert.equal(made.group.id, 'g-auth');
   assert.equal(made.group.paths.length, 0);
+  assert.equal(made.group.x, 50);
+  assert.equal(made.group.y, 80);
   let groups = context.addCardToNamedGroup(made.groups, 'g-auth', 'src/a.js');
   groups = context.addCardToNamedGroup(groups, 'g-auth', 'src/b.js');
   groups = context.createNamedGroup(groups, 'UI', 'g-ui').groups;
@@ -2465,14 +2478,65 @@ test('named groups create, rename, delete, and keep exclusive card membership', 
   assert.deepEqual(J(context.namedGroupById(groups, 'g-auth').paths), ['src/b.js']);
   assert.deepEqual(J(context.namedGroupById(groups, 'g-ui').paths), ['src/a.js']);
   assert.equal(context.namedGroupIdForPath(groups, 'src/a.js'), 'g-ui');
+  assert.equal(context.namedGroupById(groups, 'g-auth').x, 50);
+  assert.equal(context.namedGroupById(groups, 'g-auth').y, 80);
   groups = context.setCardNamedGroup(groups, 'src/a.js', '');
   assert.equal(context.namedGroupIdForPath(groups, 'src/a.js'), null);
   groups = context.renameNamedGroup(groups, 'g-auth', 'Session');
   assert.equal(context.namedGroupById(groups, 'g-auth').name, 'Session');
+  assert.equal(context.namedGroupById(groups, 'g-auth').x, 50);
+  groups = context.setNamedGroupOrigin(groups, 'g-auth', { x: 12, y: -4 });
+  assert.equal(context.namedGroupById(groups, 'g-auth').x, 12);
+  assert.equal(context.namedGroupById(groups, 'g-auth').y, -4);
   groups = context.deleteNamedGroup(groups, 'g-ui');
   assert.equal(context.namedGroupById(groups, 'g-ui'), null);
-  assert.equal(context.promptNamedGroupName({ prompt: () => '  Core  ' }, ''), 'Core');
-  assert.equal(context.promptNamedGroupName({ prompt: () => null }, 'Auth'), null);
+});
+
+test('named groups use an in-app name dialog and land in the current viewport', () => {
+  assert.equal(typeof context.promptNamedGroupName, 'undefined');
+  const center = context.namedGroupViewportCenter({ k: 2, x: -200, y: -100 }, 400, 200);
+  assert.equal(center.x, 200);
+  assert.equal(center.y, 100);
+  const bounds = context.namedGroupPlaceholderBounds({ x: 10, y: 20 }, 280, 160);
+  assert.equal(bounds.x, -130);
+  assert.equal(bounds.y, -60);
+  assert.equal(bounds.width, 280);
+  assert.equal(bounds.height, 160);
+  assert.equal(context.namedGroupPlaceholderBounds({}, 280, 160), null);
+  const viewport = { x: 0, y: 0, width: 800, height: 600 };
+  assert.equal(context.namedGroupNeedsViewportPlacement([], viewport), true);
+  assert.equal(context.namedGroupNeedsViewportPlacement([{ x: 100, y: 100, width: 200, height: 120 }], viewport), false);
+  assert.equal(context.namedGroupNeedsViewportPlacement([{ x: 2000, y: 2000, width: 200, height: 120 }], viewport), true);
+  const nodes = [
+    { id: 'src/a.js', x: 0, y: 0 },
+    { id: 'src/b.js', x: 100, y: 0 }
+  ];
+  const moved = context.placeNodesAtNamedGroupOrigin(nodes, ['src/a.js', 'src/b.js'], { x: 500, y: 40 });
+  assert.equal(moved.length, 2);
+  assert.equal(nodes[0].x, 450);
+  assert.equal(nodes[1].x, 550);
+  assert.equal(nodes[0].y, 40);
+  assert.equal(nodes[1].y, 40);
+  const emptyNamed = context.partitionCodeViewHullMembers(
+    [],
+    new Set(),
+    [{ id: 'g-empty', name: 'Core', paths: [], x: 300, y: 150 }]
+  );
+  const emptyHulls = context.namedGroupHullsFromMembers(emptyNamed.named, {}, 10);
+  assert.equal(emptyHulls.length, 1);
+  assert.equal(emptyHulls[0].placeholder, true);
+  assert.equal(emptyHulls[0].name, 'Core');
+  assert.ok(emptyHulls[0].x < 300 && emptyHulls[0].x + emptyHulls[0].width > 300);
+  assert.ok(emptyHulls[0].y < 150 && emptyHulls[0].y + emptyHulls[0].height > 150);
+  const content = context.collectMinimapContent(
+    [],
+    {},
+    new Set(),
+    () => '#4d9fff',
+    0,
+    [{ id: 'g-empty', name: 'Core', paths: [], x: 300, y: 150 }]
+  );
+  assert.equal(content.hulls.some((h) => h.kind === 'named' && h.id === 'g-empty'), true);
 });
 
 test('named-group hulls win over directory hulls and drop only when dragged out', () => {
@@ -2533,10 +2597,12 @@ test('named groups persist per analysis session in localStorage', () => {
   const key = context.namedGroupsSessionKey('github', 'owner/repo');
   assert.equal(key, 'github:owner/repo');
   const written = context.writeNamedGroupsForSession(storage, key, [
-    { id: 'g1', name: ' Auth ', paths: ['src/a.js', 'src/a.js', ''] }
+    { id: 'g1', name: ' Auth ', paths: ['src/a.js', 'src/a.js', ''], x: 120, y: -40 }
   ]);
   assert.equal(written[0].name, 'Auth');
   assert.deepEqual(J(written[0].paths), ['src/a.js']);
+  assert.equal(written[0].x, 120);
+  assert.equal(written[0].y, -40);
   assert.deepEqual(J(context.readNamedGroupsForSession(storage, key)), J(written));
   assert.deepEqual(J(context.readNamedGroupsForSession(storage, 'github:other/repo')), []);
   assert.deepEqual(J(context.readNamedGroupsForSession(storage, '')), []);

@@ -536,6 +536,7 @@ path.force-link-particle.is-on{animation:none;stroke-dasharray:none;display:none
 .code-card-group-select:focus{outline:none;border-color:var(--acc);color:var(--acc)}
 .named-group-hull{cursor:grab}
 .named-group-hull:active{cursor:grabbing}
+.named-group-name-modal{max-width:400px}
 .code-card-resize{position:absolute;z-index:3;background:transparent}
 .code-card-resize-e{top:14px;right:-4px;width:10px;bottom:14px;cursor:ew-resize}
 .code-card-resize-s{left:14px;right:14px;bottom:-4px;height:10px;cursor:ns-resize}
@@ -5757,6 +5758,8 @@ function persistUiPrefs(prefs){
 
 var NAMED_GROUPS_STORAGE_KEY='codeflow-code-named-groups';
 var NAMED_GROUP_NAME_MAX=32;
+var NAMED_GROUP_PLACEHOLDER_W=280;
+var NAMED_GROUP_PLACEHOLDER_H=160;
 var NAMED_GROUP_COLORS=['#a78bfa','#22d3ee','#ff9f43','#ec4899','#c084fc','#f59e0b'];
 
 function namedGroupsSessionKey(sourceType,sourceKey){
@@ -5776,6 +5779,21 @@ function newNamedGroupId(now,rand){
     return 'ng-'+now.toString(36)+'-'+suffix;
 }
 
+function namedGroupPoint(value){
+    if(!value||typeof value!=='object')return null;
+    var x=Number(value.x),y=Number(value.y);
+    if(!isFinite(x)||!isFinite(y))return null;
+    return{x:x,y:y};
+}
+
+function namedGroupRecord(group,patch){
+    var next={id:group.id,name:group.name,paths:(patch&&patch.paths?patch.paths:group.paths).slice()};
+    if(patch&&patch.name!=null)next.name=patch.name;
+    var origin=namedGroupPoint(patch)||namedGroupPoint(group);
+    if(origin){next.x=origin.x;next.y=origin.y;}
+    return next;
+}
+
 function normalizeNamedGroup(group){
     if(!group||typeof group!=='object')return null;
     var name=normalizeNamedGroupName(group.name);
@@ -5790,7 +5808,7 @@ function normalizeNamedGroup(group){
         seen[path]=true;
         paths.push(path);
     });
-    return{id:id,name:name,paths:paths};
+    return namedGroupRecord({id:id,name:name,paths:paths},namedGroupPoint(group));
 }
 
 function normalizeNamedGroups(groups){
@@ -5833,11 +5851,11 @@ function namedGroupColor(id,palette){
     return palette[hash%palette.length];
 }
 
-function createNamedGroup(groups,name,id){
+function createNamedGroup(groups,name,id,origin){
     var next=normalizeNamedGroups(groups);
     var label=normalizeNamedGroupName(name);
     if(!label)return{groups:next,group:null};
-    var group={id:id||newNamedGroupId(),name:label,paths:[]};
+    var group=namedGroupRecord({id:id||newNamedGroupId(),name:label,paths:[]},namedGroupPoint(origin));
     next.push(group);
     return{groups:next,group:group};
 }
@@ -5846,7 +5864,7 @@ function renameNamedGroup(groups,id,name){
     var label=normalizeNamedGroupName(name);
     return normalizeNamedGroups(groups).map(function(group){
         if(group.id!==id)return group;
-        return{id:group.id,name:label||group.name,paths:group.paths.slice()};
+        return namedGroupRecord(group,{name:label||group.name});
     });
 }
 
@@ -5860,7 +5878,7 @@ function addCardToNamedGroup(groups,groupId,path){
     return normalizeNamedGroups(groups).map(function(group){
         var paths=group.paths.filter(function(item){return item!==path;});
         if(group.id===groupId)paths.push(path);
-        return{id:group.id,name:group.name,paths:paths};
+        return namedGroupRecord(group,{paths:paths});
     });
 }
 
@@ -5868,7 +5886,7 @@ function removeCardFromNamedGroup(groups,groupId,path){
     path=String(path||'');
     return normalizeNamedGroups(groups).map(function(group){
         if(group.id!==groupId)return group;
-        return{id:group.id,name:group.name,paths:group.paths.filter(function(item){return item!==path;})};
+        return namedGroupRecord(group,{paths:group.paths.filter(function(item){return item!==path;})});
     });
 }
 
@@ -5880,15 +5898,63 @@ function setCardNamedGroup(groups,path,groupId){
     return addCardToNamedGroup(groups,groupId,path);
 }
 
-function promptNamedGroupName(host,current){
-    try{
-        if(!host||typeof host.prompt!=='function')return null;
-        var raw=host.prompt('Name this group',current||'');
-        if(raw==null)return null;
-        return normalizeNamedGroupName(raw);
-    }catch(e){
-        return null;
-    }
+function setNamedGroupOrigin(groups,id,origin){
+    var point=namedGroupPoint(origin);
+    return normalizeNamedGroups(groups).map(function(group){
+        if(group.id!==id||!point)return group;
+        return namedGroupRecord(group,point);
+    });
+}
+
+function namedGroupViewportCenter(transform,viewW,viewH){
+    var view=viewportWorldRect(transform,viewW,viewH);
+    return{x:view.x+view.width/2,y:view.y+view.height/2};
+}
+
+function namedGroupPlaceholderBounds(origin,width,height){
+    var w=Number(width);
+    var h=Number(height);
+    if(!isFinite(w)||w<=0)w=NAMED_GROUP_PLACEHOLDER_W;
+    if(!isFinite(h)||h<=0)h=NAMED_GROUP_PLACEHOLDER_H;
+    var point=namedGroupPoint(origin);
+    if(!point)return null;
+    return{x:point.x-w/2,y:point.y-h/2,width:w,height:h};
+}
+
+function namedGroupBoxIntersectsViewport(box,viewport){
+    if(!box||!viewport)return false;
+    var x=Number(box.x),y=Number(box.y),w=Number(box.width),h=Number(box.height);
+    if(!isFinite(x)||!isFinite(y)||!isFinite(w)||!isFinite(h))return false;
+    return x<viewport.x+viewport.width&&x+w>viewport.x&&y<viewport.y+viewport.height&&y+h>viewport.y;
+}
+
+function namedGroupNeedsViewportPlacement(memberBoxes,viewport){
+    if(!viewport)return true;
+    var boxes=memberBoxes||[];
+    if(!boxes.length)return true;
+    return !boxes.some(function(box){return namedGroupBoxIntersectsViewport(box,viewport);});
+}
+
+function namedGroupMemberCentroid(nodes,paths){
+    var want=Object.create(null);
+    (paths||[]).forEach(function(path){if(path)want[path]=true;});
+    var sx=0,sy=0,n=0;
+    (nodes||[]).forEach(function(node){
+        if(!node||!want[node.id])return;
+        var x=Number(node.x),y=Number(node.y);
+        if(!isFinite(x)||!isFinite(y))return;
+        sx+=x;sy+=y;n++;
+    });
+    if(!n)return null;
+    return{x:sx/n,y:sy/n};
+}
+
+function placeNodesAtNamedGroupOrigin(nodes,paths,origin){
+    var point=namedGroupPoint(origin);
+    if(!point)return[];
+    var center=namedGroupMemberCentroid(nodes,paths);
+    if(!center)return[];
+    return translateNamedGroupCards(nodes,paths,point.x-center.x,point.y-center.y);
 }
 
 function readNamedGroupsStore(storage){
@@ -7898,8 +7964,11 @@ function namedGroupHullsFromMembers(named,sizesByPath,pad,boxesByPath){
     var out=[];
     Object.keys(named||{}).forEach(function(id){
         var entry=named[id];
-        if(!entry||!entry.cards||!entry.cards.length)return;
-        var bounds=namedGroupHullBounds(entry.cards,sizesByPath,pad,boxesByPath);
+        if(!entry)return;
+        var hasCards=!!(entry.cards&&entry.cards.length);
+        var bounds=hasCards
+            ?namedGroupHullBounds(entry.cards,sizesByPath,pad,boxesByPath)
+            :unionPaddedBoxes([namedGroupPlaceholderBounds(entry.group)],pad==null?28:pad,22);
         if(!bounds)return;
         out.push({
             id:id,
@@ -7908,7 +7977,8 @@ function namedGroupHullsFromMembers(named,sizesByPath,pad,boxesByPath){
             x:bounds.x,
             y:bounds.y,
             width:bounds.width,
-            height:bounds.height
+            height:bounds.height,
+            placeholder:!hasCards
         });
     });
     return out;
@@ -8133,6 +8203,15 @@ function collectMinimapContent(nodes,sizesByPath,cardPaths,colorOf,pad,namedGrou
     Object.keys(named).forEach(function(id){
         var union=unionPaddedBoxes(named[id].boxes,18,0);
         if(union)hulls.push({id:id,kind:'named',color:named[id].color,x:union.x,y:union.y,width:union.width,height:union.height});
+    });
+    normalizeNamedGroups(namedGroups).forEach(function(group){
+        if(named[group.id]&&named[group.id].boxes&&named[group.id].boxes.length)return;
+        var placeholder=namedGroupPlaceholderBounds(group);
+        if(!placeholder)return;
+        var union=unionPaddedBoxes([placeholder],18,0);
+        if(!union)return;
+        hulls.push({id:group.id,kind:'named',color:namedGroupColor(group.id),x:union.x,y:union.y,width:union.width,height:union.height,placeholder:true});
+        boxes.push(placeholder);
     });
     return{marks:marks,hulls:hulls,world:minimapWorldFromBoxes(boxes,pad)};
 }
@@ -9336,6 +9415,7 @@ function App(){
     var namedCodeGroupsRef=useRef([]);
     var namedGroupsSessionRef=useRef('');
     var armedNamedGroupIdRef=useRef(null);
+    var namedGroupNameInputRef=useRef(null);
     var drawMinimapRef=useRef(null);
     var minimapHostRef=useRef(null);
     var minimapCanvasRef=useRef(null);
@@ -9365,6 +9445,7 @@ function App(){
     var _codeGate=useState(readUiPrefs().codeViewRootGate),codeViewRootGate=_codeGate[0],setCodeViewRootGate=_codeGate[1];
     var _namedGroups=useState([]),namedCodeGroups=_namedGroups[0],setNamedCodeGroups=_namedGroups[1];
     var _armedNamedGroup=useState(null),armedNamedGroupId=_armedNamedGroup[0],setArmedNamedGroupId=_armedNamedGroup[1];
+    var _namedGroupName=useState(null),namedGroupNameDialog=_namedGroupName[0],setNamedGroupNameDialog=_namedGroupName[1];
     namedCodeGroupsRef.current=namedCodeGroups;
     armedNamedGroupIdRef.current=armedNamedGroupId;
     var _lineThick=useState(readUiPrefs().lineThickness),lineThickness=_lineThick[0],setLineThickness=_lineThick[1];
@@ -9528,6 +9609,23 @@ function App(){
         document.addEventListener('keydown',onKeyDown);
         return function(){document.removeEventListener('keydown',onKeyDown);};
     },[confirmDialog]);
+
+    useEffect(function(){
+        if(!namedGroupNameDialog)return;
+        var input=namedGroupNameInputRef.current;
+        if(input&&typeof input.focus==='function'){
+            input.focus();
+            if(typeof input.select==='function')input.select();
+        }
+        function onKeyDown(e){
+            if(e.key==='Escape'){
+                e.preventDefault();
+                setNamedGroupNameDialog(null);
+            }
+        }
+        document.addEventListener('keydown',onKeyDown);
+        return function(){document.removeEventListener('keydown',onKeyDown);};
+    },[!!namedGroupNameDialog]);
 
     useEffect(function(){
         if(!pendingRecentDelete)return;
@@ -11131,36 +11229,80 @@ function App(){
         if(drawMinimapRef.current)drawMinimapRef.current();
         return groups;
     }
-    function requestNamedGroupName(current){
-        return promptNamedGroupName(typeof window!=='undefined'?window:null,current||'');
+    function closeNamedGroupNameDialog(){
+        setNamedGroupNameDialog(null);
+    }
+    function namedGroupViewportSize(){
+        var svg=svgRef.current;
+        return{
+            width:svg&&svg.clientWidth?svg.clientWidth:800,
+            height:svg&&svg.clientHeight?svg.clientHeight:600
+        };
+    }
+    function currentNamedGroupOrigin(){
+        var size=namedGroupViewportSize();
+        return namedGroupViewportCenter(codeZoomTransformRef.current||{k:1,x:0,y:0},size.width,size.height);
+    }
+    function currentNamedGroupViewport(){
+        var size=namedGroupViewportSize();
+        return viewportWorldRect(codeZoomTransformRef.current||{k:1,x:0,y:0},size.width,size.height);
+    }
+    function placeNamedGroupInViewport(paths,origin){
+        var list=paths||[];
+        if(!list.length)return;
+        var live=(simRef.current&&simRef.current.nodes())||[];
+        var boxes=[];
+        live.forEach(function(node){
+            if(!node||list.indexOf(node.id)<0)return;
+            var box=codeFolderMemberBox(node,codeCardSizesRef.current,null,0);
+            if(box)boxes.push(box);
+        });
+        if(!namedGroupNeedsViewportPlacement(boxes,currentNamedGroupViewport()))return;
+        placeNodesAtNamedGroupOrigin(live,list,origin).forEach(function(node){
+            codeCardUserPinnedRef.current.add(node.id);
+            writeCodeCardPlacement({path:node.id,folder:node.folder},node);
+        });
+        syncCodeCards();
+        redrawGraphLinksAndNodes();
     }
     function createCodeNamedGroup(){
-        var name=requestNamedGroupName('');
-        if(name==null)return;
-        if(!name){
-            showNotification('Group name cannot be empty','warning');
-            return;
-        }
-        var made=createNamedGroup(namedCodeGroupsRef.current,name);
-        if(!made.group)return;
-        var next=made.groups;
-        if(selected&&selected.path&&codeCardPathsRef.current.has(selected.path)){
-            next=addCardToNamedGroup(next,made.group.id,selected.path);
-        }
-        commitNamedGroups(next);
-        setArmedNamedGroupId(null);
+        setNamedGroupNameDialog({mode:'create',name:''});
     }
     function renameCodeNamedGroup(id){
         var group=namedGroupById(namedCodeGroupsRef.current,id);
         if(!group)return;
-        var name=requestNamedGroupName(group.name);
-        if(name==null)return;
+        setNamedGroupNameDialog({mode:'rename',groupId:id,name:group.name});
+    }
+    function submitNamedGroupNameDialog(){
+        var dialog=namedGroupNameDialog;
+        if(!dialog)return;
+        var name=normalizeNamedGroupName(dialog.name);
         if(!name){
             showNotification('Group name cannot be empty','warning');
             return;
         }
-        commitNamedGroups(renameNamedGroup(namedCodeGroupsRef.current,id,name));
+        if(dialog.mode==='rename'){
+            commitNamedGroups(renameNamedGroup(namedCodeGroupsRef.current,dialog.groupId,name));
+            setArmedNamedGroupId(null);
+            closeNamedGroupNameDialog();
+            return;
+        }
+        var origin=currentNamedGroupOrigin();
+        var made=createNamedGroup(namedCodeGroupsRef.current,name,undefined,origin);
+        if(!made.group)return;
+        var next=made.groups;
+        var memberPath=selected&&selected.path&&codeCardPathsRef.current.has(selected.path)?selected.path:null;
+        if(memberPath){
+            next=addCardToNamedGroup(next,made.group.id,memberPath);
+            placeNamedGroupInViewport([memberPath],origin);
+            var node=graphNodesByIdRef.current[memberPath];
+            if(node&&isFinite(node.x)&&isFinite(node.y)){
+                next=setNamedGroupOrigin(next,made.group.id,{x:node.x,y:node.y});
+            }
+        }
+        commitNamedGroups(next);
         setArmedNamedGroupId(null);
+        closeNamedGroupNameDialog();
     }
     function deleteCodeNamedGroup(id){
         var armed=armRecentDelete(armedNamedGroupId,id);
@@ -13367,13 +13509,14 @@ function App(){
     function beginNamedGroupDrag(e,groupId){
         if(e.pointerType==='mouse'&&e.button!==0)return;
         var group=namedGroupById(namedCodeGroupsRef.current,groupId);
-        if(!group||!group.paths.length)return;
+        if(!group)return;
         var transform=codeZoomTransformRef.current||{k:1,x:0,y:0};
         var k=Number(transform.k);
         if(!isFinite(k)||k<=0)k=1;
         var startX=e.clientX,startY=e.clientY,lastX=0,lastY=0,moved=false;
         var nodes=(simRef.current&&simRef.current.nodes())||[];
         var paths=group.paths.slice();
+        var origin=namedGroupPoint(group)||namedGroupMemberCentroid(nodes,paths)||{x:0,y:0};
         function onMove(ev){
             var delta=codeCardDragDelta(ev.clientX,ev.clientY,startX,startY,k,3);
             var dx=delta.x-lastX,dy=delta.y-lastY;
@@ -13404,6 +13547,7 @@ function App(){
                 return;
             }
             paths.forEach(function(path){codeCardUserPinnedRef.current.add(path);});
+            commitNamedGroups(setNamedGroupOrigin(namedCodeGroupsRef.current,groupId,{x:origin.x+lastX,y:origin.y+lastY}));
             if(codeViewDragRefresh('release')){
                 settleCodeViewAfterDrag(nodes,codeCardPathsRef.current,codeCardSizesRef.current,null,{
                     boxesByPath:readCodeCardWorldBoxes(codeCardsLayerRef.current)
@@ -14824,6 +14968,41 @@ function App(){
                     React.createElement('button',{className:'top-btn',onClick:function(){data.deadFunctions.forEach(function(fn){expandedFns.add('dead-'+fn.name);});setExpandedFns(new Set(expandedFns));}},'Expand All'),
                     React.createElement('button',{className:'top-btn',onClick:function(){setExpandedFns(new Set());}},'Collapse All'),
                     React.createElement('button',{className:'top-btn primary',onClick:function(){setShowUnused(false);}},'Close')
+                )
+            )
+        ),
+        namedGroupNameDialog&&React.createElement('div',{className:'modal-overlay',style:{zIndex:1200},onClick:closeNamedGroupNameDialog},
+            React.createElement('div',{className:'modal named-group-name-modal',onClick:function(e){e.stopPropagation();}},
+                React.createElement('div',{className:'modal-header'},
+                    React.createElement('div',{className:'modal-title'},iconLabel('layers',namedGroupNameDialog.mode==='rename'?'Rename Group':'New Group','m')),
+                    React.createElement('button',{className:'modal-close',onClick:closeNamedGroupNameDialog,'aria-label':'Close'},'×')
+                ),
+                React.createElement('div',{className:'modal-body'},
+                    React.createElement('div',{className:'form-group',style:{marginBottom:0}},
+                        React.createElement('label',{className:'form-label',htmlFor:'named-group-name-input'},'Name this group'),
+                        React.createElement('input',{
+                            id:'named-group-name-input',
+                            ref:namedGroupNameInputRef,
+                            className:'form-input',
+                            type:'text',
+                            'aria-label':'Group name',
+                            placeholder:'Auth, UI, Core…',
+                            value:namedGroupNameDialog.name,
+                            maxLength:NAMED_GROUP_NAME_MAX,
+                            autoFocus:true,
+                            onChange:function(e){setNamedGroupNameDialog(Object.assign({},namedGroupNameDialog,{name:e.target.value}));},
+                            onKeyDown:function(e){
+                                if(e.key==='Enter'){
+                                    e.preventDefault();
+                                    submitNamedGroupNameDialog();
+                                }
+                            }
+                        })
+                    )
+                ),
+                React.createElement('div',{className:'modal-footer'},
+                    React.createElement('button',{className:'top-btn',onClick:closeNamedGroupNameDialog},'Cancel'),
+                    React.createElement('button',{className:'top-btn primary',onClick:submitNamedGroupNameDialog},namedGroupNameDialog.mode==='rename'?'Rename':'Create')
                 )
             )
         ),
