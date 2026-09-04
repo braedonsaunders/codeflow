@@ -311,7 +311,8 @@ test('Code root gate waits for a folder or file when the root is crowded', () =>
   }));
   const data = { files };
   assert.equal(context.countCodeViewRootFiles(data), 50);
-  assert.equal(context.clampCodeViewRootGate(undefined), 50);
+  assert.equal(context.CODE_VIEW_ROOT_GATE_DEFAULT, 25);
+  assert.equal(context.clampCodeViewRootGate(undefined), 25);
   assert.equal(context.clampCodeViewRootGate(40), 50);
   assert.equal(context.clampCodeViewRootGate(70), 75);
   assert.equal(context.codeViewRootGateActive(data, null, null, [], 50), true);
@@ -1943,8 +1944,10 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /codeRootGateActive/);
   assert.match(htmlSource, /shouldSeedOpenedCodeCards\(true,codeViewSessionRef\.current,openedCodePaths,codeRootGateActive\)/);
   assert.match(htmlSource, /if\(!data\|\|codeRootGateActive\)return\[\]/);
-  assert.match(htmlSource, /useState\(readUiPrefs\(\)\.codeViewRootGate\)/);
-  assert.match(htmlSource, /persistUiPrefs\(\{codeViewRootGate:value\}\)/);
+  assert.match(htmlSource, /useState\(CODE_VIEW_ROOT_GATE_DEFAULT\)/);
+  assert.match(htmlSource, /setCodeViewRootGate\(clampCodeViewRootGate\(value\)\)/);
+  assert.doesNotMatch(htmlSource, /persistUiPrefs\(\{codeViewRootGate:value\}\)/);
+  assert.doesNotMatch(htmlSource, /useState\(readUiPrefs\(\)\.codeViewRootGate\)/);
   assert.match(htmlSource, /normalizeCodeCardPrefs/);
   assert.match(htmlSource, /codeCardWrapColumns/);
   assert.match(htmlSource, /codeCardVisualLineEndIndex/);
@@ -2002,16 +2005,23 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /path\.force-link-particle\.is-on/);
   assert.match(htmlSource, /@media\(prefers-reduced-motion:reduce\)\{[\s\S]*?display:none/);
   assert.match(htmlSource, /function forceLinkParticlesNeedTickUpdate\(/);
+  assert.match(htmlSource, /function forceLinkParticlesWanted\(/);
+  assert.match(htmlSource, /function forceLinkParticleRecords\(/);
+  assert.match(htmlSource, /function isForceLinkHitTarget\(/);
+  assert.match(htmlSource, /function applyCodeCardZoomChrome\(/);
+  assert.match(htmlSource, /function zoomTransformScaleChanged\(/);
   assert.match(htmlSource, /function redrawActiveForceLinkParticles\(/);
-  assert.match(htmlSource, /linkParticlesRef\.current\.filter\('\.is-on'\)/);
-  assert.match(htmlSource, /linkParticlesRef\.current=particles/);
   assert.match(htmlSource, /else applyForceLinkVisuals\(\)/);
   assert.match(htmlSource, /applyForceLinkVisualsRef/);
   assert.match(htmlSource, /subscribePrefersReducedMotion\(function/);
   assert.match(htmlSource, /var particleLayer=keepReadable\?container\.append\('g'\)\.attr\('class','force-link-particles'/);
+  assert.match(htmlSource, /var hitLayer=keepReadable\?container\.append\('g'\)\.attr\('class','force-link-hits'/);
   assert.match(htmlSource, /if\(!vizUsesForceLinkParticles\(graphConfig\.vizType\)\)return;/);
   assert.match(htmlSource, /if\(src===path\|\|tgt===path\)return'var\(--acc\)'/);
-  assert.doesNotMatch(htmlSource, /if\(linkParticlesRef\.current\)linkParticlesRef\.current\.attr\('d',graphLinkPath\)/);
+  assert.match(htmlSource, /if\(keepReadable\)\{sim\.stop\(\);sim\.alpha\(0\);\}/);
+  assert.match(htmlSource, /isForceLinkHitTarget\(e\.target\)/);
+  assert.match(htmlSource, /codeLinkParticlesHiddenRef\.current=false/);
+  assert.match(htmlSource, /applyCodeCardZoomChrome\(codeCardsLayerRef\.current,e\.transform\)/);
   const highlightFn = htmlSource.slice(
     htmlSource.indexOf('function updateGraphHighlight('),
     htmlSource.indexOf('function getNodeColor(', htmlSource.indexOf('function updateGraphHighlight('))
@@ -2268,6 +2278,7 @@ test('selected Code-view links animate; inactive stay quiet; reduced-motion is s
   const quiet = context.forceLinkVisual(other, 'src/app.js', opts);
   const baseline = context.forceLinkVisual(outLink, null, opts);
   const reduced = context.forceLinkVisual(outLink, 'src/app.js', Object.assign({}, opts, { reducedMotion: true }));
+  const hiddenMotion = context.forceLinkVisual(outLink, 'src/app.js', Object.assign({}, opts, { particles: false }));
 
   assert.equal(context.forceLinkRole(outLink, 'src/app.js'), 'out');
   assert.equal(context.forceLinkRole(inLink, 'src/app.js'), 'in');
@@ -2296,9 +2307,25 @@ test('selected Code-view links animate; inactive stay quiet; reduced-motion is s
   assert.equal(reduced.stroke, 'var(--orange)');
   assert.equal(reduced.particle, false, 'reduced-motion keeps a static highlight');
   assert.equal(reduced.particleDash, '');
+  assert.equal(hiddenMotion.active, true);
+  assert.equal(hiddenMotion.stroke, 'var(--orange)');
+  assert.equal(hiddenMotion.particle, false, 'toggled-off dashes keep the selected-edge color');
   assert.equal(context.forceLinkParticlesNeedTickUpdate(null, { reducedMotion: false }), false);
   assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: true }), false);
   assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: false }), true);
+  assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: false, hidden: true }), false);
+  assert.equal(context.forceLinkParticlesWanted({ hidden: true }), false);
+  assert.equal(context.forceLinkParticlesWanted({ reducedMotion: false, vizType: 'code' }), true);
+  assert.equal(context.nextForceLinkParticlesHidden(false), true);
+  assert.equal(context.nextForceLinkParticlesHidden(true), false);
+  assert.equal(context.nextForceLinkParticlesHidden(true, 'show'), false);
+  assert.equal(context.nextForceLinkParticlesHidden(false, 'hide'), true);
+  const particleLinks = context.forceLinkParticleRecords([outLink, inLink, other], 'src/app.js');
+  assert.equal(particleLinks.length, 2);
+  assert.equal(context.forceLinkParticleRecords([outLink, other], null).length, 0);
+  assert.equal(context.isForceLinkHitTarget({ getAttribute(name) { return name === 'class' ? 'force-link-hit' : null; } }), true);
+  assert.equal(context.isForceLinkHitTarget({ getAttribute() { return 'force-link-quiet'; }, closest() { return null; } }), false);
+  assert.equal(context.isForceLinkHitTarget(null), false);
 
   const thin = context.forceLinkVisual(outLink, 'src/app.js', { thickness: 1, reducedMotion: false });
   const thick = context.forceLinkVisual(outLink, 'src/app.js', { thickness: 6, reducedMotion: false });
@@ -2382,32 +2409,63 @@ test('reduced-motion changes reapply Code particles; Graph keeps static accent',
 test('UI prefs persist line thickness in localStorage', () => {
   const storage = memoryStorage();
   assert.equal(context.readUiPrefs(storage).lineThickness, 1);
-  assert.equal(context.readUiPrefs(storage).codeViewRootGate, 50);
+  assert.equal(context.readUiPrefs(storage).codeViewRootGate, 25);
   assert.equal(context.readUiPrefs(null).lineThickness, 1);
   const written = context.writeUiPrefs(storage, { lineThickness: 5 });
   assert.equal(written.lineThickness, 5);
-  assert.equal(written.codeViewRootGate, 50);
+  assert.equal(written.codeViewRootGate, 25);
   assert.equal(context.readUiPrefs(storage).lineThickness, 5);
   assert.equal(context.writeUiPrefs(storage, { lineThickness: 99 }).lineThickness, 6);
   const gated = context.writeUiPrefs(storage, { codeViewRootGate: 75 });
-  assert.equal(gated.codeViewRootGate, 75);
-  assert.equal(context.writeUiPrefs(storage, { codeViewRootGate: 40 }).codeViewRootGate, 50);
+  assert.equal(gated.codeViewRootGate, 25);
+  assert.equal(context.writeUiPrefs(storage, { codeViewRootGate: 40 }).codeViewRootGate, 25);
   storage.setItem(context.UI_PREFS_STORAGE_KEY, '{not-json');
   assert.equal(context.readUiPrefs(storage).lineThickness, 1);
-  assert.equal(context.readUiPrefs(storage).codeViewRootGate, 50);
+  assert.equal(context.readUiPrefs(storage).codeViewRootGate, 25);
   const other = memoryStorage({ [context.UI_PREFS_STORAGE_KEY]: JSON.stringify({ lineThickness: 2, extra: true }) });
   const merged = context.writeUiPrefs(other, { lineThickness: 3 });
   assert.equal(merged.lineThickness, 3);
-  assert.equal(merged.codeViewRootGate, 50);
+  assert.equal(merged.codeViewRootGate, 25);
   context.window = { localStorage: storage };
   try {
     assert.equal(context.persistUiPrefs({ lineThickness: 4 }).lineThickness, 4);
     assert.equal(context.readUiPrefs().lineThickness, 4);
-    assert.equal(context.persistUiPrefs({ codeViewRootGate: 25 }).codeViewRootGate, 25);
+    assert.equal(context.persistUiPrefs({ codeViewRootGate: 100 }).codeViewRootGate, 25);
     assert.equal(context.readUiPrefs().codeViewRootGate, 25);
   } finally {
     delete context.window;
   }
+});
+
+test('Load Files stays 25 across reloads even if a higher value was stored', () => {
+  const storage = memoryStorage({
+    [context.UI_PREFS_STORAGE_KEY]: JSON.stringify({ lineThickness: 3, codeViewRootGate: 100 })
+  });
+  const prefs = context.readUiPrefs(storage);
+  assert.equal(prefs.codeViewRootGate, 25);
+  assert.equal(prefs.lineThickness, 3);
+  const rewritten = context.writeUiPrefs(storage, { lineThickness: 2 });
+  assert.equal(rewritten.codeViewRootGate, 25);
+  assert.equal(JSON.parse(storage.getItem(context.UI_PREFS_STORAGE_KEY)).codeViewRootGate, 25);
+});
+
+test('pan-only zoom chrome does not rewrite card box styles', () => {
+  assert.equal(context.zoomTransformScaleChanged({ k: 1, x: 0, y: 0 }, { k: 1, x: 40, y: 8 }), false);
+  assert.equal(context.zoomTransformScaleChanged({ k: 1, x: 0, y: 0 }, { k: 0.5, x: 40, y: 8 }), true);
+  const title = { style: { transform: 'scale(1)' } };
+  const card = {
+    getAttribute(name) { return name === 'data-code-card' ? 'a.js' : null; },
+    style: { left: '210px', top: '190px', width: '380px', height: '280px', visibility: 'visible' },
+    classList: { add() {}, remove() {}, contains() { return false; } },
+    querySelector() { return title; }
+  };
+  const layer = { style: {}, querySelectorAll() { return [card]; } };
+  const chrome = context.applyCodeCardZoomChrome(layer, { k: 1, x: 12, y: 8 });
+  assert.equal(chrome.codeFar, false);
+  assert.equal(layer.style.transform, 'translate(12px,8px) scale(1)');
+  assert.equal(card.style.left, '210px');
+  assert.equal(card.style.top, '190px');
+  assert.equal(title.style.transform, 'scale(1)');
 });
 
 function throwingLocalStorageWindow() {

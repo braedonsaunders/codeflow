@@ -491,6 +491,8 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 @keyframes force-link-particle-flow{to{stroke-dashoffset:-28}}
 path.force-link-particle{fill:none;pointer-events:none;stroke-linecap:round}
 path.force-link-particle.is-on{stroke-dasharray:8 20;animation:force-link-particle-flow .7s linear infinite}
+path.force-link-hit{fill:none;stroke:rgba(0,0,0,0);stroke-width:18;pointer-events:stroke;cursor:pointer}
+path.force-link-active{cursor:pointer}
 @media(prefers-reduced-motion:reduce){
 path.force-link-particle.is-on{animation:none;stroke-dasharray:none;display:none}
 }
@@ -5670,7 +5672,7 @@ var UI_PREFS_STORAGE_KEY='codeflow-ui-prefs';
 var LINE_THICKNESS_MIN=1;
 var LINE_THICKNESS_MAX=6;
 var LINE_THICKNESS_DEFAULT=1;
-var CODE_VIEW_ROOT_GATE_DEFAULT=50;
+var CODE_VIEW_ROOT_GATE_DEFAULT=25;
 var CODE_VIEW_ROOT_GATE_STEPS=[25,50,75,100];
 
 function clampLineThickness(value){
@@ -5704,7 +5706,7 @@ function normalizeUiPrefs(prefs){
     prefs=prefs&&typeof prefs==='object'?prefs:{};
     var next=defaultUiPrefs();
     if(prefs.lineThickness!=null)next.lineThickness=clampLineThickness(prefs.lineThickness);
-    if(prefs.codeViewRootGate!=null)next.codeViewRootGate=clampCodeViewRootGate(prefs.codeViewRootGate);
+    next.codeViewRootGate=CODE_VIEW_ROOT_GATE_DEFAULT;
     return next;
 }
 
@@ -5873,12 +5875,69 @@ function forceLinkVisual(link,selectedPath,options){
     };
 }
 
+function forceLinkParticlesWanted(options){
+    options=options||{};
+    if(options.hidden)return false;
+    if(options.reducedMotion)return false;
+    if(options.particles===false)return false;
+    if(options.vizType!=null&&!vizUsesForceLinkParticles(options.vizType))return false;
+    return true;
+}
+
+function forceLinkParticleRecords(links,selectedPath){
+    if(!selectedPath||!links||!links.length)return[];
+    var out=[];
+    for(var i=0;i<links.length;i++){
+        var role=forceLinkRole(links[i],selectedPath);
+        if(role==='out'||role==='in')out.push(links[i]);
+    }
+    return out;
+}
+
+function nextForceLinkParticlesHidden(hidden,action){
+    if(action==='show')return false;
+    if(action==='hide')return true;
+    return !hidden;
+}
+
+function isForceLinkHitTarget(target){
+    if(!target)return false;
+    var cls=(target.getAttribute&&target.getAttribute('class'))||(target.className&&String(target.className))||'';
+    if(cls.indexOf('force-link-hit')>=0)return true;
+    if(cls.indexOf('force-link-active')>=0)return true;
+    if(cls.indexOf('force-link-particle')>=0&&cls.indexOf('is-on')>=0)return true;
+    return !!(target.closest&&target.closest('path.force-link-hit,path.force-link-active,path.force-link-particle.is-on'));
+}
+
 function forceLinkParticlesNeedTickUpdate(selectedPath,options){
     if(!selectedPath)return false;
     options=options||{};
-    if(options.reducedMotion)return false;
-    if(options.vizType!=null&&!vizUsesForceLinkParticles(options.vizType))return false;
+    if(!forceLinkParticlesWanted(options))return false;
     return true;
+}
+
+function zoomTransformScaleChanged(prev,next){
+    if(!prev||!next)return true;
+    return Number(prev.k)!==Number(next.k);
+}
+
+function setStyleProp(style,key,value){
+    if(!style)return false;
+    if(style[key]===value)return false;
+    style[key]=value;
+    return true;
+}
+
+function setDomClass(el,name,on){
+    if(!el||!el.classList)return;
+    var list=el.classList;
+    if(on){
+        if(typeof list.contains==='function'&&list.contains(name))return;
+        if(typeof list.add==='function')list.add(name);
+        return;
+    }
+    if(typeof list.contains==='function'&&!list.contains(name))return;
+    if(typeof list.remove==='function')list.remove(name);
 }
 
 function escapeRegExp(value){
@@ -8100,42 +8159,46 @@ function codeCardFitBounds(nodes,sizesByPath,cardPaths){
     return {minX:minX,minY:minY,maxX:maxX,maxY:maxY,cx:(minX+maxX)/2,cy:(minY+maxY)/2};
 }
 
-function applyCodeCardLayout(layer,nodesById,transform,sizesByPath,stackOrder){
-    if(!layer)return{placed:0,titleScale:1};
-    layer.style.transform=codeCanvasTransformStyle(transform);
+function applyCodeCardZoomChrome(layer,transform){
+    if(!layer)return{titleScale:1,colorBlocks:false,codeFar:false};
+    var nextTransform=codeCanvasTransformStyle(transform);
+    setStyleProp(layer.style,'transform',nextTransform);
     var k=transform&&isFinite(Number(transform.k))?Number(transform.k):1;
     var titleScale=readableLabelScale(k);
+    var blocks=zoomShowsColorBlocks(k);
+    var far=zoomHidesCodeText(k);
+    var titleScaleCss='scale('+titleScale+')';
+    var cards=layer.querySelectorAll?layer.querySelectorAll('[data-code-card]'):[];
+    Array.prototype.forEach.call(cards,function(card){
+        var title=card.querySelector?card.querySelector('.code-card-name'):null;
+        if(title)setStyleProp(title.style,'transform',titleScaleCss);
+        setDomClass(card,'code-far',far);
+        setDomClass(card,'code-blocks',blocks);
+    });
+    return{titleScale:titleScale,colorBlocks:blocks,codeFar:far};
+}
+
+function applyCodeCardLayout(layer,nodesById,transform,sizesByPath,stackOrder){
+    if(!layer)return{placed:0,titleScale:1};
+    var chrome=applyCodeCardZoomChrome(layer,transform);
     var cards=layer.querySelectorAll?layer.querySelectorAll('[data-code-card]'):[];
     var placed=0;
     Array.prototype.forEach.call(cards,function(card){
         var path=card.getAttribute('data-code-card');
         var size=(sizesByPath&&sizesByPath[path])||codeCardSize(null);
         var style=codeCardAnchorStyle(nodesById&&nodesById[path],size);
-        card.style.visibility=style.visibility;
-        card.style.left=style.left;
-        card.style.top=style.top;
-        card.style.width=size.width+'px';
-        card.style.height=size.height+'px';
-        if(stackOrder)card.style.zIndex=String(codeCardZIndex(stackOrder,path));
-        if(card.classList){
-            if(size.clipped&&card.classList.add)card.classList.add('clipped');
-            else if(card.classList.remove)card.classList.remove('clipped');
-            if(size.expand&&card.classList.add)card.classList.add('expand');
-            else if(card.classList.remove)card.classList.remove('expand');
-            if(size.wrap&&card.classList.add)card.classList.add('wrap');
-            else if(card.classList.remove)card.classList.remove('wrap');
-        }
-        var title=card.querySelector?card.querySelector('.code-card-name'):null;
-        if(title)title.style.transform='scale('+titleScale+')';
-        if(card.classList){
-            if(zoomHidesCodeText(k)&&card.classList.add)card.classList.add('code-far');
-            else if(card.classList.remove)card.classList.remove('code-far');
-            if(zoomShowsColorBlocks(k)&&card.classList.add)card.classList.add('code-blocks');
-            else if(card.classList.remove)card.classList.remove('code-blocks');
-        }
+        setStyleProp(card.style,'visibility',style.visibility);
+        setStyleProp(card.style,'left',style.left);
+        setStyleProp(card.style,'top',style.top);
+        setStyleProp(card.style,'width',size.width+'px');
+        setStyleProp(card.style,'height',size.height+'px');
+        if(stackOrder)setStyleProp(card.style,'zIndex',String(codeCardZIndex(stackOrder,path)));
+        setDomClass(card,'clipped',!!size.clipped);
+        setDomClass(card,'expand',!!size.expand);
+        setDomClass(card,'wrap',!!size.wrap);
         if(style.visibility==='visible')placed++;
     });
-    return{placed:placed,titleScale:titleScale,colorBlocks:zoomShowsColorBlocks(k),codeFar:zoomHidesCodeText(k)};
+    return{placed:placed,titleScale:chrome.titleScale,colorBlocks:chrome.colorBlocks,codeFar:chrome.codeFar};
 }
 
 function armRecentDelete(armedId,clickedId){
@@ -9035,6 +9098,10 @@ function App(){
     var nodesRef=useRef(null);
     var linksRef=useRef(null);
     var linkParticlesRef=useRef(null);
+    var forceLinkHitLayerRef=useRef(null);
+    var forceLinkParticleLayerRef=useRef(null);
+    var codeForceLinksRef=useRef([]);
+    var codeLinkParticlesHiddenRef=useRef(false);
     var applyForceLinkVisualsRef=useRef(null);
     var selectFileRef=useRef(null);
     var codeCardsLayerRef=useRef(null);
@@ -9083,7 +9150,7 @@ function App(){
     var _pillScroll=useState(0),codePillScroll=_pillScroll[0],setCodePillScroll=_pillScroll[1];
     var _codeExpand=useState(false),codeViewExpand=_codeExpand[0],setCodeViewExpand=_codeExpand[1];
     var _codeWrap=useState(true),codeViewWrap=_codeWrap[0],setCodeViewWrap=_codeWrap[1];
-    var _codeGate=useState(readUiPrefs().codeViewRootGate),codeViewRootGate=_codeGate[0],setCodeViewRootGate=_codeGate[1];
+    var _codeGate=useState(CODE_VIEW_ROOT_GATE_DEFAULT),codeViewRootGate=_codeGate[0],setCodeViewRootGate=_codeGate[1];
     var _lineThick=useState(readUiPrefs().lineThickness),lineThickness=_lineThick[0],setLineThickness=_lineThick[1];
     var lineThicknessRef=useRef(lineThickness);
     lineThicknessRef.current=lineThickness;
@@ -10431,6 +10498,7 @@ function App(){
                 setOwnership([]);
             }
             selectedPathRef.current=path;
+            codeLinkParticlesHiddenRef.current=false;
             if(graphConfig.vizType!=='code')updateGraphHighlight(path,blast);
             else applyForceLinkVisuals();
         }
@@ -10780,9 +10848,9 @@ function App(){
         return 'M'+d.source.x+','+d.source.y+'L'+d.target.x+','+d.target.y;
     }
     function redrawActiveForceLinkParticles(){
-        if(!linkParticlesRef.current)return;
-        if(!forceLinkParticlesNeedTickUpdate(selectedPathRef.current,{reducedMotion:prefersReducedMotion(),vizType:graphConfig.vizType}))return;
-        linkParticlesRef.current.filter('.is-on').attr('d',graphLinkPath);
+        if(!forceLinkParticlesNeedTickUpdate(selectedPathRef.current,{hidden:codeLinkParticlesHiddenRef.current,reducedMotion:prefersReducedMotion(),vizType:graphConfig.vizType}))return;
+        if(linkParticlesRef.current)linkParticlesRef.current.attr('d',graphLinkPath);
+        if(forceLinkHitLayerRef.current)forceLinkHitLayerRef.current.selectAll('path').attr('d',graphLinkPath);
     }
     function redrawGraphLinksAndNodes(){
         if(nodesRef.current)nodesRef.current.attr('transform',function(d){return'translate('+d.x+','+d.y+')';});
@@ -10792,7 +10860,10 @@ function App(){
     function applyForceLinkVisuals(){
         if(!vizUsesForceLinkParticles(graphConfig.vizType))return;
         var selectedPath=selectedPathRef.current||null;
-        var opts={theme:theme,thickness:lineThicknessRef.current,reducedMotion:prefersReducedMotion(),vizType:graphConfig.vizType};
+        var reduced=prefersReducedMotion();
+        var wanted=forceLinkParticlesWanted({hidden:codeLinkParticlesHiddenRef.current,reducedMotion:reduced,vizType:graphConfig.vizType});
+        var opts={theme:theme,thickness:lineThicknessRef.current,reducedMotion:reduced,vizType:graphConfig.vizType,particles:wanted};
+        var active=forceLinkParticleRecords(codeForceLinksRef.current,selectedPath);
         if(linksRef.current){
             linksRef.current.each(function(d){
                 var v=forceLinkVisual(d,selectedPath,opts);
@@ -10804,18 +10875,26 @@ function App(){
                     .classed('force-link-quiet',v.role==='quiet');
             });
         }
-        if(linkParticlesRef.current){
-            linkParticlesRef.current.each(function(d){
-                var v=forceLinkVisual(d,selectedPath,opts);
-                d3.select(this)
-                    .attr('d',graphLinkPath(d))
-                    .attr('stroke',v.particleStroke||v.stroke)
-                    .attr('stroke-width',v.particleWidth)
-                    .attr('stroke-opacity',v.particle?0.95:0)
-                    .attr('stroke-dasharray',v.particle?v.particleDash:null)
-                    .classed('is-on',!!v.particle)
-                    .style('display',v.particle?null:'none');
-            });
+        if(forceLinkHitLayerRef.current){
+            forceLinkHitLayerRef.current.selectAll('path').data(active).join('path')
+                .attr('class','force-link-hit')
+                .attr('fill','none')
+                .attr('d',graphLinkPath);
+        }
+        if(forceLinkParticleLayerRef.current){
+            linkParticlesRef.current=forceLinkParticleLayerRef.current.selectAll('path').data(wanted?active:[]).join('path')
+                .attr('fill','none')
+                .attr('class','force-link-particle is-on')
+                .attr('stroke-linecap','round')
+                .attr('d',graphLinkPath)
+                .each(function(d){
+                    var v=forceLinkVisual(d,selectedPath,opts);
+                    d3.select(this)
+                        .attr('stroke',v.particleStroke||v.stroke)
+                        .attr('stroke-width',v.particleWidth)
+                        .attr('stroke-opacity',0.95)
+                        .attr('stroke-dasharray',v.particleDash||null);
+                });
         }
     }
     applyForceLinkVisualsRef.current=applyForceLinkVisuals;
@@ -10824,8 +10903,7 @@ function App(){
         setLineThickness(next);
     }
     function persistCodeViewRootGate(value){
-        var next=persistUiPrefs({codeViewRootGate:value}).codeViewRootGate;
-        setCodeViewRootGate(next);
+        setCodeViewRootGate(clampCodeViewRootGate(value));
     }
     function applyLinkThickness(){
         if(vizUsesForceLinkParticles(graphConfig.vizType))applyForceLinkVisuals();
@@ -11153,10 +11231,15 @@ function App(){
             }
             return !event.ctrlKey&&!event.button;
         }).on('zoom',function(e){
+            var prevZoom=codeZoomTransformRef.current;
             container.attr('transform',e.transform);
             codeZoomTransformRef.current=e.transform;
-            applyReadableLabels(e.transform.k);
-            if(keepReadable)syncCodeCards();
+            var scaleChanged=zoomTransformScaleChanged(prevZoom,e.transform);
+            if(scaleChanged)applyReadableLabels(e.transform.k);
+            if(keepReadable){
+                if(scaleChanged)applyCodeCardZoomChrome(codeCardsLayerRef.current,e.transform);
+                else if(codeCardsLayerRef.current)setStyleProp(codeCardsLayerRef.current.style,'transform',codeCanvasTransformStyle(e.transform));
+            }
             if(drawMinimapRef.current)drawMinimapRef.current();
         });
         svg.call(zoom);
@@ -11166,9 +11249,11 @@ function App(){
         defs.append('marker').attr('id','arr').attr('viewBox','0 -5 10 10').attr('refX',14).attr('markerWidth',4).attr('markerHeight',4).attr('orient','auto').append('path').attr('d','M0,-4L10,0L0,4').attr('fill',theme==='light'?'#aaa':'#444');
         var hullLayer=container.append('g').attr('data-code-bg','1').attr('pointer-events','none');
         var linkLayer=container.append('g');
+        var hitLayer=keepReadable?container.append('g').attr('class','force-link-hits'):null;
         var particleLayer=keepReadable?container.append('g').attr('class','force-link-particles').attr('pointer-events','none'):null;
         var nodeLayer=container.append('g');
         var sim=d3.forceSimulation(nodes);
+        if(keepReadable){sim.stop();sim.alpha(0);}
         if(graphConfig.viewMode==='force'){
             sim.force('link',d3.forceLink(links).id(function(d){return d.id;}).distance(graphConfig.linkDist).strength(0.3))
                .force('charge',d3.forceManyBody().strength(-graphConfig.spacing).distanceMax(400))
@@ -11232,9 +11317,10 @@ function App(){
         simRef.current=sim;
         var link=linkLayer.selectAll('path').data(links).join('path').attr('fill','none').attr('stroke',theme==='light'?'#ccc':'#333').attr('stroke-width',function(d){return graphLinkStrokeWidth(d.count,lineThicknessRef.current);}).attr('stroke-opacity',0.4).attr('marker-end','url(#arr)');
         linksRef.current=link;
-        if(keepReadable&&particleLayer){
-            var particles=particleLayer.selectAll('path').data(links).join('path').attr('fill','none').attr('class','force-link-particle').attr('stroke-linecap','round');
-            linkParticlesRef.current=particles;
+        codeForceLinksRef.current=links;
+        forceLinkHitLayerRef.current=hitLayer;
+        forceLinkParticleLayerRef.current=particleLayer;
+        if(keepReadable&&(hitLayer||particleLayer)){
             applyForceLinkVisuals();
         }else{
             linkParticlesRef.current=null;
@@ -11292,11 +11378,17 @@ function App(){
         node.attr('display',function(d){return keepReadable&&nodeReplacedByCard(d.id,codeCardPathsRef.current)?'none':null;});
         node.on('mouseenter',function(e,d){if(keepReadable&&codeCardPathsRef.current.has(d.id))return;var r=svgRef.current.getBoundingClientRect();setTooltip({x:e.clientX-r.left+10,y:e.clientY-r.top,title:d.name,content:d.fnCount+' functions\n'+d.layer+' layer\n'+d.churn+' recent commits'});}).on('mouseleave',function(){setTooltip(null);});
         svg.on('click',function(e){
+            if(isForceLinkHitTarget(e.target)){
+                codeLinkParticlesHiddenRef.current=nextForceLinkParticlesHidden(codeLinkParticlesHiddenRef.current);
+                applyForceLinkVisuals();
+                return;
+            }
             if(!isCodeCanvasDeselectTarget(e.target,svgRef.current))return;
             setSelected(null);
             setBlastRadius(null);
             setActiveSymbol(null);
             selectedPathRef.current=null;
+            codeLinkParticlesHiddenRef.current=false;
             if(keepReadable){
                 applyForceLinkVisuals();
                 return;
@@ -11358,18 +11450,18 @@ function App(){
         // Throttle hull updates for large graphs (every N ticks instead of every tick)
         var hullInterval=isLargeGraph?5:1;
         var tickCount=0;
-        sim.on('tick',function(){
-            link.attr('d',graphLinkPath);
-            redrawActiveForceLinkParticles();
-            node.attr('transform',function(d){return'translate('+d.x+','+d.y+')';});
-            if(keepReadable){
-                nodes.forEach(function(n){graphNodesByIdRef.current[n.id]=n;});
-                syncCodeCards();
-            }
-            tickCount++;
-            if(tickCount%hullInterval===0)updateHulls();
-            if(drawMinimapRef.current)drawMinimapRef.current();
-        });
+        if(keepReadable){
+            sim.alpha(0);
+            sim.stop();
+        }else{
+            sim.on('tick',function(){
+                link.attr('d',graphLinkPath);
+                node.attr('transform',function(d){return'translate('+d.x+','+d.y+')';});
+                tickCount++;
+                if(tickCount%hullInterval===0)updateHulls();
+                if(drawMinimapRef.current)drawMinimapRef.current();
+            });
+        }
         node.selectAll('text').attr('opacity',(keepReadable||graphConfig.showLabels)?1:0);
         applyCanvasColorBlocks((codeZoomTransformRef.current&&codeZoomTransformRef.current.k)||1);
         if(keepReadable){
@@ -11385,12 +11477,11 @@ function App(){
             }else{
                 svg.call(zoom.transform,d3.zoomIdentity.translate(savedZoom.x,savedZoom.y).scale(savedZoom.k));
             }
-            sim.alpha(0);
         }
         updateHullsRef.current=updateHulls;
         if(drawMinimapRef.current)drawMinimapRef.current();
         }catch(e){console.error('Force graph error:',e);svg.selectAll('*').remove();svg.append('text').attr('x',20).attr('y',30).attr('fill','var(--t3)').text('Graph rendering error: '+e.message);}
-        return function(){if(simRef.current)simRef.current.stop();updateHullsRef.current=null;linkParticlesRef.current=null;};
+        return function(){if(simRef.current)simRef.current.stop();updateHullsRef.current=null;linkParticlesRef.current=null;forceLinkHitLayerRef.current=null;forceLinkParticleLayerRef.current=null;codeForceLinksRef.current=[];};
     },[graphRebuildKey]);
 
     useLayoutEffect(function(){
@@ -13187,6 +13278,10 @@ function App(){
             codeCardIgnoreClickRef.current=taken.ignoreNextClick;
             if(taken.ignore){e.stopPropagation();return;}
             if(!selected||selected.path!==file.path)selectFile(file.path);
+            else if(codeLinkParticlesHiddenRef.current){
+                codeLinkParticlesHiddenRef.current=false;
+                applyForceLinkVisuals();
+            }
         }},
             React.createElement('div',{className:'code-card-head',onPointerDown:function(e){beginCodeCardDrag(e,file);}},
                 React.createElement('div',null,
