@@ -311,7 +311,8 @@ test('Code root gate waits for a folder or file when the root is crowded', () =>
   }));
   const data = { files };
   assert.equal(context.countCodeViewRootFiles(data), 50);
-  assert.equal(context.clampCodeViewRootGate(undefined), 50);
+  assert.equal(context.CODE_VIEW_ROOT_GATE_DEFAULT, 25);
+  assert.equal(context.clampCodeViewRootGate(undefined), 25);
   assert.equal(context.clampCodeViewRootGate(40), 50);
   assert.equal(context.clampCodeViewRootGate(70), 75);
   assert.equal(context.codeViewRootGateActive(data, null, null, [], 50), true);
@@ -1031,6 +1032,8 @@ test('separateLeftoverCodeNodes leaves a sparse leftover field in place', () => 
 test('expensive Code layout waits until drag release', () => {
   assert.equal(context.codeViewDragRefresh('move'), false);
   assert.equal(context.codeViewDragRefresh('release'), true);
+  assert.equal(context.codeViewDragRefresh('release', true), true);
+  assert.equal(context.codeViewDragRefresh('release', false), false);
   assert.equal(context.codeViewDragRefresh('start'), false);
   const card = {
     getAttribute: () => 'src/a.js',
@@ -1040,6 +1043,71 @@ test('expensive Code layout waits until drag release', () => {
   assert.equal(context.applyCodeCardDragFrame(layer, 'src/a.js', { x: 400, y: 300 }, { width: 200, height: 100 }), true);
   assert.equal(card.style.left, '300px');
   assert.equal(card.style.top, '250px');
+});
+
+test('Code drag pauses particle work and coalesces paint frames', () => {
+  assert.equal(context.isCodeViewDragBusy(), false);
+  assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: false, vizType: 'code' }), true);
+  assert.equal(context.forceLinkVisualsShouldApply({}), true);
+  assert.equal(context.codeViewDragShouldDrawMinimap('move'), false);
+  assert.equal(context.codeViewDragShouldDrawMinimap('release'), true);
+
+  assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: false, vizType: 'code', dragging: true }), false);
+  assert.equal(context.forceLinkVisualsShouldApply({ dragging: true }), false);
+
+  const canvasRoot = { id: 'canvas' };
+  assert.equal(context.codeViewDragBusyRoot({
+    querySelector: (sel) => sel === '.code-canvas' ? canvasRoot : null,
+    documentElement: { id: 'html' }
+  }), canvasRoot);
+  assert.equal(context.codeViewDragBusyRoot({
+    querySelector: () => null,
+    documentElement: { id: 'html' }
+  }).id, 'html');
+
+  const classes = new Set();
+  const root = {
+    classList: {
+      contains: (name) => classes.has(name),
+      add: (name) => { classes.add(name); },
+      remove: (name) => { classes.delete(name); }
+    }
+  };
+  assert.equal(context.setCodeViewInteractionBusy(root, true), true);
+  assert.equal(context.isCodeViewDragBusy(), true);
+  assert.equal(classes.has('is-code-drag-busy'), true);
+  assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: false, vizType: 'code' }), false);
+  assert.equal(context.forceLinkVisualsShouldApply({}), false);
+  assert.equal(context.codeViewDragShouldDrawMinimap('release'), false);
+
+  assert.equal(context.setCodeViewInteractionBusy(root, false), false);
+  assert.equal(classes.has('is-code-drag-busy'), false);
+  assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: false, vizType: 'code' }), true);
+  assert.equal(context.forceLinkVisualsShouldApply({}), true);
+  assert.equal(context.codeViewDragShouldDrawMinimap('release'), true);
+
+  let paints = 0;
+  const queued = [];
+  const pending = { raf: 0 };
+  const raf = (fn) => {
+    queued.push(fn);
+    return queued.length;
+  };
+  context.scheduleCodeViewDragFrame(pending, raf, () => { paints += 1; });
+  context.scheduleCodeViewDragFrame(pending, raf, () => { paints += 1; });
+  assert.equal(queued.length, 1);
+  assert.ok(pending.raf);
+  queued[0]();
+  assert.equal(paints, 1);
+  assert.equal(pending.raf, 0);
+
+  const canceled = [];
+  context.scheduleCodeViewDragFrame(pending, raf, () => { paints += 1; });
+  context.flushCodeViewDragFrame(pending, (id) => { canceled.push(id); });
+  assert.deepEqual(canceled, [2]);
+  assert.equal(pending.raf, 0);
+  assert.equal(paints, 1);
+  context.setCodeViewDragBusy(false);
 });
 
 test('Code cards can be resized from the right or bottom edge', () => {
@@ -1943,8 +2011,10 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /codeRootGateActive/);
   assert.match(htmlSource, /shouldSeedOpenedCodeCards\(true,codeViewSessionRef\.current,openedCodePaths,codeRootGateActive\)/);
   assert.match(htmlSource, /if\(!data\|\|codeRootGateActive\)return\[\]/);
-  assert.match(htmlSource, /useState\(readUiPrefs\(\)\.codeViewRootGate\)/);
-  assert.match(htmlSource, /persistUiPrefs\(\{codeViewRootGate:value\}\)/);
+  assert.match(htmlSource, /useState\(CODE_VIEW_ROOT_GATE_DEFAULT\)/);
+  assert.match(htmlSource, /setCodeViewRootGate\(clampCodeViewRootGate\(value\)\)/);
+  assert.doesNotMatch(htmlSource, /persistUiPrefs\(\{codeViewRootGate:value\}\)/);
+  assert.doesNotMatch(htmlSource, /useState\(readUiPrefs\(\)\.codeViewRootGate\)/);
   assert.match(htmlSource, /normalizeCodeCardPrefs/);
   assert.match(htmlSource, /codeCardWrapColumns/);
   assert.match(htmlSource, /codeCardVisualLineEndIndex/);
@@ -1959,7 +2029,22 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /translateCodeViewSiblings/);
   assert.match(htmlSource, /settleCodeViewAfterDrag/);
   assert.match(htmlSource, /codeViewDragRefresh\('move'\)/);
-  assert.match(htmlSource, /codeViewDragRefresh\('release'\)/);
+  assert.match(htmlSource, /codeViewDragRefresh\('release'/);
+  assert.match(htmlSource, /codeViewDragRefresh\('release',leftoverDragMoved\)/);
+  assert.match(htmlSource, /leftoverIgnoreClick/);
+  assert.match(htmlSource, /function setCodeViewDragBusy\(/);
+  assert.match(htmlSource, /function setCodeViewInteractionBusy\(/);
+  assert.match(htmlSource, /function scheduleCodeViewDragFrame\(/);
+  assert.match(htmlSource, /function flushCodeViewDragFrame\(/);
+  assert.match(htmlSource, /function forceLinkVisualsShouldApply\(/);
+  assert.match(htmlSource, /function codeViewDragShouldDrawMinimap\(/);
+  assert.match(htmlSource, /\.code-canvas\.is-code-drag-busy path\.force-link-particle\.is-on/);
+  assert.match(htmlSource, /setCodeViewInteractionBusy\(codeViewDragBusyRoot\(\),true\)/);
+  assert.match(htmlSource, /setCodeViewInteractionBusy\(codeViewDragBusyRoot\(\),false\)/);
+  assert.match(htmlSource, /if\(!forceLinkVisualsShouldApply\(\)\)return;/);
+  assert.match(htmlSource, /if\(isCodeViewDragBusy\(\)\)return;/);
+  assert.match(htmlSource, /scheduleCodeViewDragFrame\(codeNodeDragFrame,requestAnimationFrame,paintCodeNodeDragFrame\)/);
+  assert.match(htmlSource, /scheduleCodeViewDragFrame\(dragFrame,requestAnimationFrame,/);
   assert.match(htmlSource, /raiseCodeCardStack/);
   assert.match(htmlSource, /applyCodeCardStackOrder/);
   assert.match(htmlSource, /applyCodeCardDragFrame/);
@@ -2002,16 +2087,25 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /path\.force-link-particle\.is-on/);
   assert.match(htmlSource, /@media\(prefers-reduced-motion:reduce\)\{[\s\S]*?display:none/);
   assert.match(htmlSource, /function forceLinkParticlesNeedTickUpdate\(/);
+  assert.match(htmlSource, /function forceLinkParticlesWanted\(/);
+  assert.match(htmlSource, /function forceLinkParticleRecords\(/);
+  assert.match(htmlSource, /function isForceLinkHitTarget\(/);
+  assert.match(htmlSource, /function isCodeLeftoverDragTarget\(/);
+  assert.match(htmlSource, /if\(isCodeLeftoverDragTarget\(event\.target\)\)return false;/);
+  assert.match(htmlSource, /function applyCodeCardZoomChrome\(/);
+  assert.match(htmlSource, /function zoomTransformScaleChanged\(/);
   assert.match(htmlSource, /function redrawActiveForceLinkParticles\(/);
-  assert.match(htmlSource, /linkParticlesRef\.current\.filter\('\.is-on'\)/);
-  assert.match(htmlSource, /linkParticlesRef\.current=particles/);
   assert.match(htmlSource, /else applyForceLinkVisuals\(\)/);
   assert.match(htmlSource, /applyForceLinkVisualsRef/);
   assert.match(htmlSource, /subscribePrefersReducedMotion\(function/);
   assert.match(htmlSource, /var particleLayer=keepReadable\?container\.append\('g'\)\.attr\('class','force-link-particles'/);
+  assert.match(htmlSource, /var hitLayer=keepReadable\?container\.append\('g'\)\.attr\('class','force-link-hits'/);
   assert.match(htmlSource, /if\(!vizUsesForceLinkParticles\(graphConfig\.vizType\)\)return;/);
   assert.match(htmlSource, /if\(src===path\|\|tgt===path\)return'var\(--acc\)'/);
-  assert.doesNotMatch(htmlSource, /if\(linkParticlesRef\.current\)linkParticlesRef\.current\.attr\('d',graphLinkPath\)/);
+  assert.match(htmlSource, /if\(keepReadable\)\{sim\.stop\(\);sim\.alpha\(0\);\}/);
+  assert.match(htmlSource, /isForceLinkHitTarget\(e\.target\)/);
+  assert.match(htmlSource, /codeLinkParticlesHiddenRef\.current=false/);
+  assert.match(htmlSource, /applyCodeCardZoomChrome\(codeCardsLayerRef\.current,e\.transform\)/);
   const highlightFn = htmlSource.slice(
     htmlSource.indexOf('function updateGraphHighlight('),
     htmlSource.indexOf('function getNodeColor(', htmlSource.indexOf('function updateGraphHighlight('))
@@ -2268,6 +2362,7 @@ test('selected Code-view links animate; inactive stay quiet; reduced-motion is s
   const quiet = context.forceLinkVisual(other, 'src/app.js', opts);
   const baseline = context.forceLinkVisual(outLink, null, opts);
   const reduced = context.forceLinkVisual(outLink, 'src/app.js', Object.assign({}, opts, { reducedMotion: true }));
+  const hiddenMotion = context.forceLinkVisual(outLink, 'src/app.js', Object.assign({}, opts, { particles: false }));
 
   assert.equal(context.forceLinkRole(outLink, 'src/app.js'), 'out');
   assert.equal(context.forceLinkRole(inLink, 'src/app.js'), 'in');
@@ -2296,9 +2391,50 @@ test('selected Code-view links animate; inactive stay quiet; reduced-motion is s
   assert.equal(reduced.stroke, 'var(--orange)');
   assert.equal(reduced.particle, false, 'reduced-motion keeps a static highlight');
   assert.equal(reduced.particleDash, '');
+  assert.equal(hiddenMotion.active, true);
+  assert.equal(hiddenMotion.stroke, 'var(--orange)');
+  assert.equal(hiddenMotion.particle, false, 'toggled-off dashes keep the selected-edge color');
+  context.setCodeViewDragBusy(false);
   assert.equal(context.forceLinkParticlesNeedTickUpdate(null, { reducedMotion: false }), false);
   assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: true }), false);
   assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: false }), true);
+  assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: false, hidden: true }), false);
+  assert.equal(context.forceLinkParticlesWanted({ hidden: true }), false);
+  assert.equal(context.forceLinkParticlesWanted({ reducedMotion: false, vizType: 'code' }), true);
+  assert.equal(context.nextForceLinkParticlesHidden(false), true);
+  assert.equal(context.nextForceLinkParticlesHidden(true), false);
+  assert.equal(context.nextForceLinkParticlesHidden(true, 'show'), false);
+  assert.equal(context.nextForceLinkParticlesHidden(false, 'hide'), true);
+  const particleLinks = context.forceLinkParticleRecords([outLink, inLink, other], 'src/app.js');
+  assert.equal(particleLinks.length, 2);
+  assert.equal(context.forceLinkParticleRecords([outLink, other], null).length, 0);
+  const leftoverG = {
+    tagName: 'G',
+    classList: { contains: () => false },
+    getAttribute: () => null,
+    querySelector: (sel) => sel === ':scope > circle.nc' ? { tagName: 'CIRCLE' } : null,
+    parentNode: null
+  };
+  assert.equal(context.isCodeLeftoverDragTarget({ tagName: 'CIRCLE', parentNode: leftoverG }), true);
+  leftoverG.classList = { contains: (name) => name === 'has-code-card' };
+  assert.equal(context.isCodeLeftoverDragTarget({ tagName: 'CIRCLE', parentNode: leftoverG }), false);
+  leftoverG.classList = { contains: () => false };
+  leftoverG.getAttribute = (name) => name === 'display' ? 'none' : null;
+  assert.equal(context.isCodeLeftoverDragTarget({ tagName: 'CIRCLE', parentNode: leftoverG }), false);
+  leftoverG.getAttribute = () => null;
+  leftoverG.querySelector = () => null;
+  leftoverG.parentNode = { tagName: 'G', querySelector: () => null, parentNode: null };
+  leftoverG.parentElement = leftoverG.parentNode;
+  assert.equal(context.isCodeLeftoverDragTarget({ tagName: 'CIRCLE', parentNode: leftoverG, parentElement: leftoverG }), false);
+  leftoverG.parentNode = leftoverG.parentElement = null;
+  leftoverG.querySelector = (sel) => sel === ':scope > circle.nc' ? { tagName: 'CIRCLE' } : null;
+  leftoverG.classList = { contains: () => false };
+  leftoverG.getAttribute = () => null;
+  leftoverG.parentNode = leftoverG.parentElement = null;
+  assert.equal(context.isCodeLeftoverDragTarget(leftoverG), true);
+  assert.equal(context.isForceLinkHitTarget({ getAttribute(name) { return name === 'class' ? 'force-link-hit' : null; } }), true);
+  assert.equal(context.isForceLinkHitTarget({ getAttribute() { return 'force-link-quiet'; }, closest() { return null; } }), false);
+  assert.equal(context.isForceLinkHitTarget(null), false);
 
   const thin = context.forceLinkVisual(outLink, 'src/app.js', { thickness: 1, reducedMotion: false });
   const thick = context.forceLinkVisual(outLink, 'src/app.js', { thickness: 6, reducedMotion: false });
@@ -2382,32 +2518,63 @@ test('reduced-motion changes reapply Code particles; Graph keeps static accent',
 test('UI prefs persist line thickness in localStorage', () => {
   const storage = memoryStorage();
   assert.equal(context.readUiPrefs(storage).lineThickness, 1);
-  assert.equal(context.readUiPrefs(storage).codeViewRootGate, 50);
+  assert.equal(context.readUiPrefs(storage).codeViewRootGate, 25);
   assert.equal(context.readUiPrefs(null).lineThickness, 1);
   const written = context.writeUiPrefs(storage, { lineThickness: 5 });
   assert.equal(written.lineThickness, 5);
-  assert.equal(written.codeViewRootGate, 50);
+  assert.equal(written.codeViewRootGate, 25);
   assert.equal(context.readUiPrefs(storage).lineThickness, 5);
   assert.equal(context.writeUiPrefs(storage, { lineThickness: 99 }).lineThickness, 6);
   const gated = context.writeUiPrefs(storage, { codeViewRootGate: 75 });
-  assert.equal(gated.codeViewRootGate, 75);
-  assert.equal(context.writeUiPrefs(storage, { codeViewRootGate: 40 }).codeViewRootGate, 50);
+  assert.equal(gated.codeViewRootGate, 25);
+  assert.equal(context.writeUiPrefs(storage, { codeViewRootGate: 40 }).codeViewRootGate, 25);
   storage.setItem(context.UI_PREFS_STORAGE_KEY, '{not-json');
   assert.equal(context.readUiPrefs(storage).lineThickness, 1);
-  assert.equal(context.readUiPrefs(storage).codeViewRootGate, 50);
+  assert.equal(context.readUiPrefs(storage).codeViewRootGate, 25);
   const other = memoryStorage({ [context.UI_PREFS_STORAGE_KEY]: JSON.stringify({ lineThickness: 2, extra: true }) });
   const merged = context.writeUiPrefs(other, { lineThickness: 3 });
   assert.equal(merged.lineThickness, 3);
-  assert.equal(merged.codeViewRootGate, 50);
+  assert.equal(merged.codeViewRootGate, 25);
   context.window = { localStorage: storage };
   try {
     assert.equal(context.persistUiPrefs({ lineThickness: 4 }).lineThickness, 4);
     assert.equal(context.readUiPrefs().lineThickness, 4);
-    assert.equal(context.persistUiPrefs({ codeViewRootGate: 25 }).codeViewRootGate, 25);
+    assert.equal(context.persistUiPrefs({ codeViewRootGate: 100 }).codeViewRootGate, 25);
     assert.equal(context.readUiPrefs().codeViewRootGate, 25);
   } finally {
     delete context.window;
   }
+});
+
+test('Load Files stays 25 across reloads even if a higher value was stored', () => {
+  const storage = memoryStorage({
+    [context.UI_PREFS_STORAGE_KEY]: JSON.stringify({ lineThickness: 3, codeViewRootGate: 100 })
+  });
+  const prefs = context.readUiPrefs(storage);
+  assert.equal(prefs.codeViewRootGate, 25);
+  assert.equal(prefs.lineThickness, 3);
+  const rewritten = context.writeUiPrefs(storage, { lineThickness: 2 });
+  assert.equal(rewritten.codeViewRootGate, 25);
+  assert.equal(JSON.parse(storage.getItem(context.UI_PREFS_STORAGE_KEY)).codeViewRootGate, 25);
+});
+
+test('pan-only zoom chrome does not rewrite card box styles', () => {
+  assert.equal(context.zoomTransformScaleChanged({ k: 1, x: 0, y: 0 }, { k: 1, x: 40, y: 8 }), false);
+  assert.equal(context.zoomTransformScaleChanged({ k: 1, x: 0, y: 0 }, { k: 0.5, x: 40, y: 8 }), true);
+  const title = { style: { transform: 'scale(1)' } };
+  const card = {
+    getAttribute(name) { return name === 'data-code-card' ? 'a.js' : null; },
+    style: { left: '210px', top: '190px', width: '380px', height: '280px', visibility: 'visible' },
+    classList: { add() {}, remove() {}, contains() { return false; } },
+    querySelector() { return title; }
+  };
+  const layer = { style: {}, querySelectorAll() { return [card]; } };
+  const chrome = context.applyCodeCardZoomChrome(layer, { k: 1, x: 12, y: 8 });
+  assert.equal(chrome.codeFar, false);
+  assert.equal(layer.style.transform, 'translate(12px,8px) scale(1)');
+  assert.equal(card.style.left, '210px');
+  assert.equal(card.style.top, '190px');
+  assert.equal(title.style.transform, 'scale(1)');
 });
 
 function throwingLocalStorageWindow() {
