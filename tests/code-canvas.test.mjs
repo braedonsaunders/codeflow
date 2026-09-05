@@ -1032,6 +1032,8 @@ test('separateLeftoverCodeNodes leaves a sparse leftover field in place', () => 
 test('expensive Code layout waits until drag release', () => {
   assert.equal(context.codeViewDragRefresh('move'), false);
   assert.equal(context.codeViewDragRefresh('release'), true);
+  assert.equal(context.codeViewDragRefresh('release', true), true);
+  assert.equal(context.codeViewDragRefresh('release', false), false);
   assert.equal(context.codeViewDragRefresh('start'), false);
   const card = {
     getAttribute: () => 'src/a.js',
@@ -1052,6 +1054,16 @@ test('Code drag pauses particle work and coalesces paint frames', () => {
 
   assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: false, vizType: 'code', dragging: true }), false);
   assert.equal(context.forceLinkVisualsShouldApply({ dragging: true }), false);
+
+  const canvasRoot = { id: 'canvas' };
+  assert.equal(context.codeViewDragBusyRoot({
+    querySelector: (sel) => sel === '.code-canvas' ? canvasRoot : null,
+    documentElement: { id: 'html' }
+  }), canvasRoot);
+  assert.equal(context.codeViewDragBusyRoot({
+    querySelector: () => null,
+    documentElement: { id: 'html' }
+  }).id, 'html');
 
   const classes = new Set();
   const root = {
@@ -2017,14 +2029,16 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /translateCodeViewSiblings/);
   assert.match(htmlSource, /settleCodeViewAfterDrag/);
   assert.match(htmlSource, /codeViewDragRefresh\('move'\)/);
-  assert.match(htmlSource, /codeViewDragRefresh\('release'\)/);
+  assert.match(htmlSource, /codeViewDragRefresh\('release'/);
+  assert.match(htmlSource, /codeViewDragRefresh\('release',leftoverDragMoved\)/);
+  assert.match(htmlSource, /leftoverIgnoreClick/);
   assert.match(htmlSource, /function setCodeViewDragBusy\(/);
   assert.match(htmlSource, /function setCodeViewInteractionBusy\(/);
   assert.match(htmlSource, /function scheduleCodeViewDragFrame\(/);
   assert.match(htmlSource, /function flushCodeViewDragFrame\(/);
   assert.match(htmlSource, /function forceLinkVisualsShouldApply\(/);
   assert.match(htmlSource, /function codeViewDragShouldDrawMinimap\(/);
-  assert.match(htmlSource, /html\.is-code-drag-busy path\.force-link-particle\.is-on/);
+  assert.match(htmlSource, /\.code-canvas\.is-code-drag-busy path\.force-link-particle\.is-on/);
   assert.match(htmlSource, /setCodeViewInteractionBusy\(codeViewDragBusyRoot\(\),true\)/);
   assert.match(htmlSource, /setCodeViewInteractionBusy\(codeViewDragBusyRoot\(\),false\)/);
   assert.match(htmlSource, /if\(!forceLinkVisualsShouldApply\(\)\)return;/);
@@ -2076,6 +2090,8 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /function forceLinkParticlesWanted\(/);
   assert.match(htmlSource, /function forceLinkParticleRecords\(/);
   assert.match(htmlSource, /function isForceLinkHitTarget\(/);
+  assert.match(htmlSource, /function isCodeLeftoverDragTarget\(/);
+  assert.match(htmlSource, /if\(isCodeLeftoverDragTarget\(event\.target\)\)return false;/);
   assert.match(htmlSource, /function applyCodeCardZoomChrome\(/);
   assert.match(htmlSource, /function zoomTransformScaleChanged\(/);
   assert.match(htmlSource, /function redrawActiveForceLinkParticles\(/);
@@ -2392,6 +2408,30 @@ test('selected Code-view links animate; inactive stay quiet; reduced-motion is s
   const particleLinks = context.forceLinkParticleRecords([outLink, inLink, other], 'src/app.js');
   assert.equal(particleLinks.length, 2);
   assert.equal(context.forceLinkParticleRecords([outLink, other], null).length, 0);
+  const leftoverG = {
+    tagName: 'G',
+    classList: { contains: () => false },
+    getAttribute: () => null,
+    querySelector: (sel) => sel === ':scope > circle.nc' ? { tagName: 'CIRCLE' } : null,
+    parentNode: null
+  };
+  assert.equal(context.isCodeLeftoverDragTarget({ tagName: 'CIRCLE', parentNode: leftoverG }), true);
+  leftoverG.classList = { contains: (name) => name === 'has-code-card' };
+  assert.equal(context.isCodeLeftoverDragTarget({ tagName: 'CIRCLE', parentNode: leftoverG }), false);
+  leftoverG.classList = { contains: () => false };
+  leftoverG.getAttribute = (name) => name === 'display' ? 'none' : null;
+  assert.equal(context.isCodeLeftoverDragTarget({ tagName: 'CIRCLE', parentNode: leftoverG }), false);
+  leftoverG.getAttribute = () => null;
+  leftoverG.querySelector = () => null;
+  leftoverG.parentNode = { tagName: 'G', querySelector: () => null, parentNode: null };
+  leftoverG.parentElement = leftoverG.parentNode;
+  assert.equal(context.isCodeLeftoverDragTarget({ tagName: 'CIRCLE', parentNode: leftoverG, parentElement: leftoverG }), false);
+  leftoverG.parentNode = leftoverG.parentElement = null;
+  leftoverG.querySelector = (sel) => sel === ':scope > circle.nc' ? { tagName: 'CIRCLE' } : null;
+  leftoverG.classList = { contains: () => false };
+  leftoverG.getAttribute = () => null;
+  leftoverG.parentNode = leftoverG.parentElement = null;
+  assert.equal(context.isCodeLeftoverDragTarget(leftoverG), true);
   assert.equal(context.isForceLinkHitTarget({ getAttribute(name) { return name === 'class' ? 'force-link-hit' : null; } }), true);
   assert.equal(context.isForceLinkHitTarget({ getAttribute() { return 'force-link-quiet'; }, closest() { return null; } }), false);
   assert.equal(context.isForceLinkHitTarget(null), false);

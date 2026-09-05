@@ -491,7 +491,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 @keyframes force-link-particle-flow{to{stroke-dashoffset:-28}}
 path.force-link-particle{fill:none;pointer-events:none;stroke-linecap:round}
 path.force-link-particle.is-on{stroke-dasharray:8 20;animation:force-link-particle-flow .7s linear infinite}
-html.is-code-drag-busy path.force-link-particle.is-on{animation:none;visibility:hidden}
+.code-canvas.is-code-drag-busy path.force-link-particle.is-on{animation-play-state:paused}
 path.force-link-hit{fill:none;stroke:rgba(0,0,0,0);stroke-width:18;pointer-events:stroke;cursor:pointer}
 path.force-link-active{cursor:pointer}
 @media(prefers-reduced-motion:reduce){
@@ -5902,6 +5902,22 @@ function nextForceLinkParticlesHidden(hidden,action){
     return !hidden;
 }
 
+function isCodeLeftoverDragTarget(target){
+    var el=target;
+    while(el&&el.tagName){
+        if(String(el.tagName).toLowerCase()==='g'){
+            var circle=el.querySelector&&el.querySelector(':scope > circle.nc');
+            if(circle){
+                if(el.classList&&el.classList.contains('has-code-card'))return false;
+                if(el.getAttribute&&el.getAttribute('display')==='none')return false;
+                return true;
+            }
+        }
+        el=el.parentNode||el.parentElement;
+    }
+    return false;
+}
+
 function isForceLinkHitTarget(target){
     if(!target)return false;
     var cls=(target.getAttribute&&target.getAttribute('class'))||(target.className&&String(target.className))||'';
@@ -5935,7 +5951,12 @@ function applyCodeViewDragBusyClass(root,on){
 
 function codeViewDragBusyRoot(doc){
     var owner=doc||(typeof document!=='undefined'?document:null);
-    return owner&&owner.documentElement||null;
+    if(!owner)return null;
+    if(owner.querySelector){
+        var canvas=owner.querySelector('.code-canvas');
+        if(canvas)return canvas;
+    }
+    return owner.documentElement||null;
 }
 
 function setCodeViewInteractionBusy(root,on){
@@ -7265,8 +7286,10 @@ function settleCodeViewAfterDrag(nodes,cardPaths,sizesByPath,droppedId,options){
     return nodes;
 }
 
-function codeViewDragRefresh(phase){
-    return phase==='release';
+function codeViewDragRefresh(phase,moved){
+    if(phase!=='release')return false;
+    if(moved===false)return false;
+    return true;
 }
 
 function raiseCodeCardStack(order,path){
@@ -11291,6 +11314,8 @@ function App(){
         var zoom=d3.zoom().scaleExtent([keepReadable?0.08:0.2,5]).filter(function(event){
             if(keepReadable){
                 if(event.type==='wheel')return false;
+                if(isCodeViewDragBusy())return false;
+                if(isCodeLeftoverDragTarget(event.target))return false;
                 return !event.button;
             }
             return !event.ctrlKey&&!event.button;
@@ -11393,6 +11418,8 @@ function App(){
         nodesRef.current=node;
         var codeNodeDragPrev=Object.create(null);
         var codeNodeDragFrame={raf:0,moved:null};
+        var leftoverDragMoved=false;
+        var leftoverIgnoreClick=false;
         function paintCodeNodeDragFrame(){
             var moved=codeNodeDragFrame.moved;
             codeNodeDragFrame.moved=null;
@@ -11401,8 +11428,8 @@ function App(){
         node.call(d3.drag().on('start',function(e,d){
             d.fx=d.x;d.fy=d.y;
             if(keepReadable){
+                leftoverDragMoved=false;
                 codeNodeDragPrev[d.id]={x:d.x,y:d.y};
-                setCodeViewInteractionBusy(codeViewDragBusyRoot(),true);
                 return;
             }
             if(!e.active)sim.alphaTarget(0.1).restart();
@@ -11411,6 +11438,10 @@ function App(){
             if(keepReadable){
                 var prev=codeNodeDragPrev[d.id]||{x:d.x,y:d.y};
                 var dx=d.x-prev.x,dy=d.y-prev.y;
+                if(dx||dy){
+                    leftoverDragMoved=true;
+                    if(!isCodeViewDragBusy())setCodeViewInteractionBusy(codeViewDragBusyRoot(),true);
+                }
                 codeNodeDragPrev[d.id]={x:d.x,y:d.y};
                 var siblings=translateCodeViewSiblings(sim.nodes(),d,dx,dy,codeCardPathsRef.current);
                 if(codeViewDragRefresh('move')){
@@ -11434,18 +11465,25 @@ function App(){
             flushCodeViewDragFrame(codeNodeDragFrame,cancelAnimationFrame);
             codeNodeDragFrame.moved=null;
             setCodeViewInteractionBusy(codeViewDragBusyRoot(),false);
-            if(codeCardPathsRef.current.has(d.id))codeCardUserPinnedRef.current.add(d.id);
-            if(codeViewDragRefresh('release')){
+            var end=noteCodeCardPointerEnd(leftoverDragMoved);
+            leftoverIgnoreClick=end.ignoreNextClick;
+            if(leftoverIgnoreClick)setTimeout(function(){leftoverIgnoreClick=false;},400);
+            if(codeCardPathsRef.current.has(d.id)&&leftoverDragMoved)codeCardUserPinnedRef.current.add(d.id);
+            if(codeViewDragRefresh('release',leftoverDragMoved)){
                 settleCodeViewAfterDrag(sim.nodes(),codeCardPathsRef.current,codeCardSizesRef.current,d.id,{
                     boxesByPath:readCodeCardWorldBoxes(codeCardsLayerRef.current)
                 });
                 redrawGraphLinksAndNodes();
                 if(updateHullsRef.current)updateHullsRef.current();
+                if(codeViewDragShouldDrawMinimap('release')&&drawMinimapRef.current)drawMinimapRef.current();
             }
-            if(codeViewDragShouldDrawMinimap('release')&&drawMinimapRef.current)drawMinimapRef.current();
         }));
         node.on('click',function(e,d){
             e.stopPropagation();
+            if(keepReadable&&leftoverIgnoreClick){
+                leftoverIgnoreClick=false;
+                return;
+            }
             if(keepReadable&&openCodeFileRef.current)openCodeFileRef.current(d.id);
             else if(selectFileRef.current)selectFileRef.current(d.id);
         });
@@ -13153,7 +13191,6 @@ function App(){
         node.fx=node.x;node.fy=node.y;
         codeCardStackRef.current=raiseCodeCardStack(codeCardStackRef.current,file.path);
         applyCodeCardStackOrder(codeCardsLayerRef.current,codeCardStackRef.current);
-        setCodeViewInteractionBusy(codeViewDragBusyRoot(),true);
         function writePlacement(){
             var size=codeCardSizesRef.current[file.path]||codeCardSize(file,currentCodeCardPrefs());
             var prev=codeCardPlacementRef.current[file.path]||{};
@@ -13172,6 +13209,7 @@ function App(){
             if(delta.moved){
                 moved=true;
                 codeCardUserPinnedRef.current.add(file.path);
+                if(!isCodeViewDragBusy())setCodeViewInteractionBusy(codeViewDragBusyRoot(),true);
             }
             var nextX=originX+delta.x,nextY=originY+delta.y;
             var dx=nextX-lastX,dy=nextY-lastY;
@@ -13238,7 +13276,6 @@ function App(){
         var startX=e.clientX,startY=e.clientY,startW=size.width,startH=size.height;
         var left=node.x-size.width/2,top=node.y-size.height/2,moved=false;
         var dragFrame={raf:0};
-        setCodeViewInteractionBusy(codeViewDragBusyRoot(),true);
         function writeSize(nextSize){
             codeCardUserSizeRef.current[file.path]={width:nextSize.width,height:nextSize.height};
             codeCardSizesRef.current[file.path]=applyCodeCardUserSize(codeCardSizeForDiff(file,currentCodeCardPrefs(),codeCardDiffRows(file,cliLiveByPath[file.path])),nextSize);
@@ -13261,6 +13298,7 @@ function App(){
             if(Math.abs(delta.dx)+Math.abs(delta.dy)>2){
                 moved=true;
                 codeCardUserPinnedRef.current.add(file.path);
+                if(!isCodeViewDragBusy())setCodeViewInteractionBusy(codeViewDragBusyRoot(),true);
             }
             writeSize(clampCodeCardResize(delta.width,delta.height,currentCodeCardPrefs()));
             if(codeViewDragRefresh('move')){
