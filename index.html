@@ -491,7 +491,9 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 @keyframes force-link-particle-flow{to{stroke-dashoffset:-28}}
 path.force-link-particle{fill:none;pointer-events:none;stroke-linecap:round}
 path.force-link-particle.is-on{stroke-dasharray:8 20;animation:force-link-particle-flow .7s linear infinite}
-.code-canvas.is-code-drag-busy path.force-link-particle.is-on{animation-play-state:paused}
+.force-link-particles{contain:strict;pointer-events:none}
+.code-canvas.is-code-drag-busy .force-link-particles{display:none}
+.code-canvas.is-code-drag-busy path.force-link-particle.is-on{animation:none}
 path.force-link-hit{fill:none;stroke:rgba(0,0,0,0);stroke-width:18;pointer-events:stroke;cursor:pointer}
 path.force-link-active{cursor:pointer}
 @media(prefers-reduced-motion:reduce){
@@ -5675,7 +5677,10 @@ var LINE_THICKNESS_MAX=6;
 var LINE_THICKNESS_DEFAULT=1;
 var CODE_VIEW_ROOT_GATE_DEFAULT=25;
 var CODE_VIEW_ROOT_GATE_STEPS=[25,50,75,100];
+var FORCE_LINK_PARTICLE_CAP=12;
+var FORCE_LINK_PARTICLE_PATH_LENGTH=28;
 var codeViewDragBusy=false;
+var forceLinkPathCache=Object.create(null);
 
 function clampLineThickness(value){
     var n=Number(value);
@@ -5886,14 +5891,78 @@ function forceLinkParticlesWanted(options){
     return true;
 }
 
-function forceLinkParticleRecords(links,selectedPath){
+function forceLinkParticleRecords(links,selectedPath,cap){
     if(!selectedPath||!links||!links.length)return[];
     var out=[];
     for(var i=0;i<links.length;i++){
         var role=forceLinkRole(links[i],selectedPath);
         if(role==='out'||role==='in')out.push(links[i]);
     }
+    var limit=cap==null?NaN:Number(cap);
+    if(isFinite(limit)&&limit>=0&&out.length>limit)return out.slice(0,limit);
     return out;
+}
+
+function forceLinkIdentity(link){
+    return forceLinkEndId(link&&link.source)+'>'+forceLinkEndId(link&&link.target)+'>'+String((link&&link.fn)||'');
+}
+
+function forceLinkLayoutStamp(link,sizesByPath,cardPaths){
+    function stamp(end){
+        if(end==null)return '';
+        if(typeof end!=='object')return String(end);
+        var xy=liveGraphNodeXY(end);
+        var id=end.id;
+        var isCard=!!(cardPaths&&id&&cardPaths.has(id));
+        var size=sizesByPath&&id?sizesByPath[id]:null;
+        var w=size&&isFinite(size.width)?Math.round(size.width):0;
+        var h=size&&isFinite(size.height)?Math.round(size.height):0;
+        var x=xy?Math.round(xy.x):'';
+        var y=xy?Math.round(xy.y):'';
+        return String(id||'')+':'+x+','+y+':'+w+'x'+h+':'+(isCard?1:0);
+    }
+    return stamp(link&&link.source)+'|'+stamp(link&&link.target);
+}
+
+function cachedForceLinkPath(link,compute,cache,sizesByPath,cardPaths){
+    cache=cache||forceLinkPathCache;
+    var id=forceLinkIdentity(link);
+    var stamp=forceLinkLayoutStamp(link,sizesByPath,cardPaths);
+    var prev=cache[id];
+    if(prev&&prev.stamp===stamp)return prev.path;
+    var path=typeof compute==='function'?compute(link):'';
+    cache[id]={stamp:stamp,path:path};
+    return path;
+}
+
+function clearForceLinkPathCache(cache){
+    var target=cache||forceLinkPathCache;
+    Object.keys(target).forEach(function(key){delete target[key];});
+    return target;
+}
+
+function applyCachedLinkPath(node,path){
+    if(!node||path==null)return false;
+    if(typeof node.getAttribute==='function'&&node.getAttribute('d')===path)return false;
+    if(typeof node.setAttribute==='function')node.setAttribute('d',path);
+    return true;
+}
+
+function applyForceLinkDomVisual(node,visual){
+    if(!node||!visual)return false;
+    var changed=false;
+    function write(name,value){
+        var next=value==null?'':String(value);
+        if(typeof node.getAttribute==='function'&&node.getAttribute(name)===next)return;
+        if(typeof node.setAttribute==='function')node.setAttribute(name,next);
+        changed=true;
+    }
+    write('stroke',visual.stroke);
+    write('stroke-opacity',visual.opacity);
+    write('stroke-width',visual.width);
+    setDomClass(node,'force-link-active',!!visual.active);
+    setDomClass(node,'force-link-quiet',visual.role==='quiet');
+    return changed;
 }
 
 function nextForceLinkParticlesHidden(hidden,action){
@@ -5931,6 +6000,7 @@ function forceLinkParticlesNeedTickUpdate(selectedPath,options){
     if(!selectedPath)return false;
     options=options||{};
     if(options.dragging||isCodeViewDragBusy())return false;
+    if(options.layoutChanged===false)return false;
     if(!forceLinkParticlesWanted(options))return false;
     return true;
 }
@@ -5997,6 +6067,11 @@ function flushCodeViewDragFrame(state,cancel){
     if(stop)stop(state.raf);
     state.raf=0;
     return state;
+}
+
+function scheduleForceLinkVisuals(state,raf,apply){
+    if(isCodeViewDragBusy())return state||{raf:0};
+    return scheduleCodeViewDragFrame(state,raf,apply);
 }
 
 function zoomTransformScaleChanged(prev,next){
@@ -9188,6 +9263,7 @@ function App(){
     var codeForceLinksRef=useRef([]);
     var codeLinkParticlesHiddenRef=useRef(false);
     var applyForceLinkVisualsRef=useRef(null);
+    var forceLinkVisualsFrameRef=useRef({raf:0});
     var selectFileRef=useRef(null);
     var codeCardsLayerRef=useRef(null);
     var codeCardPathsRef=useRef(new Set());
@@ -10921,7 +10997,7 @@ function App(){
         nodesRef.current.filter(function(d){return d&&seen[d.id];}).attr('transform',function(d){return'translate('+d.x+','+d.y+')';});
     }
 
-    function graphLinkPath(d){
+    function computeGraphLinkPath(d){
         if(graphConfig.vizType==='code'){
             var cardPath=codeCardLinkPath(d,codeCardSizesRef.current,codeFilesByPathRef.current,codeCardPathsRef.current);
             if(cardPath)return cardPath;
@@ -10932,14 +11008,25 @@ function App(){
         }
         return 'M'+d.source.x+','+d.source.y+'L'+d.target.x+','+d.target.y;
     }
+    function graphLinkPath(d){
+        return cachedForceLinkPath(d,computeGraphLinkPath,forceLinkPathCache,codeCardSizesRef.current,codeCardPathsRef.current);
+    }
+    function writeForceLinkPaths(selection){
+        if(!selection)return 0;
+        var n=0;
+        selection.each(function(d){
+            if(applyCachedLinkPath(this,graphLinkPath(d)))n++;
+        });
+        return n;
+    }
     function redrawActiveForceLinkParticles(){
         if(!forceLinkParticlesNeedTickUpdate(selectedPathRef.current,{hidden:codeLinkParticlesHiddenRef.current,reducedMotion:prefersReducedMotion(),vizType:graphConfig.vizType}))return;
-        if(linkParticlesRef.current)linkParticlesRef.current.attr('d',graphLinkPath);
-        if(forceLinkHitLayerRef.current)forceLinkHitLayerRef.current.selectAll('path').attr('d',graphLinkPath);
+        writeForceLinkPaths(linkParticlesRef.current);
+        if(forceLinkHitLayerRef.current)writeForceLinkPaths(forceLinkHitLayerRef.current.selectAll('path'));
     }
     function redrawGraphLinksAndNodes(){
         if(nodesRef.current)nodesRef.current.attr('transform',function(d){return'translate('+d.x+','+d.y+')';});
-        if(linksRef.current)linksRef.current.attr('d',graphLinkPath);
+        writeForceLinkPaths(linksRef.current);
         redrawActiveForceLinkParticles();
     }
     function applyForceLinkVisuals(){
@@ -10950,40 +11037,45 @@ function App(){
         var wanted=forceLinkParticlesWanted({hidden:codeLinkParticlesHiddenRef.current,reducedMotion:reduced,vizType:graphConfig.vizType});
         var opts={theme:theme,thickness:lineThicknessRef.current,reducedMotion:reduced,vizType:graphConfig.vizType,particles:wanted};
         var active=forceLinkParticleRecords(codeForceLinksRef.current,selectedPath);
+        var beads=wanted?active.slice(0,FORCE_LINK_PARTICLE_CAP):[];
         if(linksRef.current){
             linksRef.current.each(function(d){
-                var v=forceLinkVisual(d,selectedPath,opts);
-                d3.select(this)
-                    .attr('stroke',v.stroke)
-                    .attr('stroke-opacity',v.opacity)
-                    .attr('stroke-width',v.width)
-                    .classed('force-link-active',v.active)
-                    .classed('force-link-quiet',v.role==='quiet');
+                applyForceLinkDomVisual(this,forceLinkVisual(d,selectedPath,opts));
             });
         }
         if(forceLinkHitLayerRef.current){
             forceLinkHitLayerRef.current.selectAll('path').data(active).join('path')
                 .attr('class','force-link-hit')
                 .attr('fill','none')
-                .attr('d',graphLinkPath);
+                .each(function(d){applyCachedLinkPath(this,graphLinkPath(d));});
         }
         if(forceLinkParticleLayerRef.current){
-            linkParticlesRef.current=forceLinkParticleLayerRef.current.selectAll('path').data(wanted?active:[]).join('path')
+            linkParticlesRef.current=forceLinkParticleLayerRef.current.selectAll('path').data(beads).join('path')
                 .attr('fill','none')
                 .attr('class','force-link-particle is-on')
                 .attr('stroke-linecap','round')
-                .attr('d',graphLinkPath)
+                .attr('pathLength',FORCE_LINK_PARTICLE_PATH_LENGTH)
                 .each(function(d){
+                    applyCachedLinkPath(this,graphLinkPath(d));
                     var v=forceLinkVisual(d,selectedPath,opts);
-                    d3.select(this)
-                        .attr('stroke',v.particleStroke||v.stroke)
-                        .attr('stroke-width',v.particleWidth)
-                        .attr('stroke-opacity',0.95)
-                        .attr('stroke-dasharray',v.particleDash||null);
+                    applyForceLinkDomVisual(this,{
+                        stroke:v.particleStroke||v.stroke,
+                        opacity:0.95,
+                        width:v.particleWidth,
+                        active:false,
+                        role:''
+                    });
+                    if(v.particleDash)this.setAttribute('stroke-dasharray',v.particleDash);
+                    else this.removeAttribute('stroke-dasharray');
                 });
         }
     }
     applyForceLinkVisualsRef.current=applyForceLinkVisuals;
+    function queueForceLinkVisuals(){
+        scheduleForceLinkVisuals(forceLinkVisualsFrameRef.current,requestAnimationFrame,function(){
+            applyForceLinkVisuals();
+        });
+    }
     function persistLineThickness(value){
         var next=persistUiPrefs({lineThickness:value}).lineThickness;
         setLineThickness(next);
@@ -10992,7 +11084,7 @@ function App(){
         setCodeViewRootGate(clampCodeViewRootGate(value));
     }
     function applyLinkThickness(){
-        if(vizUsesForceLinkParticles(graphConfig.vizType))applyForceLinkVisuals();
+        if(vizUsesForceLinkParticles(graphConfig.vizType))queueForceLinkVisuals();
         else if(linksRef.current)linksRef.current.attr('stroke-width',function(d){return graphLinkStrokeWidth(d.count,lineThicknessRef.current);});
         var thickness=lineThicknessRef.current;
         var g3=graph3dInstanceRef.current;
@@ -11342,6 +11434,7 @@ function App(){
         var particleLayer=keepReadable?container.append('g').attr('class','force-link-particles').attr('pointer-events','none'):null;
         var nodeLayer=container.append('g');
         var sim=d3.forceSimulation(nodes);
+        clearForceLinkPathCache();
         if(keepReadable){sim.stop();sim.alpha(0);}
         if(graphConfig.viewMode==='force'){
             sim.force('link',d3.forceLink(links).id(function(d){return d.id;}).distance(graphConfig.linkDist).strength(0.3))

@@ -1108,6 +1108,57 @@ test('Code drag pauses particle work and coalesces paint frames', () => {
   assert.equal(pending.raf, 0);
   assert.equal(paints, 1);
   context.setCodeViewDragBusy(false);
+
+  context.clearForceLinkPathCache();
+  const src = { id: 'src/app.js', x: 10, y: 20 };
+  const tgt = { id: 'src/math.js', x: 110, y: 20 };
+  const link = { source: src, target: tgt, fn: 'add' };
+  let computes = 0;
+  const compute = () => { computes += 1; return 'M10,20L110,20'; };
+  const first = context.cachedForceLinkPath(link, compute);
+  const second = context.cachedForceLinkPath(link, compute);
+  assert.equal(first, 'M10,20L110,20');
+  assert.equal(second, 'M10,20L110,20');
+  assert.equal(computes, 1);
+  src.x = 40;
+  const moved = context.cachedForceLinkPath(link, () => { computes += 1; return 'M40,20L110,20'; });
+  assert.equal(moved, 'M40,20L110,20');
+  assert.equal(computes, 2);
+  const pathNode = { d: '', getAttribute(name) { return name === 'd' ? this.d : null; }, setAttribute(name, value) { if (name === 'd') this.d = value; } };
+  assert.equal(context.applyCachedLinkPath(pathNode, 'M1,2L3,4'), true);
+  assert.equal(pathNode.d, 'M1,2L3,4');
+  assert.equal(context.applyCachedLinkPath(pathNode, 'M1,2L3,4'), false);
+  const styleNode = {
+    attrs: Object.create(null),
+    classList: {
+      names: new Set(),
+      contains(name) { return this.names.has(name); },
+      add(name) { this.names.add(name); },
+      remove(name) { this.names.delete(name); }
+    },
+    getAttribute(name) { return Object.prototype.hasOwnProperty.call(this.attrs, name) ? this.attrs[name] : null; },
+    setAttribute(name, value) { this.attrs[name] = String(value); }
+  };
+  assert.equal(context.applyForceLinkDomVisual(styleNode, { stroke: 'var(--orange)', opacity: 0.9, width: 2, active: true, role: 'out' }), true);
+  assert.equal(styleNode.attrs.stroke, 'var(--orange)');
+  assert.equal(context.applyForceLinkDomVisual(styleNode, { stroke: 'var(--orange)', opacity: 0.9, width: 2, active: true, role: 'out' }), false);
+  assert.equal(context.FORCE_LINK_PARTICLE_CAP, 12);
+  assert.equal(context.FORCE_LINK_PARTICLE_PATH_LENGTH, 28);
+  const many = [];
+  for (let i = 0; i < 20; i += 1) many.push({ source: 'src/app.js', target: `src/dep${i}.js` });
+  assert.equal(context.forceLinkParticleRecords(many, 'src/app.js').length, 20);
+  assert.equal(context.forceLinkParticleRecords(many, 'src/app.js', context.FORCE_LINK_PARTICLE_CAP).length, 12);
+  assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: false, vizType: 'code', layoutChanged: false }), false);
+  context.setCodeViewDragBusy(true);
+  const visualQueued = [];
+  const visualState = { raf: 0 };
+  context.scheduleForceLinkVisuals(visualState, (fn) => { visualQueued.push(fn); return 1; }, () => {});
+  assert.equal(visualQueued.length, 0);
+  context.setCodeViewDragBusy(false);
+  context.scheduleForceLinkVisuals(visualState, (fn) => { visualQueued.push(fn); return 1; }, () => {});
+  assert.equal(visualQueued.length, 1);
+  context.flushCodeViewDragFrame(visualState, () => {});
+  context.clearForceLinkPathCache();
 });
 
 test('Code cards can be resized from the right or bottom edge', () => {
@@ -2039,6 +2090,15 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /function forceLinkVisualsShouldApply\(/);
   assert.match(htmlSource, /function codeViewDragShouldDrawMinimap\(/);
   assert.match(htmlSource, /\.code-canvas\.is-code-drag-busy path\.force-link-particle\.is-on/);
+  assert.match(htmlSource, /\.code-canvas\.is-code-drag-busy \.force-link-particles\{display:none\}/);
+  assert.match(htmlSource, /function cachedForceLinkPath\(/);
+  assert.match(htmlSource, /function applyCachedLinkPath\(/);
+  assert.match(htmlSource, /function scheduleForceLinkVisuals\(/);
+  assert.match(htmlSource, /function queueForceLinkVisuals\(/);
+  assert.match(htmlSource, /FORCE_LINK_PARTICLE_CAP/);
+  assert.match(htmlSource, /FORCE_LINK_PARTICLE_PATH_LENGTH/);
+  assert.match(htmlSource, /clearForceLinkPathCache\(\)/);
+  assert.match(htmlSource, /attr\('pathLength',FORCE_LINK_PARTICLE_PATH_LENGTH\)/);
   assert.match(htmlSource, /setCodeViewInteractionBusy\(codeViewDragBusyRoot\(\),true\)/);
   assert.match(htmlSource, /setCodeViewInteractionBusy\(codeViewDragBusyRoot\(\),false\)/);
   assert.match(htmlSource, /if\(!forceLinkVisualsShouldApply\(\)\)return;/);
@@ -2509,7 +2569,7 @@ test('reduced-motion changes reapply Code particles; Graph keeps static accent',
   assert.match(htmlSource, /subscribePrefersReducedMotion\(function\(\)\{/);
   assert.match(htmlSource, /if\(applyForceLinkVisualsRef\.current\)applyForceLinkVisualsRef\.current\(\)/);
   assert.match(htmlSource, /vizType:graphConfig\.vizType/);
-  assert.match(htmlSource, /if\(vizUsesForceLinkParticles\(graphConfig\.vizType\)\)applyForceLinkVisuals\(\)/);
+  assert.match(htmlSource, /if\(vizUsesForceLinkParticles\(graphConfig\.vizType\)\)queueForceLinkVisuals\(\)/);
   assert.match(htmlSource, /var particleLayer=keepReadable\?container\.append\('g'\)\.attr\('class','force-link-particles'/);
   assert.match(htmlSource, /if\(src===path\|\|tgt===path\)return'var\(--acc\)'/);
   assert.match(htmlSource, /link\.attr\('stroke',theme==='light'\?'#ccc':'#333'\)\.attr\('stroke-opacity',0\.4\)/);
