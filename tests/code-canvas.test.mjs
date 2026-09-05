@@ -1078,6 +1078,16 @@ test('Code drag pauses particle work and coalesces paint frames', () => {
       remove: (name) => { classes.delete(name); }
     }
   };
+  const particleStyle = { display: '' };
+  const particleLayer = { classList: { contains: (name) => name === 'force-link-particles' }, style: particleStyle };
+  const svgWithParticles = {
+    querySelector: (sel) => sel === '.force-link-particles' ? particleLayer : null
+  };
+  assert.equal(context.setCodeViewInteractionBusy(svgWithParticles, true), true);
+  assert.equal(context.isCodeViewDragBusy(), true);
+  assert.equal(particleStyle.display, 'none');
+  assert.equal(context.setCodeViewInteractionBusy(svgWithParticles, false), false);
+  assert.equal(particleStyle.display, '');
   assert.equal(context.setCodeViewInteractionBusy(root, true), true);
   assert.equal(context.isCodeViewDragBusy(), true);
   assert.equal(classes.has('is-code-drag-busy'), true);
@@ -2108,6 +2118,7 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /leftoverIgnoreClick/);
   assert.match(htmlSource, /function setCodeViewDragBusy\(/);
   assert.match(htmlSource, /function setCodeViewInteractionBusy\(/);
+  assert.match(htmlSource, /function hideForceLinkParticlesLayer\(/);
   assert.match(htmlSource, /function scheduleCodeViewDragFrame\(/);
   assert.match(htmlSource, /function flushCodeViewDragFrame\(/);
   assert.match(htmlSource, /function forceLinkVisualsShouldApply\(/);
@@ -2121,6 +2132,7 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /function forceLinkTouchesIds\(/);
   assert.match(htmlSource, /function writeIncidentForceLinkPaths\(/);
   assert.match(htmlSource, /function clearCodeCardSymbolLineCache\(/);
+  assert.match(htmlSource, /CODE_CARD_SYMBOL_SCAN_MAX_CHARS/);
   assert.match(htmlSource, /\.code-canvas svg\.is-code-drag-busy \.force-link-particles/);
   assert.match(htmlSource, /\.force-link-particles\{contain:layout style paint/);
   assert.match(htmlSource, /FORCE_LINK_PARTICLE_CAP/);

@@ -6049,9 +6049,24 @@ function codeViewDragBusyRoot(doc){
     return owner.documentElement||null;
 }
 
+function hideForceLinkParticlesLayer(root,on){
+    var layer=null;
+    if(root&&typeof root.querySelector==='function')layer=root.querySelector('.force-link-particles');
+    if(!layer&&root&&root.classList&&typeof root.classList.contains==='function'&&root.classList.contains('force-link-particles'))layer=root;
+    if(!layer&&typeof document!=='undefined'&&document.querySelector)layer=document.querySelector('.code-canvas .force-link-particles');
+    if(layer&&layer.style){
+        if(on){
+            if(layer.style.display!=='none')layer.style.display='none';
+        }else if(layer.style.display==='none'){
+            layer.style.display='';
+        }
+        return true;
+    }
+    return false;
+}
 function setCodeViewInteractionBusy(root,on){
     setCodeViewDragBusy(on);
-    applyCodeViewDragBusyClass(root,on);
+    if(!hideForceLinkParticlesLayer(root,on))applyCodeViewDragBusyClass(root,on);
     return isCodeViewDragBusy();
 }
 
