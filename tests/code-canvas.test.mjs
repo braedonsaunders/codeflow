@@ -1056,6 +1056,11 @@ test('Code drag pauses particle work and coalesces paint frames', () => {
   assert.equal(context.forceLinkVisualsShouldApply({ dragging: true }), false);
 
   const canvasRoot = { id: 'canvas' };
+  const svgRoot = { id: 'svg' };
+  assert.equal(context.codeViewDragBusyRoot({
+    querySelector: (sel) => sel === '.code-canvas svg' ? svgRoot : sel === '.code-canvas' ? canvasRoot : null,
+    documentElement: { id: 'html' }
+  }), svgRoot);
   assert.equal(context.codeViewDragBusyRoot({
     querySelector: (sel) => sel === '.code-canvas' ? canvasRoot : null,
     documentElement: { id: 'html' }
@@ -1166,6 +1171,14 @@ test('Code drag pauses particle work and coalesces paint frames', () => {
   assert.equal(context.forceLinkTouchesIds({ source: 'src/app.js', target: 'src/other.js' }, ids), true);
   assert.equal(context.forceLinkTouchesIds({ source: 'src/none.js', target: 'src/missing.js' }, ids), false);
   assert.equal(context.forceLinkTouchesIds({ source: 'src/none.js', target: 'src/missing.js' }, null), true);
+
+  context.clearCodeCardSymbolLineCache();
+  const huge = { path: 'index.html', content: 'x\n'.repeat(2000) + 'function leftoverHook(){}\n', functions: [] };
+  const cache = Object.create(null);
+  const firstLine = context.codeCardSymbolLine(huge, 'leftoverHook', cache);
+  assert.equal(firstLine, 2001);
+  cache['index.html|leftoverHook'] = 99;
+  assert.equal(context.codeCardSymbolLine(huge, 'leftoverHook', cache), 99, 'symbol line lookups should reuse the cache');
 });
 
 test('Code cards can be resized from the right or bottom edge', () => {
@@ -2104,9 +2117,8 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /function queueForceLinkVisuals\(/);
   assert.match(htmlSource, /function forceLinkTouchesIds\(/);
   assert.match(htmlSource, /function writeIncidentForceLinkPaths\(/);
-  assert.match(htmlSource, /writeIncidentForceLinkPaths\(moved\)/);
-  assert.match(htmlSource, /writeIncidentForceLinkPaths\(dragFrame\.moved\|\|\[\]\)/);
-  assert.match(htmlSource, /writeIncidentForceLinkPaths\(\[node\]\)/);
+  assert.match(htmlSource, /function clearCodeCardSymbolLineCache\(/);
+  assert.match(htmlSource, /\.code-canvas svg\.is-code-drag-busy \.force-link-particles/);
   assert.match(htmlSource, /\.force-link-particles\{contain:layout style paint/);
   assert.match(htmlSource, /FORCE_LINK_PARTICLE_CAP/);
   assert.match(htmlSource, /FORCE_LINK_PARTICLE_PATH_LENGTH/);

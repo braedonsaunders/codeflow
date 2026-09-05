@@ -492,8 +492,10 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 path.force-link-particle{fill:none;pointer-events:none;stroke-linecap:round}
 path.force-link-particle.is-on{stroke-dasharray:8 20;animation:force-link-particle-flow .7s linear infinite}
 .force-link-particles{contain:layout style paint;pointer-events:none;isolation:isolate}
+.code-canvas svg.is-code-drag-busy .force-link-particles,
 .code-canvas.is-code-drag-busy .force-link-particles{display:none}
-.code-canvas.is-code-drag-busy path.force-link-particle.is-on{animation:none;will-change:auto}
+.code-canvas svg.is-code-drag-busy path.force-link-particle.is-on,
+.code-canvas.is-code-drag-busy path.force-link-particle.is-on{animation:none}
 path.force-link-hit{fill:none;stroke:rgba(0,0,0,0);stroke-width:18;pointer-events:stroke;cursor:pointer}
 path.force-link-active{cursor:pointer}
 @media(prefers-reduced-motion:reduce){
@@ -6039,6 +6041,8 @@ function codeViewDragBusyRoot(doc){
     var owner=doc||(typeof document!=='undefined'?document:null);
     if(!owner)return null;
     if(owner.querySelector){
+        var svg=owner.querySelector('.code-canvas svg');
+        if(svg)return svg;
         var canvas=owner.querySelector('.code-canvas');
         if(canvas)return canvas;
     }
@@ -7716,21 +7720,43 @@ function reflowUnpinnedCodeCards(placements,pinnedPaths,options){
     return next;
 }
 
-function codeCardSymbolLine(file,name){
+var codeCardSymbolLineCache=Object.create(null);
+function codeCardSymbolLineCacheKey(file,name){
+    return String((file&&file.path)||'')+'|'+String(name||'');
+}
+function clearCodeCardSymbolLineCache(cache){
+    var target=cache||codeCardSymbolLineCache;
+    Object.keys(target).forEach(function(key){delete target[key];});
+    return target;
+}
+function codeCardSymbolLine(file,name,cache){
     if(!file||!name)return null;
+    cache=cache||codeCardSymbolLineCache;
+    var key=codeCardSymbolLineCacheKey(file,name);
+    if(Object.prototype.hasOwnProperty.call(cache,key))return cache[key];
     var fns=file.functions||[];
     var i;
     for(i=0;i<fns.length;i++){
-        if(fns[i]&&fns[i].name===name&&fns[i].line)return fns[i].line;
+        if(fns[i]&&fns[i].name===name&&fns[i].line){
+            cache[key]=fns[i].line;
+            return fns[i].line;
+        }
     }
     var content=String(file.content||'');
-    if(!content)return null;
+    if(!content){
+        cache[key]=null;
+        return null;
+    }
     var escaped=String(name).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
     var re=new RegExp('(?:^|[^A-Za-z0-9_$])'+escaped+'(?:[^A-Za-z0-9_$]|$)');
     var lines=content.split('\n');
     for(i=0;i<lines.length;i++){
-        if(re.test(lines[i]))return i+1;
+        if(re.test(lines[i])){
+            cache[key]=i+1;
+            return i+1;
+        }
     }
+    cache[key]=null;
     return null;
 }
 
@@ -11459,6 +11485,7 @@ function App(){
         var nodeLayer=container.append('g');
         var sim=d3.forceSimulation(nodes);
         clearForceLinkPathCache();
+        clearCodeCardSymbolLineCache();
         if(keepReadable){sim.stop();sim.alpha(0);}
         if(graphConfig.viewMode==='force'){
             sim.force('link',d3.forceLink(links).id(function(d){return d.id;}).distance(graphConfig.linkDist).strength(0.3))
@@ -11540,10 +11567,7 @@ function App(){
         function paintCodeNodeDragFrame(){
             var moved=codeNodeDragFrame.moved;
             codeNodeDragFrame.moved=null;
-            if(moved&&moved.length){
-                redrawMovedGraphNodes(moved);
-                writeIncidentForceLinkPaths(moved);
-            }
+            if(moved&&moved.length)redrawMovedGraphNodes(moved);
         }
         node.call(d3.drag().on('start',function(e,d){
             d.fx=d.x;d.fy=d.y;
@@ -13347,7 +13371,6 @@ function App(){
                 scheduleCodeViewDragFrame(dragFrame,requestAnimationFrame,function(){
                     applyCodeCardDragFrame(codeCardsLayerRef.current,file.path,node,codeCardSizesRef.current[file.path]);
                     redrawMovedGraphNodes(dragFrame.moved||[]);
-                    writeIncidentForceLinkPaths(dragFrame.moved||[]);
                 });
             }
             if(codeViewDragShouldDrawMinimap('move')&&drawMinimapRef.current)drawMinimapRef.current();
@@ -13430,7 +13453,6 @@ function App(){
                 scheduleCodeViewDragFrame(dragFrame,requestAnimationFrame,function(){
                     applyCodeCardDragFrame(codeCardsLayerRef.current,file.path,node,codeCardSizesRef.current[file.path]);
                     applyCodeCardResizeFrame(findCodeCardElement(codeCardsLayerRef.current,file.path),codeCardSizesRef.current[file.path]);
-                    writeIncidentForceLinkPaths([node]);
                 });
             }
             if(codeViewDragShouldDrawMinimap('move')&&drawMinimapRef.current)drawMinimapRef.current();
