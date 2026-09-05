@@ -1893,7 +1893,7 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /codeCardSizeForDiff\(file,cardPrefs,diffRows\)/);
   assert.match(htmlSource, /applyCodeCardUserSize\(codeCardSizeForDiff\(file,currentCodeCardPrefs\(\),codeCardDiffRows\(file,cliLiveByPath\[file\.path\]\)\),nextSize\)/);
   assert.match(htmlSource, /applyCodeCardResizeFrame\(findCodeCardElement\(codeCardsLayerRef\.current,file\.path\),codeCardSizesRef\.current\[file\.path\]\)/);
-  assert.match(htmlSource, /\[codeViewFiles,graphConfig\.vizType,graphConfig\.linkDist,codeViewExpand,codeViewWrap,cliLiveByPath,namedCodeGroups\]/);
+  assert.match(htmlSource, /\[codeViewFiles,graphConfig\.vizType,graphConfig\.linkDist,codeViewExpand,codeViewWrap,cliLiveByPath\]/);
   assert.match(htmlSource, /codeCardSymbolPills\(file,data\?data\.connections:\[\],cardPrefs,diffRows\)/);
   assert.match(htmlSource, /codeColorBlockSections\(file,data\?data\.connections:\[\],cardPrefs,diffRows\)/);
   assert.match(htmlSource, /cliDiffEpochRef\.current=bumpCliWatchDiffEpoch\(cliDiffEpochRef\.current\)/);
@@ -1946,6 +1946,8 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /function beginNamedGroupDrag\(/);
   assert.match(htmlSource, /function partitionCodeViewHullMembers\(/);
   assert.match(htmlSource, /function namedGroupDropRemovesCard\(/);
+  assert.match(htmlSource, /function namedGroupLeaveHull\(/);
+  assert.match(htmlSource, /namedGroupDropRemovesCard\(cardWorldBox\(node,codeCardSizesRef\.current,null\),otherBoxes,28,startMemberBoxes\)/);
   assert.match(htmlSource, /function submitNamedGroupNameDialog\(/);
   assert.match(htmlSource, /function closeNamedGroupNameDialog\(/);
   assert.match(htmlSource, /function namedGroupViewportCenter\(/);
@@ -2004,7 +2006,7 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /readCodeCardWorldBoxes\(codeCardsLayerRef\.current\)/);
   assert.match(htmlSource, /codeFolderHullBounds\(cardNodes,leftover/);
   assert.match(htmlSource, /if\(updateHullsRef\.current\)updateHullsRef\.current\(\)/);
-  assert.match(htmlSource, /codeViewExpand,codeViewWrap,cliLiveByPath,namedCodeGroups/);
+  assert.match(htmlSource, /codeViewExpand,codeViewWrap,cliLiveByPath\]/);
   assert.match(htmlSource, /cardSize\.expand\?' expand'/);
   assert.match(htmlSource, /cardSize\.wrap\?' wrap'/);
   assert.match(htmlSource, /\.code-card\.wrap \.file-preview-text/);
@@ -2581,6 +2583,10 @@ test('named-group hulls win over directory hulls and drop only when dragged out'
   );
   assert.equal(leave, true);
   assert.equal(context.namedGroupDropRemovesCard({ x: 10, y: 10, width: 40, height: 40 }, [], 10), false);
+  const lastStart = [{ x: 10, y: 10, width: 40, height: 40 }];
+  assert.equal(context.namedGroupDropRemovesCard({ x: 10, y: 10, width: 40, height: 40 }, [], 10, lastStart), false);
+  assert.equal(context.namedGroupDropRemovesCard({ x: 400, y: 10, width: 40, height: 40 }, [], 10, lastStart), true);
+  assert.equal(context.namedGroupLeaveHull([], 10, lastStart).width > 40, true);
   const moved = context.translateNamedGroupCards(nodes, ['src/a.js', 'lib/c.js'], 40, -15);
   assert.equal(moved.length, 2);
   assert.equal(nodes[0].x, 240);

@@ -7984,10 +7984,15 @@ function namedGroupHullsFromMembers(named,sizesByPath,pad,boxesByPath){
     return out;
 }
 
-function namedGroupDropRemovesCard(cardBox,remainingBoxes,pad){
+function namedGroupLeaveHull(remainingBoxes,pad,startBoxes){
+    var boxes=remainingBoxes&&remainingBoxes.length?remainingBoxes:startBoxes;
+    if(!boxes||!boxes.length)return null;
+    return unionPaddedBoxes(boxes,pad==null?28:pad,22);
+}
+
+function namedGroupDropRemovesCard(cardBox,remainingBoxes,pad,startBoxes){
     if(!cardBox)return false;
-    if(!remainingBoxes||!remainingBoxes.length)return false;
-    var hull=unionPaddedBoxes(remainingBoxes,pad==null?28:pad,22);
+    var hull=namedGroupLeaveHull(remainingBoxes,pad,startBoxes);
     if(!hull)return false;
     var cx=cardBox.x+cardBox.width/2;
     var cy=cardBox.y+cardBox.height/2;
@@ -11916,7 +11921,7 @@ function App(){
         syncCodeCards();
         if(updateHullsRef.current)updateHullsRef.current();
         if(drawMinimapRef.current)drawMinimapRef.current();
-    },[codeViewFiles,graphConfig.vizType,graphConfig.linkDist,codeViewExpand,codeViewWrap,cliLiveByPath,namedCodeGroups]);
+    },[codeViewFiles,graphConfig.vizType,graphConfig.linkDist,codeViewExpand,codeViewWrap,cliLiveByPath]);
 
     useEffect(function(){
         return subscribePrefersReducedMotion(function(){
@@ -13575,6 +13580,8 @@ function App(){
             return;
         }
         var startX=e.clientX,startY=e.clientY,originX=node.x,originY=node.y,moved=false,lastX=node.x,lastY=node.y;
+        var startBox=cardWorldBox(node,codeCardSizesRef.current,null);
+        var startMemberBoxes=startBox?[startBox]:[];
         node.fx=node.x;node.fy=node.y;
         codeCardStackRef.current=raiseCodeCardStack(codeCardStackRef.current,file.path);
         applyCodeCardStackOrder(codeCardsLayerRef.current,codeCardStackRef.current);
@@ -13625,7 +13632,7 @@ function App(){
                         var box=cardWorldBox(other,codeCardSizesRef.current,null);
                         if(box)otherBoxes.push(box);
                     });
-                    if(namedGroupDropRemovesCard(cardWorldBox(node,codeCardSizesRef.current,null),otherBoxes)){
+                    if(namedGroupDropRemovesCard(cardWorldBox(node,codeCardSizesRef.current,null),otherBoxes,28,startMemberBoxes)){
                         commitNamedGroups(removeCardFromNamedGroup(groups,gid,file.path));
                     }
                 }
