@@ -1159,6 +1159,13 @@ test('Code drag pauses particle work and coalesces paint frames', () => {
   assert.equal(visualQueued.length, 1);
   context.flushCodeViewDragFrame(visualState, () => {});
   context.clearForceLinkPathCache();
+
+  const ids = context.forceLinkNodeIdSet([{ id: 'src/app.js' }, { id: 'src/math.js' }, 'src/extra.js']);
+  assert.equal(ids['src/app.js'], true);
+  assert.equal(ids['src/extra.js'], true);
+  assert.equal(context.forceLinkTouchesIds({ source: 'src/app.js', target: 'src/other.js' }, ids), true);
+  assert.equal(context.forceLinkTouchesIds({ source: 'src/none.js', target: 'src/missing.js' }, ids), false);
+  assert.equal(context.forceLinkTouchesIds({ source: 'src/none.js', target: 'src/missing.js' }, null), true);
 });
 
 test('Code cards can be resized from the right or bottom edge', () => {
@@ -2095,6 +2102,12 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /function applyCachedLinkPath\(/);
   assert.match(htmlSource, /function scheduleForceLinkVisuals\(/);
   assert.match(htmlSource, /function queueForceLinkVisuals\(/);
+  assert.match(htmlSource, /function forceLinkTouchesIds\(/);
+  assert.match(htmlSource, /function writeIncidentForceLinkPaths\(/);
+  assert.match(htmlSource, /writeIncidentForceLinkPaths\(moved\)/);
+  assert.match(htmlSource, /writeIncidentForceLinkPaths\(dragFrame\.moved\|\|\[\]\)/);
+  assert.match(htmlSource, /writeIncidentForceLinkPaths\(\[node\]\)/);
+  assert.match(htmlSource, /\.force-link-particles\{contain:layout style paint/);
   assert.match(htmlSource, /FORCE_LINK_PARTICLE_CAP/);
   assert.match(htmlSource, /FORCE_LINK_PARTICLE_PATH_LENGTH/);
   assert.match(htmlSource, /clearForceLinkPathCache\(\)/);
@@ -2155,7 +2168,7 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /function applyCodeCardZoomChrome\(/);
   assert.match(htmlSource, /function zoomTransformScaleChanged\(/);
   assert.match(htmlSource, /function redrawActiveForceLinkParticles\(/);
-  assert.match(htmlSource, /else applyForceLinkVisuals\(\)/);
+  assert.match(htmlSource, /else queueForceLinkVisuals\(\)/);
   assert.match(htmlSource, /applyForceLinkVisualsRef/);
   assert.match(htmlSource, /subscribePrefersReducedMotion\(function/);
   assert.match(htmlSource, /var particleLayer=keepReadable\?container\.append\('g'\)\.attr\('class','force-link-particles'/);

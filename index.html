@@ -491,9 +491,9 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 @keyframes force-link-particle-flow{to{stroke-dashoffset:-28}}
 path.force-link-particle{fill:none;pointer-events:none;stroke-linecap:round}
 path.force-link-particle.is-on{stroke-dasharray:8 20;animation:force-link-particle-flow .7s linear infinite}
-.force-link-particles{contain:strict;pointer-events:none}
+.force-link-particles{contain:layout style paint;pointer-events:none;isolation:isolate}
 .code-canvas.is-code-drag-busy .force-link-particles{display:none}
-.code-canvas.is-code-drag-busy path.force-link-particle.is-on{animation:none}
+.code-canvas.is-code-drag-busy path.force-link-particle.is-on{animation:none;will-change:auto}
 path.force-link-hit{fill:none;stroke:rgba(0,0,0,0);stroke-width:18;pointer-events:stroke;cursor:pointer}
 path.force-link-active{cursor:pointer}
 @media(prefers-reduced-motion:reduce){
@@ -5907,6 +5907,22 @@ function forceLinkIdentity(link){
     return forceLinkEndId(link&&link.source)+'>'+forceLinkEndId(link&&link.target)+'>'+String((link&&link.fn)||'');
 }
 
+function forceLinkNodeIdSet(nodes){
+    var out=Object.create(null);
+    if(!nodes||!nodes.length)return out;
+    for(var i=0;i<nodes.length;i++){
+        var item=nodes[i];
+        var id=item&&typeof item==='object'?item.id:item;
+        if(id)out[id]=true;
+    }
+    return out;
+}
+
+function forceLinkTouchesIds(link,ids){
+    if(!ids)return true;
+    return !!(ids[forceLinkEndId(link&&link.source)]||ids[forceLinkEndId(link&&link.target)]);
+}
+
 function forceLinkLayoutStamp(link,sizesByPath,cardPaths){
     function stamp(end){
         if(end==null)return '';
@@ -10661,7 +10677,7 @@ function App(){
             selectedPathRef.current=path;
             codeLinkParticlesHiddenRef.current=false;
             if(graphConfig.vizType!=='code')updateGraphHighlight(path,blast);
-            else applyForceLinkVisuals();
+            else queueForceLinkVisuals();
         }
     },[data,repoInfo,localSourceKind,isMobile,graphConfig.vizType]);
     selectFileRef.current=selectFile;
@@ -11011,12 +11027,20 @@ function App(){
     function graphLinkPath(d){
         return cachedForceLinkPath(d,computeGraphLinkPath,forceLinkPathCache,codeCardSizesRef.current,codeCardPathsRef.current);
     }
-    function writeForceLinkPaths(selection){
+    function writeForceLinkPaths(selection,ids){
         if(!selection)return 0;
         var n=0;
         selection.each(function(d){
+            if(ids&&!forceLinkTouchesIds(d,ids))return;
             if(applyCachedLinkPath(this,graphLinkPath(d)))n++;
         });
+        return n;
+    }
+    function writeIncidentForceLinkPaths(movedNodes){
+        if(!movedNodes||!movedNodes.length)return 0;
+        var ids=forceLinkNodeIdSet(movedNodes);
+        var n=writeForceLinkPaths(linksRef.current,ids);
+        if(forceLinkHitLayerRef.current)n+=writeForceLinkPaths(forceLinkHitLayerRef.current.selectAll('path'),ids);
         return n;
     }
     function redrawActiveForceLinkParticles(){
@@ -11516,7 +11540,10 @@ function App(){
         function paintCodeNodeDragFrame(){
             var moved=codeNodeDragFrame.moved;
             codeNodeDragFrame.moved=null;
-            if(moved&&moved.length)redrawMovedGraphNodes(moved);
+            if(moved&&moved.length){
+                redrawMovedGraphNodes(moved);
+                writeIncidentForceLinkPaths(moved);
+            }
         }
         node.call(d3.drag().on('start',function(e,d){
             d.fx=d.x;d.fy=d.y;
@@ -11596,7 +11623,7 @@ function App(){
             selectedPathRef.current=null;
             codeLinkParticlesHiddenRef.current=false;
             if(keepReadable){
-                applyForceLinkVisuals();
+                queueForceLinkVisuals();
                 return;
             }
             link.attr('stroke',theme==='light'?'#ccc':'#333').attr('stroke-opacity',0.4);
@@ -13320,6 +13347,7 @@ function App(){
                 scheduleCodeViewDragFrame(dragFrame,requestAnimationFrame,function(){
                     applyCodeCardDragFrame(codeCardsLayerRef.current,file.path,node,codeCardSizesRef.current[file.path]);
                     redrawMovedGraphNodes(dragFrame.moved||[]);
+                    writeIncidentForceLinkPaths(dragFrame.moved||[]);
                 });
             }
             if(codeViewDragShouldDrawMinimap('move')&&drawMinimapRef.current)drawMinimapRef.current();
@@ -13402,6 +13430,7 @@ function App(){
                 scheduleCodeViewDragFrame(dragFrame,requestAnimationFrame,function(){
                     applyCodeCardDragFrame(codeCardsLayerRef.current,file.path,node,codeCardSizesRef.current[file.path]);
                     applyCodeCardResizeFrame(findCodeCardElement(codeCardsLayerRef.current,file.path),codeCardSizesRef.current[file.path]);
+                    writeIncidentForceLinkPaths([node]);
                 });
             }
             if(codeViewDragShouldDrawMinimap('move')&&drawMinimapRef.current)drawMinimapRef.current();
@@ -13984,7 +14013,7 @@ function App(){
                     ),
                     React.createElement('div',{className:'panel-content'},
                         rightTab==='details'&&(selected?React.createElement(React.Fragment,null,
-                            React.createElement('button',{className:'top-btn',style:{width:'100%',marginBottom:12},onClick:function(){setSelected(null);setBlastRadius(null);selectedPathRef.current=null;if(nodesRef.current){nodesRef.current.selectAll('.nc,.nb').transition().duration(200).attr('opacity',1).attr('fill',function(n){return d3.select(this).classed('nb')?graphColorBlockFill(getNodeColor(n)):getNodeColor(n);});}if(vizUsesForceLinkParticles(graphConfig.vizType))applyForceLinkVisuals();else if(linksRef.current)linksRef.current.transition().duration(200).attr('stroke-opacity',0.4).attr('stroke',theme==='light'?'#ccc':'#333');}},'← Back to Issues'),
+                            React.createElement('button',{className:'top-btn',style:{width:'100%',marginBottom:12},onClick:function(){setSelected(null);setBlastRadius(null);selectedPathRef.current=null;if(nodesRef.current){nodesRef.current.selectAll('.nc,.nb').transition().duration(200).attr('opacity',1).attr('fill',function(n){return d3.select(this).classed('nb')?graphColorBlockFill(getNodeColor(n)):getNodeColor(n);});}if(vizUsesForceLinkParticles(graphConfig.vizType))queueForceLinkVisuals();else if(linksRef.current)linksRef.current.transition().duration(200).attr('stroke-opacity',0.4).attr('stroke',theme==='light'?'#ccc':'#333');}},'← Back to Issues'),
                             React.createElement('div',{className:'panel-header',style:{margin:'0 -12px 12px',padding:12}},
                                 React.createElement('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}},
                                     React.createElement('div',null,
