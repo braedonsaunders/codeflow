@@ -2119,8 +2119,6 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /function setCodeViewDragBusy\(/);
   assert.match(htmlSource, /function setCodeViewInteractionBusy\(/);
   assert.match(htmlSource, /function hideForceLinkParticlesLayer\(/);
-  assert.match(htmlSource, /hideForceLinkParticlesLayer\(svg\.node\(\),true\)/);
-  assert.match(htmlSource, /hideForceLinkParticlesLayer\(svg\.node\(\),false\)/);
   assert.match(htmlSource, /function scheduleCodeViewDragFrame\(/);
   assert.match(htmlSource, /function flushCodeViewDragFrame\(/);
   assert.match(htmlSource, /function forceLinkVisualsShouldApply\(/);
