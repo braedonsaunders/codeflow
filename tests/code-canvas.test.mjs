@@ -2119,6 +2119,8 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /function setCodeViewDragBusy\(/);
   assert.match(htmlSource, /function setCodeViewInteractionBusy\(/);
   assert.match(htmlSource, /function hideForceLinkParticlesLayer\(/);
+  assert.match(htmlSource, /hideForceLinkParticlesLayer\(svg\.node\(\),true\)/);
+  assert.match(htmlSource, /hideForceLinkParticlesLayer\(svg\.node\(\),false\)/);
   assert.match(htmlSource, /function scheduleCodeViewDragFrame\(/);
   assert.match(htmlSource, /function flushCodeViewDragFrame\(/);
   assert.match(htmlSource, /function forceLinkVisualsShouldApply\(/);
@@ -2171,6 +2173,7 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /cardSize\.wrap\?' wrap'/);
   assert.match(htmlSource, /\.code-card\.wrap \.file-preview-text/);
   assert.match(htmlSource, /white-space:pre-wrap/);
+  assert.match(htmlSource, /\.code-card-body\{[^}]*content-visibility:auto/);
   assert.match(htmlSource, /\.code-card\.expand:not\(\.wrap\):not\(\.clipped\) \.code-card-body\{overflow-x:auto/);
   assert.match(htmlSource, /\.code-card\.expand\.wrap:not\(\.clipped\) \.code-card-body\{overflow:hidden/);
   assert.doesNotMatch(htmlSource, /sidebar-title'\},'Color By'/);

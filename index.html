@@ -11750,6 +11750,9 @@ function App(){
             }else{
                 svg.call(zoom.transform,d3.zoomIdentity.translate(savedZoom.x,savedZoom.y).scale(savedZoom.k));
             }
+            hideForceLinkParticlesLayer(svg.node(),true);
+            hideForceLinkParticlesLayer(svg.node(),false);
+            try{if(svg.node())svg.node().getBoundingClientRect();}catch(e){}
         }
         updateHullsRef.current=updateHulls;
         if(drawMinimapRef.current)drawMinimapRef.current();
