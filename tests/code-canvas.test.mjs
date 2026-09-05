@@ -1043,6 +1043,61 @@ test('expensive Code layout waits until drag release', () => {
   assert.equal(card.style.top, '250px');
 });
 
+test('Code drag pauses particle work and coalesces paint frames', () => {
+  assert.equal(context.isCodeViewDragBusy(), false);
+  assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: false, vizType: 'code' }), true);
+  assert.equal(context.forceLinkVisualsShouldApply({}), true);
+  assert.equal(context.codeViewDragShouldDrawMinimap('move'), false);
+  assert.equal(context.codeViewDragShouldDrawMinimap('release'), true);
+
+  assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: false, vizType: 'code', dragging: true }), false);
+  assert.equal(context.forceLinkVisualsShouldApply({ dragging: true }), false);
+
+  const classes = new Set();
+  const root = {
+    classList: {
+      contains: (name) => classes.has(name),
+      add: (name) => { classes.add(name); },
+      remove: (name) => { classes.delete(name); }
+    }
+  };
+  assert.equal(context.setCodeViewInteractionBusy(root, true), true);
+  assert.equal(context.isCodeViewDragBusy(), true);
+  assert.equal(classes.has('is-code-drag-busy'), true);
+  assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: false, vizType: 'code' }), false);
+  assert.equal(context.forceLinkVisualsShouldApply({}), false);
+  assert.equal(context.codeViewDragShouldDrawMinimap('release'), false);
+
+  assert.equal(context.setCodeViewInteractionBusy(root, false), false);
+  assert.equal(classes.has('is-code-drag-busy'), false);
+  assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: false, vizType: 'code' }), true);
+  assert.equal(context.forceLinkVisualsShouldApply({}), true);
+  assert.equal(context.codeViewDragShouldDrawMinimap('release'), true);
+
+  let paints = 0;
+  const queued = [];
+  const pending = { raf: 0 };
+  const raf = (fn) => {
+    queued.push(fn);
+    return queued.length;
+  };
+  context.scheduleCodeViewDragFrame(pending, raf, () => { paints += 1; });
+  context.scheduleCodeViewDragFrame(pending, raf, () => { paints += 1; });
+  assert.equal(queued.length, 1);
+  assert.ok(pending.raf);
+  queued[0]();
+  assert.equal(paints, 1);
+  assert.equal(pending.raf, 0);
+
+  const canceled = [];
+  context.scheduleCodeViewDragFrame(pending, raf, () => { paints += 1; });
+  context.flushCodeViewDragFrame(pending, (id) => { canceled.push(id); });
+  assert.deepEqual(canceled, [2]);
+  assert.equal(pending.raf, 0);
+  assert.equal(paints, 1);
+  context.setCodeViewDragBusy(false);
+});
+
 test('Code cards can be resized from the right or bottom edge', () => {
   const base = context.codeCardSize({ content: 'const x = 1;\n' });
   const grown = context.applyCodeCardUserSize(base, { width: 620, height: 280 });
@@ -1963,6 +2018,19 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /settleCodeViewAfterDrag/);
   assert.match(htmlSource, /codeViewDragRefresh\('move'\)/);
   assert.match(htmlSource, /codeViewDragRefresh\('release'\)/);
+  assert.match(htmlSource, /function setCodeViewDragBusy\(/);
+  assert.match(htmlSource, /function setCodeViewInteractionBusy\(/);
+  assert.match(htmlSource, /function scheduleCodeViewDragFrame\(/);
+  assert.match(htmlSource, /function flushCodeViewDragFrame\(/);
+  assert.match(htmlSource, /function forceLinkVisualsShouldApply\(/);
+  assert.match(htmlSource, /function codeViewDragShouldDrawMinimap\(/);
+  assert.match(htmlSource, /html\.is-code-drag-busy path\.force-link-particle\.is-on/);
+  assert.match(htmlSource, /setCodeViewInteractionBusy\(codeViewDragBusyRoot\(\),true\)/);
+  assert.match(htmlSource, /setCodeViewInteractionBusy\(codeViewDragBusyRoot\(\),false\)/);
+  assert.match(htmlSource, /if\(!forceLinkVisualsShouldApply\(\)\)return;/);
+  assert.match(htmlSource, /if\(isCodeViewDragBusy\(\)\)return;/);
+  assert.match(htmlSource, /scheduleCodeViewDragFrame\(codeNodeDragFrame,requestAnimationFrame,paintCodeNodeDragFrame\)/);
+  assert.match(htmlSource, /scheduleCodeViewDragFrame\(dragFrame,requestAnimationFrame,/);
   assert.match(htmlSource, /raiseCodeCardStack/);
   assert.match(htmlSource, /applyCodeCardStackOrder/);
   assert.match(htmlSource, /applyCodeCardDragFrame/);
@@ -2310,6 +2378,7 @@ test('selected Code-view links animate; inactive stay quiet; reduced-motion is s
   assert.equal(hiddenMotion.active, true);
   assert.equal(hiddenMotion.stroke, 'var(--orange)');
   assert.equal(hiddenMotion.particle, false, 'toggled-off dashes keep the selected-edge color');
+  context.setCodeViewDragBusy(false);
   assert.equal(context.forceLinkParticlesNeedTickUpdate(null, { reducedMotion: false }), false);
   assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: true }), false);
   assert.equal(context.forceLinkParticlesNeedTickUpdate('src/app.js', { reducedMotion: false }), true);
