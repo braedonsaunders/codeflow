@@ -1173,12 +1173,15 @@ test('Code drag pauses particle work and coalesces paint frames', () => {
   assert.equal(context.forceLinkTouchesIds({ source: 'src/none.js', target: 'src/missing.js' }, null), true);
 
   context.clearCodeCardSymbolLineCache();
-  const huge = { path: 'index.html', content: 'x\n'.repeat(2000) + 'function leftoverHook(){}\n', functions: [] };
+  const small = { path: 'src/app.js', content: 'x\n'.repeat(20) + 'function leftoverHook(){}\n', functions: [] };
   const cache = Object.create(null);
-  const firstLine = context.codeCardSymbolLine(huge, 'leftoverHook', cache);
-  assert.equal(firstLine, 2001);
-  cache['index.html|leftoverHook'] = 99;
-  assert.equal(context.codeCardSymbolLine(huge, 'leftoverHook', cache), 99, 'symbol line lookups should reuse the cache');
+  const firstLine = context.codeCardSymbolLine(small, 'leftoverHook', cache);
+  assert.equal(firstLine, 21);
+  cache['src/app.js|leftoverHook'] = 99;
+  assert.equal(context.codeCardSymbolLine(small, 'leftoverHook', cache), 99, 'symbol line lookups should reuse the cache');
+  const huge = { path: 'index.html', content: 'x\n'.repeat(20000) + 'function leftoverHook(){}\n', functions: [] };
+  assert.equal(context.codeCardSymbolLine(huge, 'leftoverHook'), null, 'huge files skip the content scan fallback');
+  assert.equal(context.CODE_CARD_SYMBOL_SCAN_MAX_CHARS, 20000);
 });
 
 test('Code cards can be resized from the right or bottom edge', () => {

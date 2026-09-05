@@ -7720,6 +7720,7 @@ function reflowUnpinnedCodeCards(placements,pinnedPaths,options){
     return next;
 }
 
+var CODE_CARD_SYMBOL_SCAN_MAX_CHARS=20000;
 var codeCardSymbolLineCache=Object.create(null);
 function codeCardSymbolLineCacheKey(file,name){
     return String((file&&file.path)||'')+'|'+String(name||'');
@@ -7743,7 +7744,7 @@ function codeCardSymbolLine(file,name,cache){
         }
     }
     var content=String(file.content||'');
-    if(!content){
+    if(!content||content.length>CODE_CARD_SYMBOL_SCAN_MAX_CHARS){
         cache[key]=null;
         return null;
     }
