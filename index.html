@@ -5989,6 +5989,13 @@ function nextForceLinkParticlesHidden(hidden,action){
     return !hidden;
 }
 
+function codeViewNodeTooltipWanted(options){
+    options=options||{};
+    if(options.dragging||isCodeViewDragBusy())return false;
+    if(options.keepReadable)return false;
+    return true;
+}
+
 function isCodeLeftoverDragTarget(target){
     var el=target;
     while(el&&el.tagName){
@@ -11590,6 +11597,7 @@ function App(){
             if(keepReadable){
                 leftoverDragMoved=false;
                 codeNodeDragPrev[d.id]={x:d.x,y:d.y};
+                if(!isCodeViewDragBusy())setCodeViewInteractionBusy(codeViewDragBusyRoot(),true);
                 return;
             }
             if(!e.active)sim.alphaTarget(0.1).restart();
@@ -11649,7 +11657,15 @@ function App(){
         });
         node.classed('has-code-card',function(d){return keepReadable&&nodeReplacedByCard(d.id,codeCardPathsRef.current);});
         node.attr('display',function(d){return keepReadable&&nodeReplacedByCard(d.id,codeCardPathsRef.current)?'none':null;});
-        node.on('mouseenter',function(e,d){if(keepReadable&&codeCardPathsRef.current.has(d.id))return;var r=svgRef.current.getBoundingClientRect();setTooltip({x:e.clientX-r.left+10,y:e.clientY-r.top,title:d.name,content:d.fnCount+' functions\n'+d.layer+' layer\n'+d.churn+' recent commits'});}).on('mouseleave',function(){setTooltip(null);});
+        node.on('mouseenter',function(e,d){
+            if(!codeViewNodeTooltipWanted({keepReadable:keepReadable,dragging:isCodeViewDragBusy()}))return;
+            if(codeCardPathsRef.current.has(d.id))return;
+            var r=svgRef.current.getBoundingClientRect();
+            setTooltip({x:e.clientX-r.left+10,y:e.clientY-r.top,title:d.name,content:d.fnCount+' functions\n'+d.layer+' layer\n'+d.churn+' recent commits'});
+        }).on('mouseleave',function(){
+            if(!codeViewNodeTooltipWanted({keepReadable:keepReadable,dragging:isCodeViewDragBusy()}))return;
+            setTooltip(null);
+        });
         svg.on('click',function(e){
             if(isForceLinkHitTarget(e.target)){
                 codeLinkParticlesHiddenRef.current=nextForceLinkParticlesHidden(codeLinkParticlesHiddenRef.current);

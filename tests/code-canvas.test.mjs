@@ -2192,6 +2192,8 @@ test('index.html ships a working Code view, not a stub', () => {
   assert.match(htmlSource, /function forceLinkParticleRecords\(/);
   assert.match(htmlSource, /function isForceLinkHitTarget\(/);
   assert.match(htmlSource, /function isCodeLeftoverDragTarget\(/);
+  assert.match(htmlSource, /function codeViewNodeTooltipWanted\(/);
+  assert.match(htmlSource, /if\(!codeViewNodeTooltipWanted\(\{keepReadable:keepReadable,dragging:isCodeViewDragBusy\(\)\}\)\)return;/);
   assert.match(htmlSource, /if\(isCodeLeftoverDragTarget\(event\.target\)\)return false;/);
   assert.match(htmlSource, /function applyCodeCardZoomChrome\(/);
   assert.match(htmlSource, /function zoomTransformScaleChanged\(/);
@@ -2516,6 +2518,12 @@ test('selected Code-view links animate; inactive stay quiet; reduced-motion is s
     querySelector: (sel) => sel === ':scope > circle.nc' ? { tagName: 'CIRCLE' } : null,
     parentNode: null
   };
+  assert.equal(context.codeViewNodeTooltipWanted({}), true);
+  assert.equal(context.codeViewNodeTooltipWanted({ keepReadable: true }), false);
+  assert.equal(context.codeViewNodeTooltipWanted({ dragging: true }), false);
+  context.setCodeViewDragBusy(true);
+  assert.equal(context.codeViewNodeTooltipWanted({}), false);
+  context.setCodeViewDragBusy(false);
   assert.equal(context.isCodeLeftoverDragTarget({ tagName: 'CIRCLE', parentNode: leftoverG }), true);
   leftoverG.classList = { contains: (name) => name === 'has-code-card' };
   assert.equal(context.isCodeLeftoverDragTarget({ tagName: 'CIRCLE', parentNode: leftoverG }), false);
