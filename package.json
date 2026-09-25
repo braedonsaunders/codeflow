@@ -4,6 +4,7 @@
   "description": "Visualize codebase architecture in the browser. A thin CLI opens that same UI.",
   "license": "MIT",
   "bin": {
+    "codeflow": "./cli/codeflow.mjs",
     "codeflow": "./cli/codeflow.mjs"
   },
   "files": [

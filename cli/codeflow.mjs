@@ -483,7 +483,7 @@ export function createCodeflowServer(options) {
 async function main() {
   const parsed = parseCliArgs(process.argv);
   if (parsed.help) {
-    console.log('Usage: npx codeflow [folder] [--port 4173]\nOpens the same Codeflow UI and watches that folder.');
+    console.log('Usage: npx codeflow [folder] [--port 4173]\nOpens the same codeflow UI and watches that folder.');
     process.exit(0);
   }
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -495,7 +495,7 @@ async function main() {
     process.exit(1);
   }
   if (!existsSync(path.join(uiRoot, 'index.html'))) {
-    console.error('Could not find index.html next to the CLI. Run this from the Codeflow repo or installed package.');
+    console.error('Could not find index.html next to the CLI. Run this from the codeflow repo or installed package.');
     process.exit(1);
   }
 
@@ -505,7 +505,7 @@ async function main() {
     server.listen(parsed.port, '127.0.0.1', resolve);
   });
   const url = 'http://127.0.0.1:' + parsed.port + '/?cli=1';
-  console.log('Codeflow UI: ' + url);
+  console.log('codeflow UI: ' + url);
   console.log('Watching: ' + watchRoot);
   openBrowser(url);
 }
