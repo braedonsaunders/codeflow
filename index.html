@@ -12128,6 +12128,7 @@ function App(){
             var moved=codeNodeDragFrame.moved;
             codeNodeDragFrame.moved=null;
             if(moved&&moved.length)redrawMovedGraphNodes(moved);
+            if(updateHullsRef.current)updateHullsRef.current();
         }
         node.call(d3.drag().on('start',function(e,d){
             d.fx=d.x;d.fy=d.y;
@@ -12148,7 +12149,8 @@ function App(){
                     if(!isCodeViewDragBusy())setCodeViewInteractionBusy(codeViewDragBusyRoot(),true);
                 }
                 codeNodeDragPrev[d.id]={x:d.x,y:d.y};
-                var siblings=translateCodeViewSiblings(sim.nodes(),d,dx,dy,codeCardPathsRef.current);
+                var moveGroup=e.sourceEvent&&(e.sourceEvent.shiftKey||e.sourceEvent.altKey);
+                var siblings=moveGroup?translateCodeViewSiblings(sim.nodes(),d,dx,dy,codeCardPathsRef.current):[];
                 if(codeViewDragRefresh('move')){
                     redrawGraphLinksAndNodes();
                     if(updateHullsRef.current)updateHullsRef.current();
@@ -12157,12 +12159,14 @@ function App(){
                     scheduleCodeViewDragFrame(codeNodeDragFrame,requestAnimationFrame,paintCodeNodeDragFrame);
                 }
                 if(codeViewDragShouldDrawMinimap('move')&&drawMinimapRef.current)drawMinimapRef.current();
+                if(updateHullsRef.current)updateHullsRef.current();
                 return;
             }
         }).on('end',function(e,d){
             if(!keepReadable){
                 if(!e.active)sim.alphaTarget(0);
                 d.fx=null;d.fy=null;
+                if(updateHullsRef.current)updateHullsRef.current();
                 return;
             }
             d.fx=d.x;d.fy=d.y;
@@ -12170,6 +12174,7 @@ function App(){
             flushCodeViewDragFrame(codeNodeDragFrame,cancelAnimationFrame);
             codeNodeDragFrame.moved=null;
             setCodeViewInteractionBusy(codeViewDragBusyRoot(),false);
+            if(updateHullsRef.current)updateHullsRef.current();
             var end=noteCodeCardPointerEnd(leftoverDragMoved);
             leftoverIgnoreClick=end.ignoreNextClick;
             if(leftoverIgnoreClick)setTimeout(function(){leftoverIgnoreClick=false;},400);
@@ -12240,6 +12245,197 @@ function App(){
             });
             return grouped;
         }
+        var cellCurveGen=d3.line().curve(d3.curveCatmullRomClosed.alpha(0.5));
+        function buildTwoCellBridge(p1,p2){
+            var dx=p2.x-p1.x,dy=p2.y-p1.y;
+            var d=Math.hypot(dx,dy);
+            var r1=p1.r,r2=p2.r;
+            if(d<=Math.abs(r1-r2)){
+                var bigger=r1>=r2?p1:p2;
+                return buildHumanCellMembrane([bigger]);
+            }
+            var baseAngle=Math.atan2(dy,dx);
+            var ux=dx/d,uy=dy/d,nx=-uy,ny=ux;
+            var stretchDist=Math.max(0,d-(r1+r2)*0.5);
+            var minWaist=Math.min(r1,r2)*0.28;
+            var maxWaist=(r1+r2)*0.52;
+            var waistR=Math.max(minWaist,maxWaist*Math.max(0.15,1-(stretchDist/280)*0.75));
+            var pts=[],arcSamples=9;
+            for(var i=0;i<=arcSamples;i++){
+                var a=baseAngle+Math.PI/2+(i/arcSamples)*Math.PI;
+                pts.push([p1.x+Math.cos(a)*r1,p1.y+Math.sin(a)*r1]);
+            }
+            var midX=(p1.x+p2.x)*0.5,midY=(p1.y+p2.y)*0.5;
+            pts.push([midX-nx*waistR,midY-ny*waistR]);
+            for(var j=0;j<=arcSamples;j++){
+                var a2=baseAngle-Math.PI/2+(j/arcSamples)*Math.PI;
+                pts.push([p2.x+Math.cos(a2)*r2,p2.y+Math.sin(a2)*r2]);
+            }
+            pts.push([midX+nx*waistR,midY+ny*waistR]);
+            return cellCurveGen(pts);
+        }
+        function buildStretchedClusterPath(clusterNodes,stretchedNode){
+            var restPts=[];
+            var samples=16;
+            clusterNodes.forEach(function(n){
+                for(var k=0;k<samples;k++){
+                    var a=(k/samples)*Math.PI*2;
+                    restPts.push([n.x+Math.cos(a)*n.r,n.y+Math.sin(a)*n.r]);
+                }
+            });
+            var restHull=d3.polygonHull(restPts);
+            if(!restHull||restHull.length<3)return null;
+
+            var nH=restHull.length;
+            var sx=stretchedNode.x,sy=stretchedNode.y,sr=stretchedNode.r;
+
+            var anchor=clusterNodes[0],minDist=Infinity;
+            clusterNodes.forEach(function(n){
+                var d=Math.hypot(n.x-sx,n.y-sy);
+                if(d<minDist){minDist=d;anchor=n;}
+            });
+
+            var baseAngle=Math.atan2(sy-anchor.y,sx-anchor.x);
+            var minA=Infinity,maxA=-Infinity;
+            var idxMin=-1,idxMax=-1;
+
+            for(var i=0;i<nH;i++){
+                var vx=restHull[i][0]-sx,vy=restHull[i][1]-sy;
+                var a=Math.atan2(vy,vx)-(baseAngle+Math.PI);
+                while(a>Math.PI)a-=Math.PI*2;
+                while(a<-Math.PI)a+=Math.PI*2;
+                if(a<minA){minA=a;idxMin=i;}
+                if(a>maxA){maxA=a;idxMax=i;}
+            }
+
+            if(idxMin===-1||idxMax===-1||idxMin===idxMax)return null;
+
+            var d=minDist;
+            var r1=anchor.r,r2=sr;
+            var stretchDist=Math.max(0,d-(r1+r2)*0.5);
+            var minWaist=Math.min(r1,r2)*0.28;
+            var maxWaist=(r1+r2)*0.5;
+            var waistR=Math.max(minWaist,maxWaist*Math.max(0.18,1-(stretchDist/280)*0.72));
+
+            var ux=(sx-anchor.x)/d,uy=(sy-anchor.y)/d;
+            var nx=-uy,ny=ux;
+            var midX=(anchor.x+sx)*0.5,midY=(anchor.y+sy)*0.5;
+            var w1=[midX-nx*waistR,midY-ny*waistR];
+            var w2=[midX+nx*waistR,midY+ny*waistR];
+
+            var chain1=[];
+            var cur=idxMin;
+            while(true){
+                chain1.push(cur);
+                if(cur===idxMax)break;
+                cur=(cur+1)%nH;
+            }
+
+            var chain2=[];
+            cur=idxMax;
+            while(true){
+                chain2.push(cur);
+                if(cur===idxMin)break;
+                cur=(cur+1)%nH;
+            }
+
+            var sumD1=0;
+            for(var c=0;c<chain1.length;c++){
+                var p1=restHull[chain1[c]];
+                sumD1+=Math.hypot(p1[0]-sx,p1[1]-sy);
+            }
+            var avgD1=sumD1/chain1.length;
+
+            var sumD2=0;
+            for(var c=0;c<chain2.length;c++){
+                var p2=restHull[chain2[c]];
+                sumD2+=Math.hypot(p2[0]-sx,p2[1]-sy);
+            }
+            var avgD2=sumD2/chain2.length;
+
+            var farChain=avgD1>=avgD2?chain1:chain2;
+            var startIdx=farChain[0];
+            var endIdx=farChain[farChain.length-1];
+
+            var endPt=restHull[endIdx];
+            var startPt=restHull[startIdx];
+            var firstWaist=Math.hypot(endPt[0]-w1[0],endPt[1]-w1[1])<Math.hypot(endPt[0]-w2[0],endPt[1]-w2[1])?w1:w2;
+            var secondWaist=firstWaist===w1?w2:w1;
+
+            var a1=Math.atan2(firstWaist[1]-sy,firstWaist[0]-sx);
+            var a2=Math.atan2(secondWaist[1]-sy,secondWaist[0]-sx);
+            var sweep=a2-a1;
+            while(sweep>Math.PI*2)sweep-=Math.PI*2;
+            while(sweep<0)sweep+=Math.PI*2;
+            if(sweep<=Math.PI)sweep-=Math.PI*2;
+
+            var sArc=[];
+            var arcSamples=9;
+            for(var s=1;s<arcSamples;s++){
+                var as=a1+(s/arcSamples)*sweep;
+                sArc.push([sx+Math.cos(as)*sr,sy+Math.sin(as)*sr]);
+            }
+
+            var combined=[];
+            for(var k=0;k<farChain.length;k++){
+                combined.push(restHull[farChain[k]]);
+            }
+            combined.push(firstWaist);
+            for(var k=0;k<sArc.length;k++){
+                combined.push(sArc[k]);
+            }
+            combined.push(secondWaist);
+
+            return cellCurveGen(combined);
+        }
+        function buildHumanCellMembrane(nodes){
+            if(!nodes||!nodes.length)return '';
+            var pad=26;
+            var pts=nodes.map(function(n){
+                return {x:Number(n.x)||0,y:Number(n.y)||0,r:Math.max(14,Number(n.r)||16)+pad};
+            });
+            if(pts.length===1){
+                var p=pts[0],r=p.r,samples=[],count=16;
+                for(var i=0;i<count;i++){
+                    var a=(i/count)*Math.PI*2;
+                    samples.push([p.x+Math.cos(a)*r,p.y+Math.sin(a)*r]);
+                }
+                return cellCurveGen(samples);
+            }
+            if(pts.length===2){
+                return buildTwoCellBridge(pts[0],pts[1]);
+            }
+            var maxStretchDist=0,stretchedNode=null,anchorNode=null;
+            for(var i=0;i<pts.length;i++){
+                var ni=pts[i],minDist=Infinity,closest=null;
+                for(var j=0;j<pts.length;j++){
+                    if(i===j)continue;
+                    var dist=Math.hypot(ni.x-pts[j].x,ni.y-pts[j].y);
+                    if(dist<minDist){minDist=dist;closest=pts[j];}
+                }
+                var rSum=ni.r+(closest?closest.r:30);
+                if(minDist>rSum*1.15&&minDist>maxStretchDist){
+                    maxStretchDist=minDist;
+                    stretchedNode=ni;
+                    anchorNode=closest;
+                }
+            }
+            if(stretchedNode){
+                var restNodes=pts.filter(function(n){return n!==stretchedNode;});
+                var stretchedPath=buildStretchedClusterPath(restNodes,stretchedNode);
+                if(stretchedPath)return stretchedPath;
+            }
+            var samples=16,ptsAll=[];
+            pts.forEach(function(n){
+                for(var i=0;i<samples;i++){
+                    var a=(i/samples)*Math.PI*2;
+                    ptsAll.push([n.x+Math.cos(a)*n.r,n.y+Math.sin(a)*n.r]);
+                }
+            });
+            var hull=d3.polygonHull(ptsAll);
+            if(!hull||hull.length<3)return '';
+            return cellCurveGen(hull);
+        }
         function updateHulls(){
             hullLayer.selectAll('*').remove();
             var live=(simRef.current&&simRef.current.nodes())||nodes;
@@ -12267,18 +12463,34 @@ function App(){
                     }
                     return;
                 }
-                var pts=[];
+                var cellNodes=[];
                 leftover.forEach(function(n){
                     var xy=liveGraphNodeXY(n);
                     if(!xy)return;
-                    pts.push([xy.x-30,xy.y-30],[xy.x+30,xy.y-30],[xy.x-30,xy.y+30],[xy.x+30,xy.y+30]);
+                    cellNodes.push({x:xy.x,y:xy.y,r:Math.max(14,n.r||(typeof getR==='function'?getR(n):16))});
                 });
-                if(pts.length<3)return;
-                var hull=d3.polygonHull(pts);
-                if(hull){
-                    hullLayer.append('path').attr('d','M'+hull.join('L')+'Z').attr('fill',color).attr('fill-opacity',0.04).attr('stroke',color).attr('stroke-width',2).attr('stroke-opacity',0.25).attr('rx',8);
-                    var cx=d3.mean(leftover,function(n){var xy=liveGraphNodeXY(n);return xy?xy.x:null;}),cy=d3.min(leftover,function(n){var xy=liveGraphNodeXY(n);return xy?xy.y:null;})-38;
-                    hullLayer.append('text').attr('class','hull-label').attr('x',cx).attr('y',cy).attr('text-anchor','middle').attr('fill',color).attr('font-size',keepReadable?'11px':'10px').attr('font-family','JetBrains Mono').attr('font-weight','600').attr('opacity',0.85).text(f||'root');
+                if(!cellNodes.length)return;
+                var pathD=buildHumanCellMembrane(cellNodes);
+                if(pathD){
+                    hullLayer.append('path')
+                        .attr('d',pathD)
+                        .attr('class','human-cell-membrane')
+                        .attr('fill',color)
+                        .attr('fill-opacity',0.06)
+                        .attr('stroke',color)
+                        .attr('stroke-width',2)
+                        .attr('stroke-opacity',0.35)
+                        .attr('stroke-linecap','round')
+                        .attr('stroke-linejoin','round');
+                    var cx=d3.mean(cellNodes,function(n){return n.x;});
+                    var minY=d3.min(cellNodes,function(n){return n.y-(n.r||16)-30;});
+                    hullLayer.append('text').attr('class','hull-label')
+                        .attr('x',cx).attr('y',minY)
+                        .attr('text-anchor','middle').attr('fill',color)
+                        .attr('font-size',keepReadable?'11px':'10px')
+                        .attr('font-family','JetBrains Mono').attr('font-weight','600')
+                        .attr('opacity',0.85)
+                        .text(f||'root');
                 }
             });
             if(part){
