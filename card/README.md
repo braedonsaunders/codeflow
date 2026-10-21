@@ -1,8 +1,8 @@
 # CodeFlow Card
 
-A GitHub Action that drops a slick auto-updating SVG card on your README — health grade, scale, fragility, hidden costs — recomputed every merge by [codeflow](https://github.com/braedonsaunders/codeflow).
+A GitHub Action that drops a slick auto-updating SVG card on your README ظ¤ health grade, scale, fragility, hidden costs ظ¤ recomputed every merge by [codeflow](https://github.com/braedonsaunders/codeflow).
 
-The card uses the **same analyzer** as the codeflow web app. There's no separate parser, no version drift — the Action reads codeflow's `index.html` and runs its analyzer in a Node `vm`.
+The card uses the **same analyzer** as the codeflow web app. There's no separate parser, no version drift ظ¤ the Action reads codeflow's `index.html` and runs its analyzer in a Node `vm`.
 
 ## Headless analysis
 
@@ -74,10 +74,10 @@ The Action commits the rendered SVG to `.github/codeflow-card.svg` (overwriting 
 
 ## What's on the card
 
-- **Health** — letter grade (A+ → F) with delta arrow vs the last run, plus the underlying score.
-- **Scale** — files / functions / LOC / languages, each with a 30-run sparkline (after the second run).
-- **Fragility** — top 3 highest-blast-radius files. The numbers nobody usually shows.
-- **Hidden costs** — circular deps, dead code %, average coupling. Lower-is-better arrows.
+- **Health** ظ¤ letter grade (A+ ظْ F) with delta arrow vs the last run, plus the underlying score.
+- **Scale** ظ¤ files / functions / LOC / languages, each with a 30-run sparkline (after the second run).
+- **Fragility** ظ¤ top 3 highest-blast-radius files. The numbers nobody usually shows.
+- **Hidden costs** ظ¤ circular deps, dead code %, average coupling. Lower-is-better arrows.
 
 ## PR receipts (opt-in)
 
@@ -89,10 +89,10 @@ PR #482  @yourhandle
 --------------------------
 LOC           +312
 functions     +4
-dead code     −1
-circular deps −1
-blast radius  23 → 18 ▼
-health        B+ → A- ▲
+dead code     ظêْ1
+circular deps ظêْ1
+blast radius  23 ظْ 18 ظû╝
+health        B+ ظْ A- ظû▓
 --------------------------
    thank you for your merge
 ```
@@ -101,7 +101,7 @@ The comment is sticky (updates in place via `<!-- codeflow-card:receipt -->` mar
 
 ## Notes
 
-- **First run**: with no history yet, sparklines and deltas don't render — the panels degrade gracefully.
+- **First run**: with no history yet, sparklines and deltas don't render ظ¤ the panels degrade gracefully.
 - **Permissions**: the workflow needs `contents: write` to commit the SVG, and `pull-requests: write` if `receipts: true`.
-- **CI cost**: analysis runs in pure Node (no Docker, no external APIs); typical run is 10–30 seconds depending on repo size.
+- **CI cost**: analysis runs in pure Node (no Docker, no external APIs); typical run is 10ظô30 seconds depending on repo size.
 - **Privacy**: nothing leaves the runner. Same guarantee as the codeflow web app.

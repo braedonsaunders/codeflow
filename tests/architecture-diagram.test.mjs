@@ -3,46 +3,21 @@ import { readdir, readFile } from 'node:fs/promises';
 import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import vm from 'node:vm';
+import { loadAnalyzerContext, repoRoot } from './load-analyzer.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(__dirname, '..');
-const htmlSource = await readFile(join(repoRoot, 'index.html'), 'utf8');
-const startMarker = '// ===== CODEFLOW_ANALYZER_START =====';
-const endMarker = '// ===== CODEFLOW_ANALYZER_END =====';
-const parserStart = htmlSource.indexOf(startMarker);
-const parserEnd = htmlSource.indexOf(endMarker, parserStart);
+const context = await loadAnalyzerContext();
 
-if (parserStart < 0 || parserEnd < 0) {
-  throw new Error('Could not locate analyzer source in index.html');
-}
-
-const context = {
-  console,
-  TreeSitter: undefined,
-  Babel: undefined,
-  acorn: undefined,
-  getSecurityScanContent(file) {
-    return file && file.content ? file.content : '';
-  },
-  isSanitizedPreviewRenderer() {
-    return false;
-  },
-};
-
-vm.createContext(context);
-vm.runInContext(
-  `${htmlSource.slice(parserStart, parserEnd)}\n` +
-    'this.Parser = Parser;' +
-    ' this.buildAnalysisData = buildAnalysisData;' +
-    ' this.buildArchitectureDiagram = buildArchitectureDiagram;' +
-    ' this.generateMermaidBlockDiagram = generateMermaidBlockDiagram;' +
-    ' this.getVisibleArchitectureBlocks = getVisibleArchitectureBlocks;' +
-    ' this.getArchitectureGroupOrder = getArchitectureGroupOrder;',
-  context
-);
-
-const { Parser, buildAnalysisData, buildArchitectureDiagram, generateMermaidBlockDiagram, getVisibleArchitectureBlocks, getArchitectureGroupOrder } = context;
+const {
+  Parser,
+  buildAnalysisData,
+  buildArchitectureDiagram,
+  generateMermaidBlockDiagram,
+  getVisibleArchitectureBlocks,
+  getArchitectureGroupOrder,
+  architectureRoleToLayer,
+  detectArchitectureProfile,
+} = context;
 
 async function collectRepoFiles(root) {
   const files = [];
@@ -290,4 +265,62 @@ test('web-app fixture classifies backend barrels and shared indexes without rout
     assert.equal(/src\/ui\/components\/index\.ts/i.test(files), false);
     assert.equal(/src\/platforms\/youtube\/schema\/index\.ts/i.test(files), false);
   }
+});
+
+test('architecture roles map onto canonical layers used by violation scoring', () => {
+  assert.equal(architectureRoleToLayer('frontend-route'), 'ui');
+  assert.equal(architectureRoleToLayer('frontend-component'), 'components');
+  assert.equal(architectureRoleToLayer('backend-services'), 'services');
+  assert.equal(architectureRoleToLayer('shared-module'), 'utils');
+  assert.equal(architectureRoleToLayer('config'), 'config');
+  assert.equal(architectureRoleToLayer('test'), 'test');
+});
+
+test('monorepo fixture uses stack profile, package groups, and hides build/tests', async () => {
+  const data = await analyzeFixture('monorepo-world');
+  const diagram = data.architectureDiagram;
+
+  assert.ok(diagram);
+  assert.equal(diagram.profile, 'monorepo');
+  assert.equal(
+    detectArchitectureProfile(
+      [
+        { path: 'apps/web/src/app/page.tsx' },
+        { path: 'apps/api/src/routes/users.ts' },
+        { path: 'packages/shared/src/format.ts' },
+      ],
+      'Next.js'
+    ),
+    'monorepo'
+  );
+
+  const visible = getVisibleArchitectureBlocks(diagram.blocks, false, false);
+  const groups = new Set(visible.map((block) => block.group));
+  assert.ok(groups.has('Apps'), 'expected Apps group, got: ' + [...groups].join(', '));
+  assert.ok(groups.has('API / Services') || groups.has('Shared Packages'));
+
+  const visiblePaths = visible.flatMap((block) => block.files || []);
+  assert.equal(
+    visiblePaths.some((path) => /(^|\/)dist\//i.test(path) || /(^|\/)tests\//i.test(path)),
+    false
+  );
+
+  const order = getArchitectureGroupOrder('monorepo');
+  assert.ok(order.indexOf('Apps') < order.indexOf('Shared Packages'));
+
+  assert.ok(
+    (data.layerViolations || []).some(
+      (v) =>
+        /packages\/shared\//.test(v.from) &&
+        /apps\/api\//.test(v.to) &&
+        v.fromLayer === 'utils' &&
+        v.toLayer === 'services'
+    ),
+    'expected utils→services violation from shared package into api app, got: ' +
+      JSON.stringify(data.layerViolations || [])
+  );
+
+  const mermaid = generateMermaidBlockDiagram(diagram, false, false);
+  assert.doesNotMatch(mermaid, /uses \d+ calls/i);
+  assert.doesNotMatch(mermaid, /Route \/apps\/web/i);
 });

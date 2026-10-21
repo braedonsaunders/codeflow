@@ -1,4 +1,4 @@
-// CodeFlow Card — GitHub Action entry point.
+// CodeFlow Card ظ¤ GitHub Action entry point.
 // Reads codeflow's analyzer out of index.html, runs it on the consuming repo,
 // renders an SVG card, optionally posts a PR receipt comment, then commits the
 // updated card + history file back to the repo.
@@ -83,12 +83,12 @@ async function run() {
   const outAbs = path.resolve(repoRoot, inputs.output);
   fs.mkdirSync(path.dirname(outAbs), { recursive: true });
   fs.writeFileSync(outAbs, svg);
-  log('wrote card → ' + path.relative(repoRoot, outAbs));
+  log('wrote card ظْ ' + path.relative(repoRoot, outAbs));
 
   // Append snapshot to state.
   const updatedState = appendRun(state, snapshot, inputs.sparklineWindow);
   writeState(stateAbs, updatedState);
-  log('wrote state → ' + path.relative(repoRoot, stateAbs));
+  log('wrote state ظْ ' + path.relative(repoRoot, stateAbs));
 
   // Receipt comment (opt-in, only on merged PRs).
   const isMergedPR =
@@ -117,7 +117,7 @@ async function run() {
       log('receipt post failed: ' + (e.message || e));
     }
   } else if (inputs.receipts) {
-    log('receipts enabled, but not a merged PR — skipping');
+    log('receipts enabled, but not a merged PR ظ¤ skipping');
   }
 
   // Commit changes back to the repo (skip when running outside a checkout).
@@ -136,7 +136,7 @@ async function run() {
       log('git commit failed: ' + (e.message || e));
     }
   } else {
-    log('local mode — skipping git commit');
+    log('local mode ظ¤ skipping git commit');
   }
 }
 

@@ -30,7 +30,7 @@ inputs:
     required: false
     default: 'compact'
   panels:
-    description: 'Only used when style=detailed. Comma-separated: grade, scale, languages, fragility, hidden-costs, patterns.'
+    description: 'Only used when style=detailed. Comma-separated: grade, scale, languages, composition, top-folders, fragility, hidden-costs. Empty string shows all of those panels.'
     required: false
     default: 'grade,scale'
   show-grade:
