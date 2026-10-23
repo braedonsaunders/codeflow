@@ -3,6 +3,8 @@
 
 'use strict';
 
+const { compareGrades } = require('../lib/grade.js');
+
 function diff(curr, prev) {
   if (prev == null || curr == null) return null;
   if (typeof curr !== 'number' || typeof prev !== 'number') return null;
@@ -25,11 +27,9 @@ function dirArrow(n, lowerIsBetter) {
 
 function gradeArrow(curr, prev) {
   if (!curr || !prev || curr === prev) return '';
-  const order = ['F', 'D', 'C', 'B', 'A'];
-  const c = order.indexOf(curr[0]);
-  const p = order.indexOf(prev[0]);
-  if (c > p) return ' ▲';
-  if (c < p) return ' ▼';
+  const cmp = compareGrades(curr, prev);
+  if (cmp > 0) return ' ▲';
+  if (cmp < 0) return ' ▼';
   return '';
 }
 

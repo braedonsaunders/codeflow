@@ -13,41 +13,14 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import vm from 'node:vm';
+import { loadAnalyzerContext, repoRoot } from './load-analyzer.mjs';
 
-const __dirname = fileURLToPath(new URL('.', import.meta.url));
-const repoRoot = join(__dirname, '..');
-const htmlSource = await readFileSync(join(repoRoot, 'index.html'), 'utf8');
+const htmlSource = readFileSync(join(repoRoot, 'index.html'), 'utf8');
 const startMarker = '// ===== CODEFLOW_ANALYZER_START =====';
 const endMarker = '// ===== CODEFLOW_ANALYZER_END =====';
-const parserStart = htmlSource.indexOf(startMarker);
-const parserEnd = htmlSource.indexOf(endMarker, parserStart);
 
-if (parserStart < 0 || parserEnd < 0) {
-  throw new Error('Could not locate analyzer source in index.html');
-}
-
-const context = {
-  console,
-  TreeSitter: undefined,
-  Babel: undefined,
-  acorn: undefined,
-  getSecurityScanContent(file) {
-    return file && file.content ? file.content : '';
-  },
-  isSanitizedPreviewRenderer() {
-    return false;
-  },
-};
-
-vm.createContext(context);
-vm.runInContext(
-  `${htmlSource.slice(parserStart, parserEnd)}\nthis.Parser = Parser;`,
-  context
-);
-
+const context = await loadAnalyzerContext();
 const { Parser } = context;
 
 function detectOn(files) {
@@ -57,8 +30,6 @@ function detectOn(files) {
 }
 
 test('self-scan: analyzer block source produces no security findings', () => {
-  // Synthetic standalone copy of just the analyzer block: pre-fix, the
-  // scanner flagged its own detection literals here (issue #91).
   const synthetic =
     htmlSource.slice(htmlSource.indexOf(startMarker), htmlSource.indexOf(endMarker)) +
     endMarker + '\n';
@@ -68,10 +39,6 @@ test('self-scan: analyzer block source produces no security findings', () => {
 });
 
 test('self-scan: analyzer-induced titles are gone from the real index.html report', () => {
-  // These three originate exclusively from detectSecurity's own source text
-  // (Shell( description strings, On Error Resume Next literals, TODO/FIXME
-  // lists). Remaining advisories about the UI region (innerHTML assignments,
-  // an eval() mention in a hint string) are out of scope for this fix.
   const issues = detectOn([{ name: 'index.html', path: 'index.html', content: htmlSource }]);
   const titles = new Set(issues.map((i) => i.title));
   assert.equal(titles.has('Shell Command Execution'), false);
@@ -81,9 +48,6 @@ test('self-scan: analyzer-induced titles are gone from the real index.html repor
 
 test('self-scan exemption preserves line numbers outside the analyzer block', () => {
   const pad = Array.from({ length: 40 }, (_, i) => '// filler line ' + (i + 1)).join('\n');
-  // The analyzer block itself contains eval( literals; this synthetic copy
-  // places an ADDITIONAL real finding after the END marker and checks that
-  // its reported line matches the original content's line numbering.
   const tail = [
     'module.exports = function run(userInput) {',
     '  return eval(userInput);',

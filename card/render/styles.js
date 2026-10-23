@@ -5,6 +5,7 @@
 
 const { getTheme } = require('./theme.js');
 const { sparkline } = require('./sparkline.js');
+const { compareGrades } = require('../lib/grade.js');
 
 const ALL_STYLES = ['compact', 'row', 'minimal', 'hero', 'detailed'];
 
@@ -36,12 +37,9 @@ function gradeColor(theme, grade) {
 
 function gradeArrow(curr, prev, theme) {
   if (!prev || !curr || curr === prev) return '';
-  const order = ['F', 'D', 'C', 'B', 'A'];
-  const ci = order.indexOf(curr[0]);
-  const pi = order.indexOf(prev[0]);
-  if (ci < 0 || pi < 0) return '';
-  if (ci > pi) return '<tspan dx="6" font-size="14" fill="' + theme.green + '">▲</tspan>';
-  if (ci < pi) return '<tspan dx="6" font-size="14" fill="' + theme.red + '">▼</tspan>';
+  const cmp = compareGrades(curr, prev);
+  if (cmp > 0) return '<tspan dx="6" font-size="14" fill="' + theme.green + '">▲</tspan>';
+  if (cmp < 0) return '<tspan dx="6" font-size="14" fill="' + theme.red + '">▼</tspan>';
   return '';
 }
 
