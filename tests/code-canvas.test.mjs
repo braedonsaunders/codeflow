@@ -47,6 +47,14 @@ test('color blocks replace fine chrome below the CodeCanvas zoom threshold', () 
   assert.ok(context.graphColorBlockSize({ fnCount: 20 }) > context.graphColorBlockSize({ fnCount: 0 }));
 });
 
+test('graph node radius keeps labels readable and scales with functions', () => {
+  assert.ok(context.graphNodeRadius({ fnCount: 0 }) >= 16);
+  assert.ok(context.graphNodeRadius({ fnCount: 20 }) > context.graphNodeRadius({ fnCount: 0 }));
+  assert.ok(context.graphNodeRadius({ fnCount: 100 }) <= 34);
+  assert.match(htmlSource, /dominant-baseline','central'/);
+  assert.match(htmlSource, /function getR\(d\)\{return graphNodeRadius\(d\);\}/);
+});
+
 test('zoom-out color blocks avoid red and green diff colors', () => {
   ['fn', 'import', 'export', 'var', 'file', 'class'].forEach((kind) => {
     const fill = context.codeColorBlockKindColor(kind);
@@ -2776,10 +2784,12 @@ test('UI prefs persist line thickness in localStorage', () => {
   const storage = memoryStorage();
   assert.equal(context.readUiPrefs(storage).lineThickness, 1);
   assert.equal(context.readUiPrefs(storage).codeViewRootGate, 25);
+  assert.equal(context.readUiPrefs(storage).architectureLayerRules, 'classic');
   assert.equal(context.readUiPrefs(null).lineThickness, 1);
-  const written = context.writeUiPrefs(storage, { lineThickness: 5 });
+  const written = context.writeUiPrefs(storage, { lineThickness: 5, architectureLayerRules: 'strict' });
   assert.equal(written.lineThickness, 5);
   assert.equal(written.codeViewRootGate, 25);
+  assert.equal(written.architectureLayerRules, 'strict');
   assert.equal(context.readUiPrefs(storage).lineThickness, 5);
   assert.equal(context.writeUiPrefs(storage, { lineThickness: 99 }).lineThickness, 6);
   const gated = context.writeUiPrefs(storage, { codeViewRootGate: 75 });

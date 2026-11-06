@@ -309,6 +309,24 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .lang-item{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--t2)}
 .lang-dot{width:8px;height:8px;border-radius:2px}
 .loc-stat{text-align:center;padding:8px;background:var(--bg0);border:1px solid var(--border2);border-radius:6px;margin-top:8px}
+.overview-section{margin-top:12px;padding:10px;background:var(--bg0);border:1px solid var(--border2);border-radius:6px}
+.overview-section-title{font-size:9px;font-weight:600;color:var(--t3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:8px}
+.health-factor{display:grid;grid-template-columns:1fr auto;gap:2px 8px;align-items:center;margin-bottom:7px}
+.health-factor:last-child{margin-bottom:0}
+.health-factor-label{font-size:10px;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.health-factor-meta{font-size:9px;color:var(--t3);font-variant-numeric:tabular-nums}
+.health-factor-bar{grid-column:1/-1;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden}
+.health-factor-fill{height:100%;border-radius:2px;background:var(--acc);opacity:0.85}
+.health-factor-fill.warn{background:var(--orange)}
+.health-factor-fill.bad{background:var(--red)}
+.fragile-row{display:flex;align-items:center;gap:8px;padding:6px 4px;border-radius:4px;cursor:pointer}
+.fragile-row:hover{background:var(--hover)}
+.fragile-rank{width:16px;height:16px;border-radius:4px;background:var(--bg3);color:var(--t3);font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.fragile-info{flex:1;min-width:0}
+.fragile-name{font-size:10px;color:var(--t0);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fragile-meta{font-size:8px;color:var(--t3);margin-top:1px}
+.fragile-score{font-size:10px;font-weight:700;color:var(--acc);flex-shrink:0;font-variant-numeric:tabular-nums}
+.fragile-empty{font-size:10px;color:var(--t3);padding:4px 0}
 .loc-value{font-size:20px;font-weight:700;color:var(--acc)}
 .loc-label{font-size:9px;color:var(--t3);text-transform:uppercase}
 .unused-fn{background:var(--bg0);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden}
@@ -401,6 +419,29 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .architecture-list{display:flex;flex-direction:column;gap:6px}
 .architecture-list-item{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--t2);min-width:0}
 .architecture-list-item span:last-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.arch-violation{padding:8px;margin-bottom:6px;border-radius:6px;background:rgba(255,95,95,0.06);border:1px solid rgba(255,95,95,0.22);cursor:pointer}
+.arch-violation:hover{border-color:var(--red);background:rgba(255,95,95,0.1)}
+.arch-violation:last-child{margin-bottom:0}
+.arch-violation-edge{font-size:10px;font-weight:600;color:var(--t0);display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+.arch-violation-file{color:var(--acc);cursor:pointer}
+.arch-violation-file:hover{text-decoration:underline}
+.arch-violation-layers{font-size:9px;color:var(--red);margin-top:3px}
+.arch-violation-hint{font-size:9px;color:var(--t3);margin-top:4px;line-height:1.4}
+.arch-violation-empty{font-size:10px;color:var(--t3);padding:4px 0}
+.architecture-list-item.selected{background:var(--accbg);color:var(--acc);border-radius:4px;padding:4px 6px;margin:0 -6px}
+.architecture-list-item{cursor:pointer}
+.architecture-list-item:hover{color:var(--t0)}
+.arch-inspect-files{margin-top:8px;display:flex;flex-direction:column;gap:4px}
+.arch-inspect-file{font-size:9px;color:var(--acc);font-family:monospace;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arch-inspect-file:hover{text-decoration:underline}
+.arch-rules-row{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+.arch-rules-row label{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:0.4px}
+.arch-rules-row select{flex:1;min-width:140px;font-size:10px;font-family:inherit;background:var(--bg0);color:var(--t0);border:1px solid var(--border);border-radius:6px;padding:4px 8px}
+.mermaid-render g.node{cursor:pointer}
+.mermaid-render g.node.arch-node-selected rect,
+.mermaid-render g.node.arch-node-selected polygon,
+.mermaid-render g.node.arch-node-selected circle,
+.mermaid-render g.node.arch-node-selected path{stroke:var(--acc)!important;stroke-width:3px!important;filter:drop-shadow(0 0 4px rgba(0,255,157,0.35))}
 .pr-impact-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .pr-impact-card{background:var(--bg0);border:1px solid var(--border);border-radius:10px;padding:14px;overflow:hidden}
 .pr-impact-card-title{font-size:10px;font-weight:600;color:var(--t3);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:6px}
@@ -1634,9 +1675,13 @@ const Parser={
         // Create fingerprint string
         return 'L'+patterns.loops+'C'+patterns.conditions+'F'+patterns.calls+'R'+patterns.returns+'S'+patterns.len;
     },
-    detectLayerViolations:function(files,connections){
+    detectLayerViolations:function(files,connections,options){
+        options=options||{};
+        var preset=getArchitectureLayerRulePreset(options.preset||options.rules||'classic');
+        if(preset.disabled)return[];
         var violations=[];
-        var layerOrder={presentation:0,ui:0,component:0,components:0,page:0,view:0,feature:1,service:2,services:2,api:2,data:3,model:3,util:4,utils:4,helper:4,lib:4,core:4,config:5,test:6,modules:5,forms:0,classes:3};
+        var layerOrder=options.layerOrder||preset.layerOrder;
+        var minGap=options.minGap!=null?options.minGap:preset.minGap;
         var fileByPath={};
         files.forEach(function(f){fileByPath[f.path]=f;});
         connections.forEach(function(c){
@@ -1654,7 +1699,8 @@ const Parser={
             var importedLevel=layerOrder[importedLayer];
             var importerLevel=layerOrder[importerLayer];
             // Violation: a more-foundational file (higher level number) imports from a higher-up layer.
-            if(importerLevel!==undefined&&importedLevel!==undefined&&importerLevel>importedLevel&&importerLevel-importedLevel>1){
+            // classic minGap=1 (skip adjacent); strict minGap=0 (any upward).
+            if(importerLevel!==undefined&&importedLevel!==undefined&&importerLevel>importedLevel&&importerLevel-importedLevel>minGap){
                 violations.push({
                     from:importerFile.path,
                     fromLayer:importerFile.layer,
@@ -3771,6 +3817,24 @@ function countFiles(n){return n.files.length+Object.values(n.children).reduce(fu
 
 var ARCHITECTURE_MAX_BLOCKS=64;
 var ARCHITECTURE_MAX_RENDERED_DEPENDENCIES=48;
+var ARCHITECTURE_LAYER_ORDER_DEFAULT={presentation:0,ui:0,component:0,components:0,page:0,view:0,feature:1,service:2,services:2,api:2,data:3,model:3,util:4,utils:4,helper:4,lib:4,core:4,config:5,test:6,modules:5,forms:0,classes:3};
+
+function normalizeArchitectureLayerRule(value){
+    var v=String(value==null?'classic':value).toLowerCase();
+    if(v==='strict'||v==='off'||v==='classic')return v;
+    return'classic';
+}
+
+function getArchitectureLayerRulePreset(id){
+    var key=normalizeArchitectureLayerRule(id);
+    if(key==='off')return{id:'off',label:'Off',disabled:true,minGap:1,layerOrder:ARCHITECTURE_LAYER_ORDER_DEFAULT};
+    if(key==='strict')return{id:'strict',label:'Strict (any upward)',disabled:false,minGap:0,layerOrder:ARCHITECTURE_LAYER_ORDER_DEFAULT};
+    return{id:'classic',label:'Classic (skip adjacent)',disabled:false,minGap:1,layerOrder:ARCHITECTURE_LAYER_ORDER_DEFAULT};
+}
+
+function listArchitectureLayerRulePresets(){
+    return['classic','strict','off'].map(getArchitectureLayerRulePreset);
+}
 var ARCHITECTURE_GROUP_ORDER_CODEFLOW=['Browser App','GitHub Action','Analysis Core','Repository Collection','Rendering / Reports','Testing','Fixtures / Examples','Application','Storage'];
 var ARCHITECTURE_GROUP_ORDER_WEBAPP=['App Entry / Shell','Frontend Routes / Views','Frontend Components','Backend / API Layer','Services / Business Logic','Data / Storage','Shared / Utilities','Configuration','Content / Data','External Integrations','Build Output','Testing','Fixtures / Examples'];
 var ARCHITECTURE_GROUP_ORDER_GENERIC=['Application','Shared Services / Utils','Configuration','Content / Data','Build Output','Testing','Fixtures / Examples','Storage'];
@@ -4432,7 +4496,7 @@ function extractArchitectureFacts(files,framework){
             route:classified.route,
             displayTitle:displayTitle,
             role:role,
-            group:inferArchitectureGroup(role,{kind:classified.kind},profile),
+            group:inferArchitectureGroup(role,{kind:classified.kind,path:path},profile),
             profile:profile,
             isTest:isArchitectureTestFile(path),
             isFixture:isArchitectureFixtureFile(path),
@@ -5047,6 +5111,103 @@ function getVisibleArchitectureBlocks(blocks,includeTests,includeBuildOutput){
         if(block.isTest||block.isFixture)return !!includeTests;
         return true;
     });
+}
+
+function summarizeArchitectureViolations(violations,options){
+    options=options||{};
+    var max=options.max==null?12:options.max;
+    var list=Array.isArray(violations)?violations:[];
+    var seen=Object.create(null);
+    var unique=[];
+    for(var i=0;i<list.length;i++){
+        var v=list[i];
+        if(!v||!v.from||!v.to)continue;
+        var key=v.from+'\0'+v.to;
+        if(seen[key]){
+            if(v.fn&&seen[key].fns.indexOf(v.fn)<0)seen[key].fns.push(v.fn);
+            continue;
+        }
+        var entry={
+            from:v.from,
+            to:v.to,
+            fromLayer:v.fromLayer||'',
+            toLayer:v.toLayer||'',
+            suggestion:v.suggestion||'',
+            fns:v.fn?[v.fn]:[],
+            fromName:(String(v.from).split('/').pop())||v.from,
+            toName:(String(v.to).split('/').pop())||v.to
+        };
+        seen[key]=entry;
+        unique.push(entry);
+    }
+    return{
+        total:list.length,
+        unique:unique.length,
+        items:unique.slice(0,max),
+        truncated:Math.max(0,unique.length-max)
+    };
+}
+
+function countArchitectureGroupViolations(groupBlocks,violations){
+    var paths=Object.create(null);
+    (groupBlocks||[]).forEach(function(block){
+        (block.files||[]).forEach(function(path){if(path)paths[path]=true;});
+    });
+    var seen=Object.create(null);
+    var count=0;
+    (violations||[]).forEach(function(v){
+        if(!v||!v.from||!v.to)return;
+        if(!paths[v.from]&&!paths[v.to])return;
+        var key=v.from+'\0'+v.to;
+        if(seen[key])return;
+        seen[key]=true;
+        count++;
+    });
+    return count;
+}
+
+function resolveArchitectureBlockIdFromTarget(target,blockIds){
+    var ids=Array.isArray(blockIds)?blockIds:[];
+    if(!ids.length||!target)return null;
+    var idSet=Object.create(null);
+    ids.forEach(function(id){if(id)idSet[id]=true;});
+    var el=target;
+    var depth=0;
+    while(el&&depth<12){
+        var rawId=el.id||(el.getAttribute&&el.getAttribute('id'))||'';
+        if(rawId){
+            if(idSet[rawId])return rawId;
+            // Mermaid flowchart ids look like flowchart-<nodeId>-<n>
+            var m=String(rawId).match(/^flowchart-(.+?)-\d+$/);
+            if(m&&idSet[m[1]])return m[1];
+            for(var i=0;i<ids.length;i++){
+                var bid=ids[i];
+                if(bid&&(rawId===bid||rawId.indexOf('flowchart-'+bid+'-')===0))return bid;
+            }
+        }
+        var dataId=el.getAttribute&&(el.getAttribute('data-id')||el.getAttribute('data-node-id'));
+        if(dataId&&idSet[dataId])return dataId;
+        if(el.classList){
+            for(var j=0;j<ids.length;j++){
+                if(ids[j]&&el.classList.contains(ids[j]))return ids[j];
+            }
+        }
+        el=el.parentElement||el.parentNode;
+        depth++;
+    }
+    return null;
+}
+
+function applyArchitectureNodeSelection(svg,selectedId){
+    if(!svg)return;
+    var nodes=svg.querySelectorAll('g.node');
+    for(var i=0;i<nodes.length;i++){
+        var node=nodes[i];
+        var raw=node.id||'';
+        var match=!!selectedId&&(raw===selectedId||raw.indexOf('flowchart-'+selectedId+'-')===0||(node.classList&&node.classList.contains(selectedId)));
+        if(match)node.classList.add('arch-node-selected');
+        else node.classList.remove('arch-node-selected');
+    }
 }
 
 function computeArchitectureStats(blocks,dependencies){
@@ -8478,10 +8639,6 @@ function runAnalysisData(options){
 }
 // ===== CODEFLOW_ANALYZER_END =====
 
-// ---------------------------------------------------------------------------
-// Visualization Helpers
-// ---------------------------------------------------------------------------
-
 // ===== CODEFLOW_METRICS_START =====
 function calcBlast(fileId,conns,files){
     // Comprehensive impact analysis for a file
@@ -8570,25 +8727,66 @@ function calcBlast(fileId,conns,files){
 }
 
 function calcHealth(data){
-    if(!data)return{score:0,grade:'F'};
+    if(!data)return{score:0,grade:'F',breakdown:[]};
     var score=100;
     var deadPct=data.stats.functions>0?(data.stats.dead/data.stats.functions*100):0;
-    score-=Math.min(20,deadPct);
-    var circular=data.issues.filter(function(i){return i.title.includes('Circular');}).length;
-    score-=Math.min(20,circular*5);
-    var god=data.issues.filter(function(i){return i.title.includes('Large');}).length;
-    score-=Math.min(15,god*3);
+    var deadPenalty=Math.min(20,deadPct);
+    score-=deadPenalty;
+    // Score still uses issue-object presence (historic formula). Breakdown details use item counts.
+    var circularIssues=(data.issues||[]).filter(function(i){return i.title&&i.title.includes('Circular');});
+    var circularPenalty=Math.min(20,circularIssues.length*5);
+    score-=circularPenalty;
+    var godIssues=(data.issues||[]).filter(function(i){return i.title&&i.title.includes('Large');});
+    var godPenalty=Math.min(15,godIssues.length*3);
+    score-=godPenalty;
     var avgCoup=data.stats.files>0?(data.stats.connections/data.stats.files):0;
-    score-=Math.min(15,Math.max(0,avgCoup-3)*2);
+    var coupPenalty=Math.min(15,Math.max(0,avgCoup-3)*2);
+    score-=coupPenalty;
     var sec=data.securityIssues?data.securityIssues.filter(function(i){return i.severity==='high';}).length:0;
-    score-=Math.min(20,sec*5);
+    var secPenalty=Math.min(20,sec*5);
+    score-=secPenalty;
     score=Math.max(0,Math.round(score));
     var grade='F';
     if(score>=90)grade='A';else if(score>=80)grade='B';else if(score>=70)grade='C';else if(score>=60)grade='D';
-    return{score:score,grade:grade};
+    function issueItemCount(issues){
+        var total=0;
+        for(var i=0;i<issues.length;i++){
+            if(issues[i]&&Array.isArray(issues[i].items))total+=issues[i].items.length;
+            else total+=1;
+        }
+        return total;
+    }
+    var breakdown=[
+        {key:'dead',label:'Dead code',detail:Math.round(deadPct)+'%',penalty:Math.round(deadPenalty),max:20},
+        {key:'cycles',label:'Circular deps',detail:String(issueItemCount(circularIssues)),penalty:Math.round(circularPenalty),max:20},
+        {key:'god',label:'Large files',detail:String(issueItemCount(godIssues)),penalty:Math.round(godPenalty),max:15},
+        {key:'coupling',label:'Coupling',detail:avgCoup.toFixed(1)+'/file',penalty:Math.round(coupPenalty*10)/10,max:15},
+        {key:'security',label:'High security',detail:String(sec),penalty:Math.round(secPenalty),max:20}
+    ];
+    return{score:score,grade:grade,breakdown:breakdown};
+}
+
+function topFragileFiles(data,n){
+    if(!data||!Array.isArray(data.files))return[];
+    n=n==null?3:n;
+    var ranked=[];
+    for(var i=0;i<data.files.length;i++){
+        var file=data.files[i];
+        if(!file||!file.isCode)continue;
+        var blast;
+        try{blast=calcBlast(file.path,data.connections,data.files);}catch(e){continue;}
+        var direct=(blast&&blast.count)||0;
+        var transitive=(blast&&blast.transitiveCount)||0;
+        var total=direct+transitive;
+        if(total===0)continue;
+        ranked.push({path:file.path,name:file.name||file.path.split('/').pop(),direct:direct,transitive:transitive,total:total,level:(blast&&blast.level)||'low'});
+    }
+    ranked.sort(function(a,b){return b.total-a.total;});
+    return ranked.slice(0,n);
 }
 // ===== CODEFLOW_METRICS_END =====
 
+// Visualization Helpers
 // ===== CODEFLOW_CANVAS_START =====
 var ANALYSIS_CACHE_DB='codeflow-recents';
 var ANALYSIS_CACHE_STORE='analyses';
@@ -8630,7 +8828,7 @@ function clampCodeViewRootGate(value){
 }
 
 function defaultUiPrefs(){
-    return{lineThickness:LINE_THICKNESS_DEFAULT,codeViewRootGate:CODE_VIEW_ROOT_GATE_DEFAULT};
+    return{lineThickness:LINE_THICKNESS_DEFAULT,codeViewRootGate:CODE_VIEW_ROOT_GATE_DEFAULT,architectureLayerRules:'classic'};
 }
 
 function normalizeUiPrefs(prefs){
@@ -8638,6 +8836,9 @@ function normalizeUiPrefs(prefs){
     var next=defaultUiPrefs();
     if(prefs.lineThickness!=null)next.lineThickness=clampLineThickness(prefs.lineThickness);
     next.codeViewRootGate=CODE_VIEW_ROOT_GATE_DEFAULT;
+    next.architectureLayerRules=typeof normalizeArchitectureLayerRule==='function'
+        ?normalizeArchitectureLayerRule(prefs.architectureLayerRules)
+        :(prefs.architectureLayerRules==='strict'||prefs.architectureLayerRules==='off'?prefs.architectureLayerRules:'classic');
     return next;
 }
 
@@ -9813,9 +10014,14 @@ function zoomHidesCodeText(k){
     return zoom<CODE_FAR_ZOOM;
 }
 
+function graphNodeRadius(d){
+    // Keep bubbles large enough for readable centered labels.
+    return Math.max(16,Math.min(34,12+((d&&d.fnCount)||0)*0.95));
+}
+
 function graphColorBlockSize(d){
-    var r=Math.max(8,Math.min(24,5+((d&&d.fnCount)||0)*0.8));
-    return Math.max(22,r*2+4);
+    var r=graphNodeRadius(d);
+    return Math.max(28,r*2+4);
 }
 
 function graphColorBlockScale(k){
@@ -10669,7 +10875,7 @@ function codeCardCollisionRadius(size){
 
 function liveCodeCollideRadius(node,size){
     if(size)return codeCardCollisionRadius(size);
-    return Math.max(8,Math.min(24,5+((node&&node.fnCount)||0)*0.8))+12;
+    return graphNodeRadius(node)+14;
 }
 
 function layoutCodeCardsByFolder(files,sizesByPath,options){
@@ -12621,6 +12827,8 @@ function App(){
     var _arch=useState({scale:1,x:0,y:0}),architectureViewport=_arch[0],setArchitectureViewport=_arch[1];
     var _archDrag=useState(false),architectureDragging=_archDrag[0],setArchitectureDragging=_archDrag[1];
     var _archTests=useState(false),architectureIncludeTests=_archTests[0],setArchitectureIncludeTests=_archTests[1];
+    var _archBlock=useState(null),selectedArchitectureBlockId=_archBlock[0],setSelectedArchitectureBlockId=_archBlock[1];
+    var _archRules=useState(readUiPrefs().architectureLayerRules||'classic'),architectureLayerRules=_archRules[0],setArchitectureLayerRules=_archRules[1];
     var _archBuild=useState(false),architectureIncludeBuildOutput=_archBuild[0],setArchitectureIncludeBuildOutput=_archBuild[1];
     var _recents=useState([]),recentAnalyses=_recents[0],setRecentAnalyses=_recents[1];
     var _cachedId=useState(null),cachedFromId=_cachedId[0],setCachedFromId=_cachedId[1];
@@ -12777,6 +12985,7 @@ function App(){
                     return;
                 }
                 normalizeArchitectureSvg(svg);
+                applyArchitectureNodeSelection(svg,selectedArchitectureBlockId);
                 requestAnimationFrame(function(){
                     if(!cancelled)fitArchitectureViewport();
                 });
@@ -12789,6 +12998,18 @@ function App(){
         }
         return function(){cancelled=true;};
     },[data,graphConfig.vizType,theme,architectureIncludeTests,architectureIncludeBuildOutput]);
+
+    useEffect(function(){
+        var container=architectureRenderRef.current;
+        var svg=container?container.querySelector('.architecture-pan svg'):null;
+        applyArchitectureNodeSelection(svg,selectedArchitectureBlockId);
+    },[selectedArchitectureBlockId,graphConfig.vizType,data]);
+
+    useEffect(function(){
+        if(graphConfig.vizType!=='architecture'&&selectedArchitectureBlockId){
+            setSelectedArchitectureBlockId(null);
+        }
+    },[graphConfig.vizType]);
 
     useEffect(function(){
         var container=architectureRenderRef.current;
@@ -12903,6 +13124,27 @@ function App(){
         document.addEventListener('keydown',onKeyDown);
         return function(){document.removeEventListener('keydown',onKeyDown);};
     },[pendingRecentDelete]);
+
+    useEffect(function(){
+        var anyModal=showExport||showExcludeModal||showPR||showPrivacy||showKeyModal||showUnused||!!drillDown||!!filePreview;
+        if(!anyModal)return;
+        function onKeyDown(e){
+            if(e.key!=='Escape')return;
+            // Dedicated handlers own confirm / named-group / recent-delete.
+            if(confirmDialog||namedGroupNameDialog||pendingRecentDelete)return;
+            e.preventDefault();
+            if(filePreview){setFilePreview(null);return;}
+            if(drillDown){setDrillDown(null);return;}
+            if(showExport){setShowExport(false);return;}
+            if(showExcludeModal){closeExcludeModal();return;}
+            if(showPR){setShowPR(false);return;}
+            if(showPrivacy){setShowPrivacy(false);return;}
+            if(showKeyModal){setShowKeyModal(false);return;}
+            if(showUnused){setShowUnused(false);}
+        }
+        document.addEventListener('keydown',onKeyDown);
+        return function(){document.removeEventListener('keydown',onKeyDown);};
+    },[showExport,showExcludeModal,showPR,showPrivacy,showKeyModal,showUnused,drillDown,filePreview,confirmDialog,namedGroupNameDialog,pendingRecentDelete]);
 
     useEffect(function(){
         var params=new URLSearchParams(window.location.search);
@@ -14877,7 +15119,7 @@ function App(){
             if(!linkMap.get(k).fn&&c.fn)linkMap.get(k).fn=c.fn;
         });
         var links=Array.from(linkMap.values());
-        function getR(d){return Math.max(8,Math.min(24,5+d.fnCount*0.8));}
+        function getR(d){return graphNodeRadius(d);}
         function getC(d){
             if(colorMode==='folder')return colorMap[d.folder]||COLORS[0];
             if(colorMode==='layer')return LAYER_COLORS[d.layer]||LAYER_COLORS['utils'];
@@ -15159,7 +15401,7 @@ function App(){
         node.append('rect').attr('class','nb').attr('x',function(d){return -graphColorBlockSize(d)/2;}).attr('y',function(d){return -graphColorBlockSize(d)/2;}).attr('width',graphColorBlockSize).attr('height',graphColorBlockSize).attr('rx',3).attr('fill',function(d){return graphColorBlockFill(getC(d));}).attr('stroke',function(d){var c=d3.color(graphColorBlockFill(getC(d)));return c?c.darker(0.35):'#000';}).attr('stroke-width',1).attr('display','none');
         // Hide labels for large graphs to reduce DOM overhead. Code view keeps titles readable.
         if(keepReadable||!isLargeGraph||graphConfig.showLabels){
-            node.append('text').attr('class','node-label').attr('text-anchor','middle').attr('dy',0).attr('fill',theme==='light'?'#333':'#eee').attr('font-size',function(d){return (keepReadable?Math.max(9,Math.min(12,getR(d)*0.7)):Math.max(6,Math.min(10,getR(d)*0.6)))+'px';}).attr('font-family','JetBrains Mono').attr('font-weight','600').attr('pointer-events','none').text(function(d){var n=d.name.replace(/\.[^.]+$/,'');if(keepReadable)return n.length>18?n.slice(0,17)+'…':n;var maxLen=Math.max(4,Math.floor(getR(d)/2));return n.length>maxLen+1?n.slice(0,maxLen)+'…':n;});
+            node.append('text').attr('class','node-label').attr('text-anchor','middle').attr('dominant-baseline','central').attr('dy','0.05em').attr('fill',theme==='light'?'#333':'#eee').attr('font-size',function(d){return (keepReadable?Math.max(10,Math.min(13,getR(d)*0.55)):Math.max(9,Math.min(12,getR(d)*0.48)))+'px';}).attr('font-family','JetBrains Mono').attr('font-weight','600').attr('pointer-events','none').text(function(d){var n=d.name.replace(/\.[^.]+$/,'');if(keepReadable)return n.length>18?n.slice(0,17)+'…':n;var maxLen=Math.max(6,Math.floor(getR(d)/2.4));return n.length>maxLen+1?n.slice(0,maxLen)+'…':n;});
         }
         function liveNodesByFolder(){
             var live=(simRef.current&&simRef.current.nodes())||nodes;
@@ -15393,7 +15635,7 @@ function App(){
         }
 
         function getR(d){
-            var base=Math.max(6,Math.min(20,4+d.fnCount*0.4));
+            var base=Math.max(10,Math.min(26,8+d.fnCount*0.55));
             if(selected){
                 if(d.id===selected.path)return base*2.0;
                 if(blastRadius&&blastRadius.affected.indexOf(d.id)>=0)return base*1.4;
@@ -16343,7 +16585,9 @@ function App(){
             startX:e.clientX,
             startY:e.clientY,
             originX:architectureViewport.x,
-            originY:architectureViewport.y
+            originY:architectureViewport.y,
+            moved:false,
+            target:e.target
         };
         if(e.currentTarget&&e.currentTarget.setPointerCapture){
             try{e.currentTarget.setPointerCapture(e.pointerId);}catch(err){}
@@ -16354,16 +16598,31 @@ function App(){
         var drag=architectureDragRef.current;
         if(!drag)return;
         e.preventDefault();
+        var dx=e.clientX-drag.startX;
+        var dy=e.clientY-drag.startY;
+        if(!drag.moved&&(dx*dx+dy*dy)>16)drag.moved=true;
+        if(!drag.moved)return;
         setArchitectureViewport(function(prev){
             return Object.assign({},prev,{
-                x:drag.originX+e.clientX-drag.startX,
-                y:drag.originY+e.clientY-drag.startY
+                x:drag.originX+dx,
+                y:drag.originY+dy
             });
         });
     }
     function handleArchitecturePointerUp(e){
-        if(e&&e.currentTarget&&e.currentTarget.releasePointerCapture&&architectureDragRef.current){
-            try{e.currentTarget.releasePointerCapture(architectureDragRef.current.pointerId);}catch(err){}
+        var drag=architectureDragRef.current;
+        if(e&&e.currentTarget&&e.currentTarget.releasePointerCapture&&drag){
+            try{e.currentTarget.releasePointerCapture(drag.pointerId);}catch(err){}
+        }
+        if(drag&&!drag.moved&&data&&data.architectureDiagram){
+            var blocks=getVisibleArchitectureBlocks(data.architectureDiagram.blocks||[],architectureIncludeTests,architectureIncludeBuildOutput);
+            var ids=blocks.map(function(b){return b.id;});
+            var hit=resolveArchitectureBlockIdFromTarget(drag.target||(e&&e.target),ids);
+            setSelectedArchitectureBlockId(hit||null);
+            if(hit){
+                setRightTab('details');
+                if(isMobile)setMobilePanel('details');
+            }
         }
         architectureDragRef.current=null;
         setArchitectureDragging(false);
@@ -16791,6 +17050,8 @@ function App(){
     }
     function renderOverviewPane(){
         if(!data)return renderSidebarEmpty('No Repository','Enter a GitHub URL, open a folder, or load a ZIP archive');
+        var breakdown=health.breakdown||[];
+        var fragile=fragileFiles||[];
         return React.createElement('div',{className:'sidebar-scroll'},
             React.createElement('div',{className:'health-score',style:{marginBottom:10}},
                 React.createElement(HealthRing,{score:health.score,grade:health.grade}),
@@ -16823,6 +17084,35 @@ function App(){
                         React.createElement('span',null,l.ext,' ',l.pct,'%')
                     );})
                 )
+            ),
+            breakdown.length>0&&React.createElement('div',{className:'overview-section'},
+                React.createElement('div',{className:'overview-section-title'},'Health breakdown'),
+                breakdown.map(function(factor){
+                    var pct=factor.max>0?Math.min(100,(factor.penalty/factor.max)*100):0;
+                    var fillClass=pct>=70?' bad':(pct>=40?' warn':'');
+                    return React.createElement('div',{key:factor.key,className:'health-factor'},
+                        React.createElement('div',{className:'health-factor-label'},factor.label,' · ',factor.detail),
+                        React.createElement('div',{className:'health-factor-meta'},factor.penalty>0?'−'+factor.penalty:'0'),
+                        React.createElement('div',{className:'health-factor-bar'},
+                            React.createElement('div',{className:'health-factor-fill'+fillClass,style:{width:Math.max(pct,factor.penalty>0?6:0)+'%'}})
+                        )
+                    );
+                })
+            ),
+            React.createElement('div',{className:'overview-section'},
+                React.createElement('div',{className:'overview-section-title'},'Most fragile files'),
+                fragile.length===0
+                    ?React.createElement('div',{className:'fragile-empty'},'No high-impact dependency hubs yet')
+                    :fragile.map(function(f,i){
+                        return React.createElement('div',{key:f.path,className:'fragile-row',title:f.path,onClick:function(){goToFile(f.path);}},
+                            React.createElement('div',{className:'fragile-rank'},String(i+1)),
+                            React.createElement('div',{className:'fragile-info'},
+                                React.createElement('div',{className:'fragile-name'},f.name),
+                                React.createElement('div',{className:'fragile-meta'},f.direct,' direct · ',f.transitive,' transitive')
+                            ),
+                            React.createElement('div',{className:'fragile-score'},f.total)
+                        );
+                    })
             )
         );
     }
@@ -17261,7 +17551,11 @@ function App(){
         if(!blocks||!blocks.length)return React.createElement('div',{style:{fontSize:10,color:'var(--t3)',padding:8}},emptyText);
         return React.createElement('div',{className:'architecture-list'},
             blocks.slice(0,12).map(function(block){
-                return React.createElement('div',{key:block.id,className:'architecture-list-item'},
+                return React.createElement('div',{
+                    key:block.id,
+                    className:'architecture-list-item'+(selectedArchitectureBlockId===block.id?' selected':''),
+                    onClick:function(){setSelectedArchitectureBlockId(block.id);}
+                },
                     React.createElement(StatusDot,{color:architectureGroupDotColor(block.group)}),
                     React.createElement('span',{title:(block.files&&block.files[0])||block.route||block.title},block.title)
                 );
@@ -17275,14 +17569,22 @@ function App(){
         var stats=getArchitectureViewStats(diagram,architectureIncludeTests,architectureIncludeBuildOutput);
         var blocks=getVisibleArchitectureBlocks(diagram.blocks||[],architectureIncludeTests,architectureIncludeBuildOutput);
         var hidden=diagram.hiddenSummary||{build:0,tests:0,fixtures:0,lowSignal:0,total:0};
+        var activeViolations=architectureLayerViolations||[];
+        var violationSummary=summarizeArchitectureViolations(activeViolations,{max:12});
+        var selectedBlock=selectedArchitectureBlockId?blocks.find(function(b){return b.id===selectedArchitectureBlockId;})||(diagram.blocks||[]).find(function(b){return b.id===selectedArchitectureBlockId;}):null;
         var groupOrder=getArchitectureGroupOrder(diagram.profile||'generic');
+        var rulePresets=listArchitectureLayerRulePresets();
         var groupCards=groupOrder.map(function(group){
             var groupBlocks=blocks.filter(function(block){return block.group===group;});
             if(!groupBlocks.length)return null;
+            var groupViolations=countArchitectureGroupViolations(groupBlocks,activeViolations);
             return React.createElement('div',{key:group,className:'card'},
                 React.createElement('div',{className:'card-header'},
                     React.createElement('div',{className:'card-title'},group),
-                    React.createElement('span',{className:'badge badge-default'},groupBlocks.length)
+                    React.createElement('div',{style:{display:'flex',gap:6,alignItems:'center'}},
+                        groupViolations>0&&React.createElement('span',{className:'badge badge-danger',title:groupViolations+' layer violation'+(groupViolations===1?'':'s')+' involving this group'},groupViolations),
+                        React.createElement('span',{className:'badge badge-default'},groupBlocks.length)
+                    )
                 ),
                 React.createElement('div',{className:'card-body'},renderArchitectureBlockList(groupBlocks,'No blocks in this group.'))
             );
@@ -17295,6 +17597,64 @@ function App(){
                 React.createElement('div',{className:'stat-card'},React.createElement('div',{className:'stat-value'},stats.routes||0),React.createElement('div',{className:'stat-label'},'Routes')),
                 React.createElement('div',{className:'stat-card warn'},React.createElement('div',{className:'stat-value'},stats.databaseTouchpoints||0),React.createElement('div',{className:'stat-label'},'DB Touches'))
             ),
+            selectedBlock&&React.createElement('div',{className:'card'},
+                React.createElement('div',{className:'card-header'},
+                    React.createElement('div',{className:'card-title'},React.createElement(Icon,{name:'box',size:'s'}),' Selected block'),
+                    React.createElement('button',{className:'top-btn',style:{fontSize:9,padding:'2px 8px'},type:'button',onClick:function(){setSelectedArchitectureBlockId(null);}},'Clear')
+                ),
+                React.createElement('div',{className:'card-body'},
+                    React.createElement('div',{style:{fontSize:11,fontWeight:600,marginBottom:4}},selectedBlock.title),
+                    React.createElement('div',{style:{fontSize:9,color:'var(--t3)',marginBottom:6}},selectedBlock.group||'Application',selectedBlock.role?' · '+selectedBlock.role:''),
+                    selectedBlock.files&&selectedBlock.files.length
+                        ?React.createElement('div',{className:'arch-inspect-files'},
+                            selectedBlock.files.slice(0,12).map(function(path){
+                                return React.createElement('div',{key:path,className:'arch-inspect-file',title:path,onClick:function(){goToFile(path);}},path);
+                            }),
+                            selectedBlock.files.length>12&&React.createElement('div',{style:{fontSize:9,color:'var(--t3)'}},'+',selectedBlock.files.length-12,' more files')
+                        )
+                        :React.createElement('div',{style:{fontSize:10,color:'var(--t3)'}},'No files attached to this block')
+                )
+            ),
+            React.createElement('div',{className:'card'},
+                React.createElement('div',{className:'card-header'},
+                    React.createElement('div',{className:'card-title'},React.createElement(Icon,{name:'layers',size:'s'}),' Architecture violations'),
+                    React.createElement('span',{className:'badge '+(violationSummary.unique>0?'badge-danger':'badge-default')},violationSummary.unique)
+                ),
+                React.createElement('div',{className:'card-body'},
+                    React.createElement('div',{className:'arch-rules-row'},
+                        React.createElement('label',{htmlFor:'arch-layer-rules'},'Rules'),
+                        React.createElement('select',{
+                            id:'arch-layer-rules',
+                            value:architectureLayerRules,
+                            onChange:function(e){
+                                var next=normalizeArchitectureLayerRule(e.target.value);
+                                setArchitectureLayerRules(next);
+                                persistUiPrefs({architectureLayerRules:next});
+                            }
+                        },
+                            rulePresets.map(function(preset){
+                                return React.createElement('option',{key:preset.id,value:preset.id},preset.label);
+                            })
+                        )
+                    ),
+                    violationSummary.unique===0
+                        ?React.createElement('div',{className:'arch-violation-empty',style:{marginTop:8}},architectureLayerRules==='off'?'Layer rules are off':'No layer violations for this rule preset')
+                        :React.createElement(React.Fragment,null,
+                            violationSummary.items.map(function(v){
+                                return React.createElement('div',{key:v.from+'→'+v.to,className:'arch-violation',onClick:function(){goToFile(v.from);}},
+                                    React.createElement('div',{className:'arch-violation-edge'},
+                                        React.createElement('span',{className:'arch-violation-file',title:v.from,onClick:function(e){e.stopPropagation();goToFile(v.from);}},v.fromName),
+                                        React.createElement('span',null,'→'),
+                                        React.createElement('span',{className:'arch-violation-file',title:v.to,onClick:function(e){e.stopPropagation();goToFile(v.to);}},v.toName)
+                                    ),
+                                    React.createElement('div',{className:'arch-violation-layers'},v.fromLayer,' → ',v.toLayer,v.fns.length?(' · via '+v.fns.slice(0,2).join(', ')):''),
+                                    v.suggestion&&React.createElement('div',{className:'arch-violation-hint'},v.suggestion)
+                                );
+                            }),
+                            violationSummary.truncated>0&&React.createElement('div',{style:{fontSize:9,color:'var(--t3)',marginTop:6}},'+',violationSummary.truncated,' more unique edge',violationSummary.truncated===1?'':'s')
+                        )
+                )
+            ),
             React.createElement('div',{className:'card'},
                 React.createElement('div',{className:'card-header'},React.createElement('div',{className:'card-title'},React.createElement(Icon,{name:'globe',size:'s'}),' Framework'),React.createElement('span',{className:'badge badge-info'},diagram.framework)),
                 React.createElement('div',{className:'card-body'},
@@ -17303,7 +17663,7 @@ function App(){
                         React.createElement('button',{className:'top-btn'+(architectureIncludeTests?' primary':''),style:{fontSize:10,padding:'4px 10px'},onClick:function(){setArchitectureIncludeTests(function(v){return !v;});},type:'button'},'Tests'),
                         React.createElement('button',{className:'top-btn'+(architectureIncludeBuildOutput?' primary':''),style:{fontSize:10,padding:'4px 10px'},onClick:function(){setArchitectureIncludeBuildOutput(function(v){return !v;});},type:'button'},'Build output')
                     ),
-                    React.createElement('div',{style:{fontSize:9,color:'var(--t3)',marginTop:8}},'Pan: drag diagram · Zoom: scroll wheel · Export: navbar Export button')
+                    React.createElement('div',{style:{fontSize:9,color:'var(--t3)',marginTop:8}},'Click a block to inspect · Drag to pan · Scroll to zoom')
                 )
             ),
             hidden.total>0&&React.createElement('div',{className:'card'},
@@ -17323,6 +17683,12 @@ function App(){
         );
     }
     var health=useMemo(function(){return calcHealth(data);},[data]);
+    var fragileFiles=useMemo(function(){return data?topFragileFiles(data,3):[];},[data]);
+    var architectureLayerViolations=useMemo(function(){
+        if(!data||!data.files||!data.connections)return[];
+        if(typeof Parser==='undefined'||typeof Parser.detectLayerViolations!=='function')return data.layerViolations||[];
+        return Parser.detectLayerViolations(data.files,data.connections,{preset:architectureLayerRules});
+    },[data,architectureLayerRules]);
     return React.createElement('div',{className:'app',style:{'--topbar-height':topbarHeight+'px'}},
         React.createElement('input',{ref:zipInputRef,type:'file',accept:'.zip,application/zip,application/x-zip-compressed',style:{display:'none'},onChange:handleZipSelected}),
         React.createElement('input',{ref:folderInputRef,type:'file',webkitdirectory:'',directory:'',mozdirectory:'',multiple:true,style:{display:'none'},onChange:handleFolderSelected}),
@@ -17904,7 +18270,7 @@ function App(){
         ),
         showExport&&React.createElement('div',{className:'modal-overlay',onClick:function(){setShowExport(false);}},
             React.createElement('div',{className:'modal',onClick:function(e){e.stopPropagation();},style:{maxWidth:480}},
-                React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},iconLabel('export','Export','m')),React.createElement('button',{className:'modal-close',onClick:function(){setShowExport(false);}},'×')),
+                React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},iconLabel('export','Export','m')),React.createElement('button',{className:'modal-close','aria-label':'Close',onClick:function(){setShowExport(false);}},'×')),
                 React.createElement('div',{className:'modal-body'},
                     data&&data.architectureDiagram&&React.createElement(React.Fragment,null,
                         React.createElement('div',{style:{fontSize:10,fontWeight:600,color:'var(--t3)',textTransform:'uppercase',marginBottom:8}},graphConfig.vizType==='architecture'?'Block Diagram (current view)':'Block Diagram'),
@@ -17943,7 +18309,7 @@ function App(){
                     React.createElement('div',{className:'modal-title'},iconLabel('ban','Exclude Patterns','m')),
                     React.createElement('div',{style:{display:'flex',alignItems:'center',gap:12}},
                         React.createElement('div',{className:'exclude-count'},parseExcludePatterns(excludePatternDraft).length,' custom'),
-                        React.createElement('button',{className:'modal-close',onClick:closeExcludeModal},'×')
+                        React.createElement('button',{className:'modal-close','aria-label':'Close',onClick:closeExcludeModal},'×')
                     )
                 ),
                 React.createElement('div',{className:'modal-body'},
@@ -17976,7 +18342,7 @@ function App(){
         ),
         showPR&&React.createElement('div',{className:'modal-overlay',onClick:function(){setShowPR(false);}},
             React.createElement('div',{className:'modal pr-modal',onClick:function(e){e.stopPropagation();}},
-                React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},iconLabel('chart','PR Impact Analyzer','m')),React.createElement('button',{className:'modal-close',onClick:function(){setShowPR(false);}},'×')),
+                React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},iconLabel('chart','PR Impact Analyzer','m')),React.createElement('button',{className:'modal-close','aria-label':'Close',onClick:function(){setShowPR(false);}},'×')),
                 React.createElement('div',{className:'modal-body',style:{maxHeight:'75vh',overflowY:'auto'}},
                     React.createElement('div',{className:'form-group'},React.createElement('label',{className:'form-label'},'Pull Request URL'),React.createElement('input',{className:'form-input','aria-label':'Pull Request URL',placeholder:'https://github.com/owner/repo/pull/123',value:prUrl,onChange:function(e){setPrUrl(e.target.value);},onKeyDown:function(e){if(e.key==='Enter')analyzePR();}})),
                     React.createElement('button',{className:'top-btn primary','aria-label':'Analyze Pull Request',onClick:analyzePR,style:{marginBottom:16,width:'100%'}},iconLabel('search','Analyze PR Impact')),
@@ -18112,7 +18478,7 @@ function App(){
                         drillDown.type==='duplicate'?iconLabel(drillDown.data.type==='code'?'copy':'note',(drillDown.data.type==='code'?'Similar Code':'Duplicate Name')+': '+drillDown.data.name,'m'):
                         'Details'
                     ),
-                    React.createElement('button',{className:'modal-close',onClick:function(){setDrillDown(null);}},'×')
+                    React.createElement('button',{className:'modal-close','aria-label':'Close',onClick:function(){setDrillDown(null);}},'×')
                 ),
                 React.createElement('div',{className:'modal-body',style:{overflowY:'auto',flex:1}},
                     // Issue drill-down
@@ -18237,7 +18603,7 @@ function App(){
         ),
         showPrivacy&&React.createElement('div',{className:'modal-overlay',onClick:function(){setShowPrivacy(false);}},
             React.createElement('div',{className:'modal privacy-modal',onClick:function(e){e.stopPropagation();}},
-                React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},iconLabel('lock','Privacy & Security','m')),React.createElement('button',{className:'modal-close',onClick:function(){setShowPrivacy(false);}},'×')),
+                React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},iconLabel('lock','Privacy & Security','m')),React.createElement('button',{className:'modal-close','aria-label':'Close',onClick:function(){setShowPrivacy(false);}},'×')),
                 React.createElement('div',{className:'modal-body'},
                     React.createElement('div',{className:'privacy-item'},
                         React.createElement('div',{className:'privacy-icon'},React.createElement(Icon,{name:'globe',size:'l'})),
@@ -18269,7 +18635,7 @@ function App(){
         ),
         showKeyModal&&React.createElement('div',{className:'modal-overlay',onClick:function(){setShowKeyModal(false);}},
             React.createElement('div',{className:'modal key-modal',onClick:function(e){e.stopPropagation();}},
-                React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},iconLabel('key','GitHub App Private Key','m')),React.createElement('button',{className:'modal-close',onClick:function(){setShowKeyModal(false);}},'×')),
+                React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},iconLabel('key','GitHub App Private Key','m')),React.createElement('button',{className:'modal-close','aria-label':'Close',onClick:function(){setShowKeyModal(false);}},'×')),
                 React.createElement('div',{className:'modal-body'},
                     React.createElement('div',{className:'key-info'},
                         'Paste the private key from your GitHub App. This key is stored only in memory and never leaves your browser.',
@@ -18293,7 +18659,7 @@ function App(){
         ),
         showUnused&&data&&data.deadFunctions&&React.createElement('div',{className:'modal-overlay',onClick:function(){setShowUnused(false);}},
             React.createElement('div',{className:'modal',style:{maxWidth:650,maxHeight:'85vh'},onClick:function(e){e.stopPropagation();}},
-                React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},iconLabel('warning','Unused Functions','m')),React.createElement('button',{className:'modal-close',onClick:function(){setShowUnused(false);}},'×')),
+                React.createElement('div',{className:'modal-header'},React.createElement('div',{className:'modal-title'},iconLabel('warning','Unused Functions','m')),React.createElement('button',{className:'modal-close','aria-label':'Close',onClick:function(){setShowUnused(false);}},'×')),
                 React.createElement('div',{className:'modal-body',style:{maxHeight:'70vh',overflowY:'auto'}},
                     React.createElement('div',{className:'unused-summary'},
                         React.createElement('div',{className:'unused-summary-item'},
@@ -18410,7 +18776,7 @@ function App(){
                     ),
                     React.createElement('div',{className:'file-preview-actions'},
                         filePreview.line&&React.createElement('span',{className:'file-preview-line-badge'},'Line ',filePreview.line),
-                        React.createElement('button',{className:'file-preview-close',onClick:function(){setFilePreview(null);}},'×')
+                        React.createElement('button',{className:'file-preview-close','aria-label':'Close',onClick:function(){setFilePreview(null);}},'×')
                     )
                 ),
                 React.createElement('div',{className:'file-preview-content',ref:filePreviewRef},

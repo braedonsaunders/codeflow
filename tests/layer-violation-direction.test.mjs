@@ -3,35 +3,11 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import vm from 'node:vm';
+import { loadAnalyzerContext, analyzerPath } from './load-analyzer.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(__dirname, '..');
-const htmlSource = await readFile(join(repoRoot, 'index.html'), 'utf8');
-const startMarker = '// ===== CODEFLOW_ANALYZER_START =====';
-const endMarker = '// ===== CODEFLOW_ANALYZER_END =====';
-const parserStart = htmlSource.indexOf(startMarker);
-const parserEnd = htmlSource.indexOf(endMarker, parserStart);
-
-if (parserStart < 0 || parserEnd < 0) {
-  throw new Error('Could not locate analyzer source in index.html');
-}
-
-const context = {
-  console,
-  TreeSitter: undefined,
-  Babel: undefined,
-  acorn: undefined,
-  getSecurityScanContent(file) {
-    return file && file.content ? file.content : '';
-  },
-  isSanitizedPreviewRenderer() {
-    return false;
-  },
-};
-
-vm.createContext(context);
-vm.runInContext(`${htmlSource.slice(parserStart, parserEnd)}\nthis.Parser = Parser;`, context);
+const analyzerSource = await readFile(analyzerPath, 'utf8');
+const context = await loadAnalyzerContext();
 const { Parser } = context;
 
 // Convention (index.html): connection {source: fileDefiningFn (imported), target: fileCallingFn (importer)}.
@@ -90,9 +66,9 @@ test('a test file importing a util or service is NOT flagged as a layer violatio
 });
 
 test('coupling issue label describes fan-out (files it imports), not fan-in', () => {
-  const start = htmlSource.indexOf("title:highCoup.length+' Highly Coupled'");
+  const start = analyzerSource.indexOf("title:highCoup.length+' Highly Coupled'");
   assert.ok(start > 0, 'Highly Coupled issue builder not found in analyzer source');
-  const snippet = htmlSource.slice(start, start + 200);
+  const snippet = analyzerSource.slice(start, start + 200);
   // The stale fan-in wording ("imported by 8+ others") must be gone...
   assert.equal(/imported by 8\+ others/.test(snippet), false, 'stale fan-in wording still present');
   // ...replaced by wording that describes fan-out (this file imports others).

@@ -3,29 +3,11 @@ import { readFile, readdir } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import vm from 'node:vm';
+import { loadAnalyzerContext } from './load-analyzer.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(__dirname, '..');
 const fixtureRoot = join(__dirname, 'fixtures', 'pascal-world');
-const html = await readFile(join(repoRoot, 'index.html'), 'utf8');
-const start = html.indexOf('// ===== CODEFLOW_ANALYZER_START =====');
-const end = html.indexOf('// ===== CODEFLOW_ANALYZER_END =====', start);
-const context = {
-  console,
-  TreeSitter: undefined,
-  Babel: undefined,
-  acorn: undefined,
-  getSecurityScanContent(file) { return file && file.content ? file.content : ''; },
-  isSanitizedPreviewRenderer() { return false; },
-};
-
-vm.createContext(context);
-vm.runInContext(
-  html.slice(start, end) + '\nthis.Parser = Parser; this.buildAnalysisData = buildAnalysisData;',
-  context
-);
-
+const context = await loadAnalyzerContext();
 const { Parser, buildAnalysisData } = context;
 
 async function analyzePascalFixture() {
