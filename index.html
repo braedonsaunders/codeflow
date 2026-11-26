@@ -39,8 +39,8 @@
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0);height:100vh;height:100dvh;min-height:100vh;min-height:100dvh;overflow:hidden}
 .app{display:flex;height:100vh;height:100dvh;min-height:100vh;min-height:100dvh;flex-direction:column}
-.topbar{min-height:48px;background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:16px;flex-shrink:0;position:relative;z-index:120}
-.logo{display:flex;align-items:center;gap:10px;cursor:pointer}
+.topbar{height:48px;min-height:48px;background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px;flex-wrap:nowrap;flex-shrink:0;position:relative;z-index:120}
+.logo{display:flex;align-items:center;gap:10px;cursor:pointer;flex-shrink:0}
 .logo-mark{width:28px;height:28px;background:linear-gradient(135deg,var(--acc),var(--cyan));border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--bg0)}
 .logo-text{font-size:14px;font-weight:700;color:var(--acc)}
 .icon{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;line-height:0;color:currentColor}
@@ -51,14 +51,15 @@ body{font-family:'JetBrains Mono',monospace;background:var(--bg0);color:var(--t0
 .icon-xl{width:20px;height:20px}
 .icon-xxl{width:48px;height:48px}
 .status-dot{display:inline-block;width:8px;height:8px;border-radius:999px;flex-shrink:0}
-.repo-input-group{display:flex;gap:8px;flex:1;min-width:0}
+.repo-input-group{display:flex;align-items:center;flex-wrap:nowrap;gap:6px;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none}
+.repo-input-group::-webkit-scrollbar{display:none}
 .repo-input-group>*{min-width:0}
 .repo-input{flex:1;padding:6px 12px;background:var(--bg0);border:1px solid var(--border);border-radius:6px;color:var(--t0);font-family:inherit;font-size:11px;min-width:0}
-.repo-input-group>.repo-input:first-child{min-width:220px}
+.repo-input-group>.repo-input:first-child{flex:1 1 160px;min-width:140px}
 .repo-input-group>.top-btn,.repo-input-group>.refresh-btn,.repo-input-group>.reset-btn,.auth-select,.private-key-btn{flex-shrink:0}
 .repo-input:focus{outline:none;border-color:var(--acc)}
-.topbar-actions{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
-.top-btn{padding:6px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-family:inherit;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;min-height:32px;touch-action:manipulation}
+.topbar-actions{display:flex;gap:6px;margin-left:auto;flex-wrap:nowrap;flex-shrink:0;align-items:center}
+.top-btn{padding:6px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-family:inherit;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;min-height:32px;touch-action:manipulation}
 .top-btn:hover{background:var(--bg4);border-color:var(--acc);color:var(--acc)}
 .top-btn.primary{background:var(--acc);color:var(--bg0);border-color:var(--acc)}
 .top-btn.primary:hover{background:var(--acc2)}
@@ -601,6 +602,27 @@ svg.color-blocks text.node-label{display:none}
 .auth-select:hover{border-color:var(--acc)}
 .auth-select option{background:var(--bg1);color:var(--t0);padding:8px}
 .auth-inputs{display:flex;gap:6px;align-items:center;flex-shrink:0}
+.auth-inputs:empty{display:none}
+@media (min-width:981px) and (max-width:1480px){
+.topbar-actions .btn-label{display:none}
+.topbar-actions .top-btn{padding:6px 8px}
+}
+@media (min-width:981px) and (max-width:1680px){
+.topbar:has(.auth-inputs:not(:empty)) .topbar-actions .btn-label{display:none}
+.topbar:has(.auth-inputs:not(:empty)) .topbar-actions .top-btn{padding:6px 8px}
+}
+@media (min-width:981px) and (max-width:1260px){
+.repo-input-group .top-btn:not(.primary) .btn-label{display:none}
+.repo-input-group .top-btn:not(.primary){padding:6px 8px}
+}
+@media (min-width:981px) and (max-width:1520px){
+.topbar:has(.private-key-btn) .repo-input-group .top-btn:not(.primary) .btn-label{display:none}
+.topbar:has(.private-key-btn) .repo-input-group .top-btn:not(.primary){padding:6px 8px}
+}
+@media (min-width:981px) and (max-width:1380px){
+.topbar:has(.auth-inputs:not(:empty)) .repo-input-group .top-btn:not(.primary) .btn-label{display:none}
+.topbar:has(.auth-inputs:not(:empty)) .repo-input-group .top-btn:not(.primary){padding:6px 8px}
+}
 .auth-inputs .repo-input{transition:all 0.2s ease}
 .private-key-btn{padding:6px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--t1);font-family:inherit;font-size:10px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:4px}
 .private-key-btn:hover{background:var(--bg4);border-color:var(--acc);color:var(--acc)}
@@ -17414,24 +17436,23 @@ function App(){
                 ),
                 React.createElement('button',{className:'top-btn','aria-label':'Edit exclude patterns',title:'Edit exclude patterns'+(customExcludeCount>0?' ('+customExcludeCount+')':''),onClick:function(){openExcludeModal();},disabled:loading,style:customExcludeCount?{borderColor:'var(--acc)',color:'var(--acc)'}:null},
                     React.createElement(Icon,{name:'ban',size:'m'}),
-                    !data&&'Excludes',
-                    (!data&&customExcludeCount>0)?' ('+customExcludeCount+')':''
+                    !data&&React.createElement('span',{className:'btn-label'},'Excludes'+(customExcludeCount>0?' ('+customExcludeCount+')':''))
                 ),
                 React.createElement('button',{id:'analyze-btn',className:'top-btn primary','aria-label':'Analyze repository',title:'Analyze repository',onClick:analyze,disabled:loading||!repoUrl},
                     React.createElement(Icon,{name:loading?'activity':'search',size:'m'}),
-                    !data&&'Analyze'
+                    !data&&React.createElement('span',{className:'btn-label'},'Analyze')
                 ),
                 React.createElement('button',{className:'top-btn','aria-label':'Open local folder',title:'Open local folder',onClick:function(){openLocalFolder();},disabled:loading},
                     React.createElement(Icon,{name:'folder',size:'m'}),
-                    !data&&'Open Folder'
+                    !data&&React.createElement('span',{className:'btn-label'},'Open Folder')
                 ),
                 React.createElement('button',{className:'top-btn','aria-label':'Open ZIP archive',title:'Open ZIP archive',onClick:function(){openLocalZip();},disabled:loading},
                     React.createElement(Icon,{name:'archive',size:'m'}),
-                    !data&&'Open ZIP'
+                    !data&&React.createElement('span',{className:'btn-label'},'Open ZIP')
                 ),
                 parseUrl(repoUrl)&&React.createElement('button',{className:'top-btn','aria-label':'Download GitHub ZIP',title:'Download a ZIP of this repo, then open it here',onClick:downloadCurrentGithubZip,disabled:loading},
                     React.createElement(Icon,{name:'export',size:'m'}),
-                    !data&&'Download ZIP'
+                    !data&&React.createElement('span',{className:'btn-label'},'Download ZIP')
                 ),
                 data&&React.createElement('button',{className:'refresh-btn','aria-label':'Re-analyze',onClick:refreshAnalysis,disabled:loading,title:cachedFromId||cliDirty.length?'Re-analyze (cached or stale)':'Refresh Analysis'},
                     React.createElement(Icon,{name:'refresh',size:'m'})
@@ -17451,10 +17472,10 @@ function App(){
                 )
             ),
             React.createElement('div',{className:'topbar-actions'},
-                React.createElement('button',{className:'top-btn','aria-label':'Analyze Pull Request',title:'Analyze Pull Request',onClick:function(){setShowPR(true);},disabled:!data||!!localSourceKind},React.createElement(Icon,{name:'pull-request',size:'m'}),!data&&'PR'),
-                React.createElement('button',{className:'top-btn','aria-label':'Export analysis',title:'Export analysis',onClick:function(){setShowExport(true);},disabled:!data},React.createElement(Icon,{name:'export',size:'m'}),!data&&'Export'),
-                React.createElement('button',{className:'top-btn','aria-label':'Copy share link',title:'Copy share link',onClick:copyLink,disabled:!data||!!localSourceKind},React.createElement(Icon,{name:'share',size:'m'}),!data&&'Share'),
-                React.createElement('button',{className:'top-btn','aria-label':'Toggle theme',title:theme==='dark'?'Switch to light mode':'Switch to dark mode',onClick:function(){setTheme(function(t){return t==='dark'?'light':'dark';});}},React.createElement(Icon,{name:theme==='dark'?'sun':'moon',size:'m'}),!data&&(theme==='dark'?'Light':'Dark'))
+                React.createElement('button',{className:'top-btn','aria-label':'Analyze Pull Request',title:'Analyze Pull Request',onClick:function(){setShowPR(true);},disabled:!data||!!localSourceKind},React.createElement(Icon,{name:'pull-request',size:'m'}),!data&&React.createElement('span',{className:'btn-label'},'PR')),
+                React.createElement('button',{className:'top-btn','aria-label':'Export analysis',title:'Export analysis',onClick:function(){setShowExport(true);},disabled:!data},React.createElement(Icon,{name:'export',size:'m'}),!data&&React.createElement('span',{className:'btn-label'},'Export')),
+                React.createElement('button',{className:'top-btn','aria-label':'Copy share link',title:'Copy share link',onClick:copyLink,disabled:!data||!!localSourceKind},React.createElement(Icon,{name:'share',size:'m'}),!data&&React.createElement('span',{className:'btn-label'},'Share')),
+                React.createElement('button',{className:'top-btn','aria-label':'Toggle theme',title:theme==='dark'?'Switch to light mode':'Switch to dark mode',onClick:function(){setTheme(function(t){return t==='dark'?'light':'dark';});}},React.createElement(Icon,{name:theme==='dark'?'sun':'moon',size:'m'}),!data&&React.createElement('span',{className:'btn-label'},theme==='dark'?'Light':'Dark'))
             )
         ),
         React.createElement('div',{className:'main'},
